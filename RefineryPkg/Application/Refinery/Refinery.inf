@@ -1,0 +1,17 @@
+[Defines]
+  INF_VERSION    = 1.27
+  BASE_NAME      = Refinery
+  FILE_GUID      = c1cf1424-c641-4ae3-97ca-f18d5bc5b848
+  MODULE_TYPE    = UEFI_APPLICATION
+  VERSION_STRING = 0.00
+  ENTRY_POINT    = RefineryMain
+
+[LibraryClasses]
+  UefiApplicationEntryPoint
+  UefiLib
+
+[Packages]
+  MdePkg/MdePkg.dec
+
+[Sources]
+  Refinery.c
