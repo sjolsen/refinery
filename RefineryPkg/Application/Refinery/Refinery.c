@@ -9,10 +9,12 @@ Wait (
 {
   EFI_STATUS     Status;
   EFI_INPUT_KEY  Key;
+  UINTN          Index;
 
-  do {
+  Status = gBS->WaitForEvent (1, &gST->ConIn->WaitForKey, &Index);
+  while (Status == EFI_SUCCESS) {
     Status = gST->ConIn->ReadKeyStroke (gST->ConIn, &Key);
-  } while (Status == EFI_NOT_READY);
+  }
 }
 
 typedef struct _BOUNDING_BOX {
