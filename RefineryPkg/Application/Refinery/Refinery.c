@@ -223,10 +223,14 @@ FlowContent (
       case L' ':
         if (Len == 0) {
           Line = Next;
-        } else if (Len + 1 + WordLength (Next) > Width) {
-          LineBreak = TRUE;
         } else {
-          ++Len;
+          UINTN  WordLen = WordLength (Next);
+          if (Len + 1 + WordLen > Width) {
+            LineBreak = TRUE;
+          } else {
+            Len  += 1 + WordLen;
+            Next += WordLen;
+          }
         }
 
         break;
