@@ -2,19 +2,27 @@
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiLib.h>
 
-VOID
+EFI_STATUS
 EFIAPI
-Wait (
+WaitForKeyStroke (
+  EFI_SIMPLE_TEXT_INPUT_PROTOCOL  *In,
+  EFI_INPUT_KEY                   *Key
   )
 {
-  EFI_STATUS     Status;
-  EFI_INPUT_KEY  Key;
-  UINTN          Index;
+  EFI_STATUS  Status;
+  UINTN       Index;
 
-  Status = gBS->WaitForEvent (1, &gST->ConIn->WaitForKey, &Index);
-  while (Status == EFI_SUCCESS) {
-    Status = gST->ConIn->ReadKeyStroke (gST->ConIn, &Key);
+  Status = In->ReadKeyStroke (In, Key);
+  while (Status == EFI_NOT_READY) {
+    Status = gBS->WaitForEvent (1, &In->WaitForKey, &Index);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+
+    Status = In->ReadKeyStroke (In, Key);
   }
+
+  return Status;
 }
 
 typedef struct _BOUNDING_BOX {
@@ -148,8 +156,6 @@ PrintBox (
     return Status;
   }
 
-  (VOID)Out->SetAttribute (Out, EFI_TEXT_ATTR (EFI_WHITE, EFI_BLUE));
-  (VOID)Out->ClearScreen (Out);
   Status = DrawBox (Out, &BoxOuter, &BoxInner);
   if (EFI_ERROR (Status)) {
     return Status;
@@ -314,12 +320,23 @@ PrintContent (
 EFI_STATUS
 EFIAPI
 Demo (
-  EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL  *Out
+  EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL  *Out,
+  UINTN                            Attribute
   )
 {
   EFI_STATUS            Status;
   static const MARGINS  Margins = { 0, 0, 0, 1 };
   BOUNDING_BOX          Screen, Outer, Inner;
+
+  Status = Out->SetAttribute (Out, Attribute);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = Out->ClearScreen (Out);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
 
   Status = ScreenBounds (Out, &Screen);
   if (EFI_ERROR (Status)) {
@@ -347,9 +364,41 @@ RefineryMain (
   IN EFI_SYSTEM_TABLE  *SystemTable
   )
 {
-  EFI_STATUS  Status;
+  EFI_STATUS     Status;
+  UINTN          Background = EFI_BLUE;
+  UINTN          Foreground = EFI_WHITE;
+  EFI_INPUT_KEY  Key;
+  BOOLEAN        Quit = FALSE;
 
-  Status = Demo (gST->ConOut);
-  Wait ();
-  return Status;
+  while (!Quit) {
+    Status = Demo (gST->ConOut, EFI_TEXT_ATTR (Foreground, Background));
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+
+    Status = WaitForKeyStroke (gST->ConIn, &Key);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+
+    switch (Key.ScanCode) {
+      case SCAN_UP:
+        Foreground = 0xF & (Foreground + 1);
+        break;
+      case SCAN_DOWN:
+        Foreground = 0xF & (Foreground - 1);
+        break;
+      case SCAN_RIGHT:
+        Background = 0x7 & (Background + 1);
+        break;
+      case SCAN_LEFT:
+        Background = 0x7 & (Background - 1);
+        break;
+      case SCAN_ESC:
+        Quit = TRUE;
+        break;
+    }
+  }
+
+  return EFI_SUCCESS;
 }
