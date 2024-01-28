@@ -71,7 +71,7 @@ ScreenBounds (
   return Out->QueryMode (Out, Out->Mode->Mode, &Bounds->XMax, &Bounds->YMax);
 }
 
-VOID
+EFI_STATUS
 EFIAPI
 PrintChar (
   EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL  *Out,
@@ -80,7 +80,7 @@ PrintChar (
 {
   CHAR16  String[2] = { Char, L'\0' };
 
-  (VOID)Out->OutputString (Out, String);
+  return Out->OutputString (Out, String);
 }
 
 EFI_STATUS
@@ -101,30 +101,73 @@ DrawBox (
   }
 
   // Top row
-  (VOID)Out->SetCursorPosition (Out, Outer->XMin, Outer->YMin);
-  PrintChar (Out, BOXDRAW_DOUBLE_DOWN_RIGHT);
-  for (X = Outer->XMin + 1; X < Outer->XMax - 1; ++X) {
-    PrintChar (Out, BOXDRAW_DOUBLE_HORIZONTAL);
+  Status = Out->SetCursorPosition (Out, Outer->XMin, Outer->YMin);
+  if (EFI_ERROR (Status)) {
+    return Status;
   }
 
-  PrintChar (Out, BOXDRAW_DOUBLE_DOWN_LEFT);
+  Status = PrintChar (Out, BOXDRAW_DOUBLE_DOWN_RIGHT);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  for (X = Outer->XMin + 1; X < Outer->XMax - 1; ++X) {
+    Status = PrintChar (Out, BOXDRAW_DOUBLE_HORIZONTAL);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+  }
+
+  Status = PrintChar (Out, BOXDRAW_DOUBLE_DOWN_LEFT);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
 
   // Middle rows
   for (Y = Outer->YMin + 1; Y < Outer->YMax - 1; ++Y) {
-    (VOID)Out->SetCursorPosition (Out, Outer->XMin, Y);
-    PrintChar (Out, BOXDRAW_DOUBLE_VERTICAL);
-    (VOID)Out->SetCursorPosition (Out, Outer->XMax - 1, Y);
-    PrintChar (Out, BOXDRAW_DOUBLE_VERTICAL);
+    Status = Out->SetCursorPosition (Out, Outer->XMin, Y);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+
+    Status = PrintChar (Out, BOXDRAW_DOUBLE_VERTICAL);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+
+    Status = Out->SetCursorPosition (Out, Outer->XMax - 1, Y);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+
+    Status = PrintChar (Out, BOXDRAW_DOUBLE_VERTICAL);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
   }
 
   // Bottom row
-  (VOID)Out->SetCursorPosition (Out, Outer->XMin, Outer->YMax - 1);
-  PrintChar (Out, BOXDRAW_DOUBLE_UP_RIGHT);
-  for (X = Outer->XMin + 1; X < Outer->XMax - 1; ++X) {
-    PrintChar (Out, BOXDRAW_DOUBLE_HORIZONTAL);
+  Status = Out->SetCursorPosition (Out, Outer->XMin, Outer->YMax - 1);
+  if (EFI_ERROR (Status)) {
+    return Status;
   }
 
-  PrintChar (Out, BOXDRAW_DOUBLE_UP_LEFT);
+  Status = PrintChar (Out, BOXDRAW_DOUBLE_UP_RIGHT);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  for (X = Outer->XMin + 1; X < Outer->XMax - 1; ++X) {
+    Status = PrintChar (Out, BOXDRAW_DOUBLE_HORIZONTAL);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+  }
+
+  Status = PrintChar (Out, BOXDRAW_DOUBLE_UP_LEFT);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
 
   return EFI_SUCCESS;
 }
@@ -294,7 +337,10 @@ PrintContentCallback (
     }
 
     for (I = 0; I < Len; ++I) {
-      PrintChar (Ctx->Out, Line[I]);
+      Status = PrintChar (Ctx->Out, Line[I]);
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
     }
 
     ++Ctx->Y;
@@ -354,8 +400,7 @@ Demo (
     return Status;
   }
 
-  PrintContent (Out, &Inner, LoremIpsum);
-  return EFI_SUCCESS;
+  return PrintContent (Out, &Inner, LoremIpsum);
 }
 
 EFI_STATUS
