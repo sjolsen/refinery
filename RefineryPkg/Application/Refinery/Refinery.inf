@@ -9,6 +9,7 @@
 [LibraryClasses]
   UefiApplicationEntryPoint
   UefiLib
+  UefiRuntimeServicesTableLib
 
 [Packages]
   MdePkg/MdePkg.dec

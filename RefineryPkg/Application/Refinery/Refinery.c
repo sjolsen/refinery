@@ -1,6 +1,7 @@
 #include <Uefi.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiLib.h>
+#include <Library/UefiRuntimeServicesTableLib.h>
 
 EFI_STATUS
 EFIAPI
@@ -368,12 +369,17 @@ RefineryMain (
   UINTN          Background = EFI_BLUE;
   UINTN          Foreground = EFI_WHITE;
   EFI_INPUT_KEY  Key;
-  BOOLEAN        Quit = FALSE;
+  BOOLEAN        Refresh = TRUE;
+  BOOLEAN        Quit    = FALSE;
 
   while (!Quit) {
-    Status = Demo (gST->ConOut, EFI_TEXT_ATTR (Foreground, Background));
-    if (EFI_ERROR (Status)) {
-      return Status;
+    if (Refresh) {
+      Status = Demo (gST->ConOut, EFI_TEXT_ATTR (Foreground, Background));
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      Refresh = FALSE;
     }
 
     Status = WaitForKeyStroke (gST->ConIn, &Key);
@@ -384,18 +390,29 @@ RefineryMain (
     switch (Key.ScanCode) {
       case SCAN_UP:
         Foreground = 0xF & (Foreground + 1);
+        Refresh    = TRUE;
         break;
       case SCAN_DOWN:
         Foreground = 0xF & (Foreground - 1);
+        Refresh    = TRUE;
         break;
       case SCAN_RIGHT:
         Background = 0x7 & (Background + 1);
+        Refresh    = TRUE;
         break;
       case SCAN_LEFT:
         Background = 0x7 & (Background - 1);
+        Refresh    = TRUE;
         break;
       case SCAN_ESC:
         Quit = TRUE;
+        break;
+    }
+
+    switch (Key.UnicodeChar) {
+      case L'Q':
+      case L'q':
+        gRT->ResetSystem (EfiResetShutdown, EFI_SUCCESS, 0, NULL);
         break;
     }
   }
