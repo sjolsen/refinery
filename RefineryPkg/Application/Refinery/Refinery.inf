@@ -15,4 +15,17 @@
   MdePkg/MdePkg.dec
 
 [Sources]
+  Demo.c
+  Demo.h
+  Display.c
+  Display.h
+  Flow.c
+  Flow.h
+  Geometry.c
+  Geometry.h
+  Input.c
+  Input.h
   Refinery.c
+
+[Protocols]
+  gEfiSimplePointerProtocolGuid                           ## UNDEFINED
