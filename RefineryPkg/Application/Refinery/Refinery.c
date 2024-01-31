@@ -17,6 +17,8 @@ RefineryMain (
   EFI_STATUS                   Status;
   EFI_SIMPLE_POINTER_PROTOCOL  *Pointer;
 
+  gBS->SetWatchdogTimer (0, 0, 0, NULL);
+
   Status = gBS->LocateProtocol (
                   &gEfiSimplePointerProtocolGuid,
                   NULL,
