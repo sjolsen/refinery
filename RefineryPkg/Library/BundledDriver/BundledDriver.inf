@@ -1,0 +1,24 @@
+[Defines]
+  INF_VERSION    = 1.27
+  BASE_NAME      = BundledDriver
+  FILE_GUID      = ed637947-ffed-4a1d-b99c-2a3f61de864d
+  MODULE_TYPE    = UEFI_APPLICATION
+  VERSION_STRING = 0.00
+  LIBRARY_CLASS  = BundledDriver
+
+[LibraryClasses]
+  DevicePathLib
+  MemoryAllocationLib
+  UefiLib
+  UefiBootServicesTableLib
+
+[Packages]
+  MdePkg/MdePkg.dec
+  RefineryPkg/RefineryPkg.dec
+
+[Sources]
+  BundledDriver.c
+
+[Protocols]
+  gEfiLoadedImageDevicePathProtocolGuid  ## CONSUMES
+  gEfiLoadedImageProtocolGuid            ## CONSUMES

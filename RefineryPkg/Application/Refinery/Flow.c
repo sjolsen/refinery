@@ -59,6 +59,7 @@ FlowContent (
         if (Len >= Width) {
           LineBreak = TRUE;
         }
+
         break;
     }
 

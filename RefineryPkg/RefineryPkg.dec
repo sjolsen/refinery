@@ -3,3 +3,6 @@
   PACKAGE_NAME      = RefineryPkg
   PACKAGE_GUID      = 254fa108-4c28-442c-9c5f-9dcccb3c9c9a
   PACKAGE_VERSION   = 0.00
+
+[Includes]
+  Include

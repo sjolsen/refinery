@@ -10,6 +10,8 @@
 !include MdePkg/MdeLibs.dsc.inc
 
 [LibraryClasses]
+  BundledDriver|RefineryPkg/Library/BundledDriver/BundledDriver.inf
+
   BaseLib|MdePkg/Library/BaseLib/BaseLib.inf
   BaseMemoryLib|MdePkg/Library/BaseMemoryLib/BaseMemoryLib.inf
   DebugLib|MdePkg/Library/UefiDebugLibConOut/UefiDebugLibConOut.inf
@@ -23,5 +25,11 @@
   UefiLib|MdePkg/Library/UefiLib/UefiLib.inf
   UefiRuntimeServicesTableLib|MdePkg/Library/UefiRuntimeServicesTableLib/UefiRuntimeServicesTableLib.inf
 
+  # Required by UsbMouseDxe
+  ReportStatusCodeLib|MdeModulePkg/Library/DxeReportStatusCodeLib/DxeReportStatusCodeLib.inf
+  UefiDriverEntryPoint|MdePkg/Library/UefiDriverEntryPoint/UefiDriverEntryPoint.inf
+  UefiUsbLib|MdePkg/Library/UefiUsbLib/UefiUsbLib.inf
+
 [Components]
   RefineryPkg/Application/Refinery/Refinery.inf
+  MdeModulePkg/Bus/Usb/UsbMouseDxe/UsbMouseDxe.inf

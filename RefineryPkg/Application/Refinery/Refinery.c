@@ -1,3 +1,4 @@
+#include <Library/BundledDriver.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiRuntimeServicesTableLib.h>
 
@@ -18,6 +19,16 @@ RefineryMain (
   EFI_SIMPLE_POINTER_PROTOCOL  *Pointer;
 
   gBS->SetWatchdogTimer (0, 0, 0, NULL);
+
+  Status = LoadBundledDriver (L"UsbMouseDxe.efi");
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = ConnectAllEfi ();
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
 
   Status = gBS->LocateProtocol (
                   &gEfiSimplePointerProtocolGuid,
