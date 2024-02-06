@@ -1,0 +1,8 @@
+[Defines]
+  DEC_SPECIFICATION = 1.27
+  PACKAGE_NAME      = BoraxPkg
+  PACKAGE_GUID      = 00e83815-6a79-4b8b-a105-e9f83b53a9e7
+  PACKAGE_VERSION   = 0.00
+
+[Includes]
+  Include
