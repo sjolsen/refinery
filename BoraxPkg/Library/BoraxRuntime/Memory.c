@@ -171,13 +171,85 @@
  * objects following it, and we can simply reset the fill pointer accordingly
  * and move the chunk from the old set into the new set by pointer assignment.
  *
- * Weak pointers and pins
- * ======================
+ * Pinning objects
+ * ===============
  *
- * TODO.
+ * The garbage collection scheme described above may alter the addresses of
+ * objects concurrent to program execution. This does not impact lisp programs
+ * since internal pointers are atomically (from the perspective of the program)
+ * updated to point to the new locations. This does however pose a problem for C
+ * interoperability: any pointers passed to the UEFI runtime must remain valid
+ * for as long as they may be referenced.
+ *
+ * There are two possible solutions to this problem: fix the location of any
+ * objects that will be referenced externally; or do not allow direct object
+ * references to escape the lisp runtime. To simplify garbage collection, we opt
+ * for the latter approach.
+ *
+ * When the lisp runtime needs to supply a reference to an object O to the C
+ * environment, it allocates a pin object P that refers to O. P itself is not
+ * managed by the garbage collector; it must be explicitly deallocated when it
+ * is no longer needed and will remain at a stable address for the duration of
+ * its lifetime. P's internal reference to O will be traced and updated by the
+ * garbage collector like any other object reference.
+ *
+ * The external system may hold a reference to P for the duration of its
+ * lifetime, but it may only access O and its descendants between garbage
+ * collection cycles. In particular, any object references obtained through P
+ * will be invalidated by a collection cycle. This limits, for instance, the
+ * ways a TPL_CALLBACK routine can interact with the lisp system, which runs the
+ * garbage collector at TPL_APPLICATION.
+ *
+ * Weak pointers
+ * =============
+ *
+ * Weak pointers are implemented as normal lisp objects whose contents are
+ * treated specially by the garbage collector. Weak pointers contain two fields:
+ * a "next" pointer that allows the garbage collector to visit all weak pointers
+ * at the end of the copy phase; and a "value" pointer that constitutes the weak
+ * reference itself.
+ *
+ * During the mark phase, the value pointer is not used to extend the grey
+ * set. This ensures that any weakly-referenced objects remain unmarked. At the
+ * end of the copy phase, the weak pointer list is scanned for defunct referents
+ * and marks them unbound. Any unmarked weak pointers are removed from the list.
  *
  * Triggering garbage collection
  * =============================
  *
- * TODO.
+ * The simplest garbage collection policy would be to trigger a collection cycle
+ * when available memory is exhausted. There are two problems with this policy:
+ *
+ * 1. Since we're using a copying collector, waiting until all memory has been
+ *    used would make it impossible to run a collection cycle.
+ *
+ * 2. We are targeting interactive applications, and waiting until memory is
+ *    exhausted defers all the collection work to one point in time, which would
+ *    cause large latency spikes.
+ *
+ * The first problem can be solved by triggering when half of memory is
+ * exhausted, but this raises a third problem: when the reachable set approaches
+ * but does not exceed half of memory, the collector will be triggered more and
+ * more frequently, reducing the CPU time available to the application.
+ *
+ * A full solution to this third problem would require a non-copying fallback
+ * strategy, but we can partially mitigate it and the second problem at the same
+ * time with an exponential back-off strategy: we trigger a collection cycle
+ * when used memory exceeds the size of the reachable set at the end of the
+ * previous collection cycle, multiplied by some constant factor (greater than
+ * one). This reduces the latency of a collection cycle when the reachable set is
+ * small and prevents the garbage collector from repeatedly thrashing against a
+ * set memory limit.
+ *
+ * The downside of this strategy is that it can result in an out-of-memory
+ * condition when the reachable set is smaller than half of memory. Essentially,
+ * we are betting that even when used memory exceeds half of memory, the
+ * reachable set will be small enough to fit in free memory.
+ *
+ * Future directions:
+ *
+ * - In an interactive application, most time will be spent idling waiting for
+ *   I/O to complete, and this is the perfect opportunity to run a collection
+ *   cycle. Ideally, an I/O completion would pre-empt the cycle, suggesting that
+ *   this is best implemented as part of an incremental garbage collector.
  */
