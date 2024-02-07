@@ -7,8 +7,13 @@
   LIBRARY_CLASS  = BoraxRuntime
 
 [LibraryClasses]
+  BaseMemoryLib
 
 [Packages]
   MdePkg/MdePkg.dec
+  BoraxPkg/BoraxPkg.dec
 
 [Sources]
+  GreyList.c
+  GreyList.h
+  Memory.c

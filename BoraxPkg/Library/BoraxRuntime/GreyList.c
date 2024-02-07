@@ -32,7 +32,7 @@ BoraxGreyListCleanup (
  / sizeof (BORAX_OBJECT))
 
 STATIC_ASSERT (
-  OFFSET_OF (BORAX_GREY_PAGE, Objects[MAX_FILL]) <= PAGE_SIZE,
+  OFFSET_OF (BORAX_GREY_PAGE, Objects[MAX_FILL]) <= BORAX_PAGE_SIZE,
   "We calculated MAX_FILL incorrectly"
   );
 
@@ -56,7 +56,7 @@ BoraxGreyListPush (
     GreyList->Top   = Page;
   }
 
-  GreyList->Top.Objects[GreyList->Top.FillIndex++] = Object;
+  GreyList->Top->Objects[GreyList->Top->FillIndex++] = Object;
   return EFI_SUCCESS;
 }
 
@@ -71,8 +71,8 @@ BoraxGreyListPop (
     return FALSE;
   }
 
-  *Object = GreyList->Top.Objects[--GreyList->Top.FillIndex];
-  if (GreyList->Top.FillIndex == 0) {
+  *Object = GreyList->Top->Objects[--GreyList->Top->FillIndex];
+  if (GreyList->Top->FillIndex == 0) {
     BORAX_GREY_PAGE  *Page = GreyList->Top;
     GreyList->Top = Page->Next;
     GreyList->SysAlloc->FreePages (GreyList->SysAlloc, Page, 1);

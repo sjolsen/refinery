@@ -1,4 +1,8 @@
-#include "Memory.h"
+#include <Library/BoraxMemory.h>
+
+#include <Library/BaseMemoryLib.h>
+
+#include "GreyList.h"
 
 STATIC VOID *
 EFIAPI
@@ -7,15 +11,15 @@ FFAllocatePages (
   IN UINTN            Pages
   )
 {
-  VOID  *Pages;
+  VOID  *Mem;
 
-  Pages = Alloc->SysAlloc->AllocatePages (Alloc->SysAlloc, Pages);
-  if (Pages == NULL) {
+  Mem = Alloc->SysAlloc->AllocatePages (Alloc->SysAlloc, Pages);
+  if (Mem == NULL) {
     return NULL;
   }
 
-  SetMem (Pages, BORAX_PAGE_SIZE * Pages, -1);
-  return Pages;
+  SetMem (Mem, BORAX_PAGE_SIZE * Pages, -1);
+  return Mem;
 }
 
 STATIC VOID *
@@ -216,7 +220,8 @@ GetObjectColor (
   } else if (BORAX_IS_POINTER (Object)) {
     BORAX_OBJECT_HEADER  *Obj = BORAX_GET_POINTER (Object);
     if (BORAX_IS_CONS (Obj->HeaderWords[0])) {
-      BORAX_CONS  *Cons = (BORAX_CONS *)Obj;
+      BORAX_CONS       *Cons = (BORAX_CONS *)Obj;
+      BORAX_CONS_PAGE  *Page = CONS_PAGE (Cons);
 
       if (ConsGreyBitmapGet (Cons)) {
         *Color = GREY;
@@ -303,26 +308,27 @@ MarkObjectIfWhite (
     return EFI_SUCCESS;
   } else if (BORAX_IS_POINTER (Object)) {
     BORAX_OBJECT_HEADER  *OldObj = BORAX_GET_POINTER (Object);
-    BORAX_OBJECT_HEADER  *NewObj;
-
     if (BORAX_IS_CONS (OldObj->HeaderWords[0])) {
-      Status = BoraxAllocateCons (Alloc, &NewObj);
+      BORAX_CONS  *NewCons;
+
+      Status = BoraxAllocateCons (Alloc, &NewCons);
       if (EFI_ERROR (Status)) {
         return Status;
       }
 
       // Future reads to OldObj will interpret it as a "moved" object and will
       // access GcData instead of the bitmap.
-      CopyMem (NewObj, OldObj, sizeof (BORAX_CONS));
+      CopyMem (NewCons, OldObj, sizeof (BORAX_CONS));
       OldObj->WideTag        = BORAX_WIDETAG_MOVED;
-      OldObj->HeaderWords[1] = (UINTN)NewObj;
+      OldObj->HeaderWords[1] = (UINTN)NewCons | BORAX_LOWTAG_POINTER;
       (VOID)SetProperObjectColor (Alloc, OldObj, GREY);
-      ConsGreyBitmapSet ((BORAX_CONS *)NewObj, 1);
+      ConsGreyBitmapSet (NewCons, 1);
     } else {
       switch (OldObj->WideTag) {
         case BORAX_WIDETAG_WEAK_POINTER:
         {
-          UINTN  Size = sizeof (BORAX_WEAK_POINTER);
+          BORAX_OBJECT_HEADER  *NewObj;
+          UINTN                Size = sizeof (BORAX_WEAK_POINTER);
 
           Status = BoraxAllocateObject (Alloc, Size, &NewObj);
           if (EFI_ERROR (Status)) {
@@ -331,7 +337,7 @@ MarkObjectIfWhite (
 
           CopyMem (NewObj, OldObj, Size);
           OldObj->WideTag        = BORAX_WIDETAG_MOVED;
-          OldObj->HeaderWords[1] = (UINTN)NewObj;
+          OldObj->HeaderWords[1] = (UINTN)NewObj | BORAX_LOWTAG_POINTER;
           (VOID)SetProperObjectColor (Alloc, OldObj, GREY);
           (VOID)SetProperObjectColor (Alloc, NewObj, GREY);
           break;
@@ -356,7 +362,7 @@ MarkObjectIfWhite (
     return EFI_INVALID_PARAMETER;
   }
 
-  Status = BoraxGreyListPush (&GreyList, Object);
+  Status = BoraxGreyListPush (GreyList, Object);
   return Status;
 }
 
@@ -368,6 +374,8 @@ MarkSubObjectsIfWhite (
   IN BORAX_OBJECT     Object
   )
 {
+  EFI_STATUS  Status;
+
   if (BORAX_IS_FIXNUM (Object)) {
     // Nothing to do for fixnums
     return EFI_SUCCESS;
@@ -376,21 +384,21 @@ MarkSubObjectsIfWhite (
     if (BORAX_IS_CONS (Obj->HeaderWords[0])) {
       BORAX_CONS  *Cons = (BORAX_CONS *)Obj;
 
-      Status = MarkObjectIfWhite (Alloc, &GreyList, Cons->Car);
+      Status = MarkObjectIfWhite (Alloc, GreyList, Cons->Car);
       if (EFI_ERROR (Status)) {
         return Status;
       }
 
       // Mark CDR last to ensure it gets copied first
-      Status = MarkObjectIfWhite (Alloc, &GreyList, Cons->Cdr);
-      return status;
+      Status = MarkObjectIfWhite (Alloc, GreyList, Cons->Cdr);
+      return Status;
     } else {
       switch (Obj->WideTag) {
         case BORAX_WIDETAG_PIN:
         {
           BORAX_PIN  *Pin = (BORAX_PIN *)Obj;
-          Status = MarkObjectIfWhite (Alloc, &GreyList, Pin->Object);
-          return status;
+          Status = MarkObjectIfWhite (Alloc, GreyList, Pin->Object);
+          return Status;
         }
         case BORAX_WIDETAG_WEAK_POINTER:
         case BORAX_WIDETAG_MOVED:
@@ -406,6 +414,30 @@ MarkSubObjectsIfWhite (
     // We should never see this case
     return EFI_INVALID_PARAMETER;
   }
+}
+
+STATIC VOID
+EFIAPI
+UpdateIfMoved (
+  IN OUT BORAX_OBJECT  *Object
+  )
+{
+  BORAX_OBJECT_HEADER  *Obj;
+
+  if (!BORAX_IS_POINTER (*Object)) {
+    return;
+  }
+
+  Obj = BORAX_GET_POINTER (*Object);
+  if (!BORAX_IS_HEAP (Obj->HeaderWords[0])) {
+    return;
+  }
+
+  if (Obj->WideTag != BORAX_WIDETAG_MOVED) {
+    return;
+  }
+
+  *Object = Obj->HeaderWords[1];
 }
 
 STATIC EFI_STATUS
@@ -452,7 +484,7 @@ MarkObjectBlack (
   }
 }
 
-STATIC VOID
+STATIC EFI_STATUS
 EFIAPI
 SweepPins (
   IN BORAX_ALLOCATOR  *Alloc
@@ -504,7 +536,7 @@ BoraxAllocatorCollect (
 
   // Begin by flipping spaces
   Alloc->FromSpace = Alloc->ToSpace;
-  SetMem (Alloc->ToSpace, sizeof (Alloc->ToSpace), 0);
+  SetMem (&Alloc->ToSpace, sizeof (Alloc->ToSpace), 0);
   Alloc->ToSpaceParity = !Alloc->ToSpaceParity;
 
   // Mark the initial set of root objects grey
@@ -530,8 +562,11 @@ BoraxAllocatorCollect (
   }
 
   // Remove white objects
-  SweepPins (Alloc);
   ClearSpace (Alloc, &Alloc->FromSpace);
+  Status = SweepPins (Alloc);
+  if (EFI_ERROR (Status)) {
+    goto cleanup;
+  }
 
   // All remaining objects are marked black; the next collection will flip
   // Alloc->ToSpaceParity, which will effectively mark those object white
@@ -569,7 +604,7 @@ BoraxAllocateCons (
   }
 
   // Bump allocate
-  *Cons                          = (BORAX_CONS *)((CHAR *)Page + Alloc->ToSpace.Cons.FillIndex);
+  *Cons                          = (BORAX_CONS *)((CHAR8 *)Page + Alloc->ToSpace.Cons.FillIndex);
   Alloc->ToSpace.Cons.FillIndex += sizeof (BORAX_CONS);
   return EFI_SUCCESS;
 }
@@ -624,7 +659,7 @@ BoraxAllocateObject (
   }
 
   // Allocate the object from the chunk
-  NewObject         = (BORAX_OBJECT_HEADER *)((CHAR *)Chunk + Chunk->FillIndex);
+  NewObject         = (BORAX_OBJECT_HEADER *)((CHAR8 *)Chunk + Chunk->FillIndex);
   NewObject->GcData = Alloc->ToSpaceParity;
   Chunk->FillIndex  = BORAX_ALIGN (Chunk->FillIndex + Size);
 
@@ -687,7 +722,7 @@ BoraxAllocateWeakPointer (
   Status = BoraxAllocateObject (
              Alloc,
              sizeof (*NewWp),
-             (BORAX_OBJECT_HEADER *)&NewWp
+             (BORAX_OBJECT_HEADER **)&NewWp
              );
   if (EFI_ERROR (Status)) {
     return Status;

@@ -1,6 +1,10 @@
 #ifndef BORAX_MEMORY_H
 #define BORAX_MEMORY_H
 
+#include <limits.h>
+
+#include <Protocol/BoraxSystemAllocator.h>
+
 /*
  * Object representation
  * =====================

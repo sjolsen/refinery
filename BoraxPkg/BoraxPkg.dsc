@@ -1,6 +1,6 @@
 [Defines]
   DSC_SPECIFICATION       = 1.28
-  PLATFORM_NAME           = Refinery
+  PLATFORM_NAME           = Borax
   PLATFORM_GUID           = 1eba589a-305c-477b-9cfe-6c5d092bc3e6
   PLATFORM_VERSION        = 0.00
   SKUID_IDENTIFIER        = DEFAULT
@@ -12,3 +12,4 @@
 [LibraryClasses]
 
 [Components]
+  BoraxPkg/Library/BoraxRuntime/BoraxRuntime.inf

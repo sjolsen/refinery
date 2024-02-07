@@ -1,6 +1,8 @@
 #ifndef BORAX_GREY_LIST_H
 #define BORAX_GREY_LIST_H
 
+#include <Library/BoraxMemory.h>
+
 typedef struct _BORAX_GREY_PAGE BORAX_GREY_PAGE;
 
 struct _BORAX_GREY_PAGE {
