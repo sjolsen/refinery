@@ -1,5 +1,41 @@
 #include "Memory.h"
 
+STATIC VOID *
+EFIAPI
+FFAllocatePages (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN UINTN            Pages
+  )
+{
+  VOID  *Pages;
+
+  Pages = Alloc->SysAlloc->AllocatePages (Alloc->SysAlloc, Pages);
+  if (Pages == NULL) {
+    return NULL;
+  }
+
+  SetMem (Pages, BORAX_PAGE_SIZE * Pages, -1);
+  return Pages;
+}
+
+STATIC VOID *
+EFIAPI
+FFAllocatePool (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN UINTN            AllocationSize
+  )
+{
+  VOID  *Mem;
+
+  Mem = Alloc->SysAlloc->AllocatePool (Alloc->SysAlloc, AllocationSize);
+  if (Mem == NULL) {
+    return NULL;
+  }
+
+  SetMem (Mem, AllocationSize, -1);
+  return Mem;
+}
+
 VOID
 EFIAPI
 BoraxAllocatorInit (
@@ -81,13 +117,12 @@ BoraxAllocateCons (
 
   if (Alloc->Cons.FillIndex == BORAX_PAGE_SIZE) {
     // No page or page is full; allocate one
-    Page = Alloc->SysAlloc->AllocatePages (Alloc->SysAlloc, 1);
+    Page = FFAllocatePages (Alloc, 1);
     if (Page == NULL) {
       return EFI_OUT_OF_RESOURCES;
     }
 
     // Prepare page
-    SetMem (Page, BORAX_PAGE_SIZE, -1);
     Page->Next        = Alloc->Cons.Pages;
     Page->SpaceParity = Alloc->Cons.ToSpaceParity;
     SetMem (Page->GreyBitmap, sizeof (Page->GreyBitmap), 0);
@@ -141,12 +176,11 @@ BoraxAllocateObject (
     UINTN  Bytes = BORAX_OBJECT_FIRST_INDEX + Size;
     UINTN  Pages = (Bytes + BORAX_PAGE_SIZE - 1) / BORAX_PAGE_SIZE;
 
-    Chunk = Alloc->SysAlloc->AllocatePages (Alloc->SysAlloc, Pages);
+    Chunk = FFAllocatePages (Alloc, Pages);
     if (Chunk == NULL) {
       return EFI_OUT_OF_RESOURCES;
     }
 
-    SetMem (Chunk, Bytes, -1);
     Chunk->FillIndex = BORAX_OBJECT_FIRST_INDEX;
     Chunk->Pages     = Pages;
   }
@@ -182,13 +216,12 @@ BoraxAllocatePin (
   BORAX_PIN  *NewPin;
 
   // Get the memory for the pin
-  NewPin = Alloc->SysAlloc->AllocatePool (Alloc->SysAlloc, sizeof (*NewPin));
+  NewPin = FFAllocatePool (Alloc, sizeof (*NewPin));
   if (NewPin == NULL) {
     return EFI_OUT_OF_RESOURCES;
   }
 
   // Initialize the pin and add it to the list
-  SetMem (NewPin, sizeof (*NewPin), -1);
   NewPin->Header.WideTag       = BORAX_WIDETAG_PIN;
   NewPin->Header.GcData        = BORAX_OBJECT_GCDATA_WHITE;
   NewPin->ListEntry.Next       = &Alloc->Pins;
