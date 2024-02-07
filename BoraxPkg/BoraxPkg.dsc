@@ -10,6 +10,7 @@
 !include UnitTestFrameworkPkg/UnitTestFrameworkPkgHost.dsc.inc
 
 [LibraryClasses]
+  BoraxRuntime|BoraxPkg/Library/BoraxRuntime/BoraxRuntime.inf
 
 [Components]
   BoraxPkg/Test/BoraxRuntimeTest/BoraxRuntimeTest.inf

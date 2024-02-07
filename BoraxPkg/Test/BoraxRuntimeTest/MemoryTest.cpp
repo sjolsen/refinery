@@ -1,4 +1,204 @@
+#include <unordered_map>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+
+extern "C" {
+  #include <Library/BoraxMemory.h>
+}
+
+using ::testing::IsEmpty;
+
+#define WRAP_FN(_memfn)                               \
+[](auto This, auto... Args) [[gnu::ms_abi]] -> auto { \
+  return _Cast(This)->_memfn(Args...);                \
+}
+
+class TracingAllocator {
+public:
+  struct PageAllocation {
+    VOID     *Address;
+    UINTN    Pages;
+  };
+
+  struct PoolAllocation {
+    VOID     *Address;
+    UINTN    Size;
+  };
+
+  struct Report {
+    std::vector<PageAllocation>    PageAllocs;
+    std::vector<PoolAllocation>    PoolAllocs;
+    std::vector<std::string>       Errors;
+  };
+
+private:
+  BORAX_SYSTEM_ALLOCATOR_PROTOCOL _Protocol = {
+    .AllocatePages = WRAP_FN (_AllocatePages),
+    .FreePages     = WRAP_FN (_FreePages),
+    .AllocatePool  = WRAP_FN (_AllocatePool),
+    .FreePool      = WRAP_FN (_FreePool),
+  };
+
+  std::unordered_map<UINTN, PageAllocation> _PageAllocs;
+  std::unordered_map<UINTN, PoolAllocation> _PoolAllocs;
+  std::vector<std::string> _Errors;
+
+  static TracingAllocator *
+  _Cast (
+    BORAX_SYSTEM_ALLOCATOR_PROTOCOL  *This
+    )
+  {
+    return BASE_CR (This, TracingAllocator, _Protocol);
+  }
+
+  VOID *
+  _AllocatePages (
+    UINTN  Pages
+    )
+  {
+    VOID            *Mem   = malloc (Pages * BORAX_PAGE_SIZE);
+    PageAllocation  Record = { Mem, Pages };
+
+    _PageAllocs.emplace ((UINTN)Mem, Record);
+    return Mem;
+  }
+
+  VOID
+  _FreePages (
+    VOID   *Buffer,
+    UINTN  Pages
+    )
+  {
+    auto  It = _PageAllocs.find ((UINTN)Buffer);
+
+    if (It == _PageAllocs.end ()) {
+      std::stringstream  ss;
+      ss << "Spurious FreePages of " << Pages << " pages at "
+      << "0x" << std::hex << (UINTN)Buffer;
+      _Errors.push_back (std::move (ss).str ());
+    } else {
+      PageAllocation  &Record = It->second;
+      if (Pages != Record.Pages) {
+        std::stringstream  ss;
+        ss << "FreePages called with wrong number of pages "
+        << "(expected " << Record.Pages << "; got "
+        << Pages << ") at "
+        << "0x" << std::hex << (UINTN)Buffer;
+        _Errors.push_back (std::move (ss).str ());
+      }
+
+      _PageAllocs.erase (It);
+      free (Buffer);
+    }
+  }
+
+  VOID *
+  _AllocatePool (
+    UINTN  AllocationSize
+    )
+  {
+    VOID            *Mem   = malloc (AllocationSize);
+    PoolAllocation  Record = { Mem, AllocationSize };
+
+    _PoolAllocs.emplace ((UINTN)Mem, Record);
+    return Mem;
+  }
+
+  VOID
+  _FreePool (
+    VOID  *Buffer
+    )
+  {
+    auto  It = _PoolAllocs.find ((UINTN)Buffer);
+
+    if (It == _PoolAllocs.end ()) {
+      std::stringstream  ss;
+      ss << "Spurious FreePool at "
+      << "0x" << std::hex << (UINTN)Buffer;
+      _Errors.push_back (std::move (ss).str ());
+    } else {
+      _PoolAllocs.erase (It);
+      free (Buffer);
+    }
+  }
+
+public:
+  BORAX_SYSTEM_ALLOCATOR_PROTOCOL *
+  GetProtocol (
+    )
+  {
+    return &_Protocol;
+  }
+
+  Report
+  GetReport (
+    ) const
+  {
+    Report  Result;
+
+    for (auto [_, PageAlloc] : _PageAllocs) {
+      Result.PageAllocs.push_back (PageAlloc);
+    }
+
+    for (auto [_, PoolAlloc] : _PoolAllocs) {
+      Result.PoolAllocs.push_back (PoolAlloc);
+    }
+
+    Result.Errors = _Errors;
+    return Result;
+  }
+};
+
+std::ostream &
+operator<< (
+  std::ostream                            &os,
+  const TracingAllocator::PageAllocation  &PageAlloc
+  )
+{
+  os << "PageAllocation { "
+  << "0x" << std::hex << (UINTN)PageAlloc.Address
+  << ", " << std::dec << PageAlloc.Pages
+  << " }";
+  return os;
+}
+
+std::ostream &
+operator<< (
+  std::ostream                            &os,
+  const TracingAllocator::PoolAllocation  &PoolAlloc
+  )
+{
+  os << "PoolAllocation { "
+  << "0x" << std::hex << (UINTN)PoolAlloc.Address
+  << ", " << std::dec << PoolAlloc.Size
+  << " }";
+  return os;
+}
+
+class MemoryLeakTests : public ::testing::Test {
+public:
+  TracingAllocator Tracer;
+
+  void
+  ValidateReport (
+    )
+  {
+    TracingAllocator::Report  Report = Tracer.GetReport ();
+
+    EXPECT_THAT (Report.PageAllocs, IsEmpty ());
+    EXPECT_THAT (Report.PoolAllocs, IsEmpty ());
+    EXPECT_THAT (Report.Errors, IsEmpty ());
+  }
+};
+
+TEST_F (MemoryLeakTests, NullUsage) {
+  BORAX_ALLOCATOR  Alloc;
+
+  BoraxAllocatorInit (&Alloc, Tracer.GetProtocol ());
+  BoraxAllocatorCleanup (&Alloc);
+  ValidateReport ();
+}
 
 int
 main (
