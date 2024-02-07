@@ -1,0 +1,17 @@
+[Defines]
+  INF_VERSION    = 1.27
+  BASE_NAME      = BoraxRuntimeTest
+  FILE_GUID      = 0e5379da-3292-4ef3-8281-8f61ab60b329
+  MODULE_TYPE    = HOST_APPLICATION
+  VERSION_STRING = 0.00
+
+[LibraryClasses]
+  GoogleTestLib
+
+[Packages]
+  BoraxPkg/BoraxPkg.dec
+  MdePkg/MdePkg.dec
+  UnitTestFrameworkPkg/UnitTestFrameworkPkg.dec
+
+[Sources]
+  MemoryTest.cpp

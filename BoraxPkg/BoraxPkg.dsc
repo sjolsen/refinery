@@ -7,9 +7,9 @@
   SUPPORTED_ARCHITECTURES = IA32|X64
   BUILD_TARGETS           = DEBUG|RELEASE|NOOPT
 
-!include MdePkg/MdeLibs.dsc.inc
+!include UnitTestFrameworkPkg/UnitTestFrameworkPkgHost.dsc.inc
 
 [LibraryClasses]
 
 [Components]
-  BoraxPkg/Library/BoraxRuntime/BoraxRuntime.inf
+  BoraxPkg/Test/BoraxRuntimeTest/BoraxRuntimeTest.inf
