@@ -166,6 +166,41 @@ typedef enum {
 
 STATIC EFI_STATUS
 EFIAPI
+GetProperObjectColor (
+  IN BORAX_ALLOCATOR      *Alloc,
+  IN BORAX_OBJECT_HEADER  *Object,
+  OUT COLOR               *Color
+  )
+{
+  UINTN  ToSpace = Alloc->ToSpaceParity;
+
+  switch (Object->WideTag) {
+    case BORAX_WIDETAG_WEAK_POINTER:
+    case BORAX_WIDETAG_PIN:
+    case BORAX_WIDETAG_MOVED:
+      if (Object->GcData & BORAX_OBJECT_GCDATA_GREYBIT) {
+        *Color = GREY;
+      } else if ((Object->GcData & BORAX_OBJECT_GCDATA_SPACEBIT) == ToSpace) {
+        *Color = BLACK;
+      } else {
+        *Color = WHITE;
+      }
+
+      return EFI_SUCCESS;
+    case BORAX_WIDETAG_UNINITIALIZED:
+      // The GcData field in this case is unlikely to be initialized. It
+      // also doesn't really matter what we return, but for consistency with
+      // fixnums, return black.
+      *Color = BLACK;
+      return EFI_SUCCESS;
+    default:
+      // We should never see this case
+      return EFI_INVALID_PARAMETER;
+  }
+}
+
+STATIC EFI_STATUS
+EFIAPI
 GetObjectColor (
   IN BORAX_ALLOCATOR  *Alloc,
   IN BORAX_OBJECT     Object,
@@ -193,29 +228,7 @@ GetObjectColor (
 
       return EFI_SUCCESS;
     } else {
-      switch (Obj->WideTag) {
-        case BORAX_WIDETAG_WEAK_POINTER:
-        case BORAX_WIDETAG_PIN:
-        case BORAX_WIDETAG_MOVED:
-          if (Obj->GcData & BORAX_OBJECT_GCDATA_GREYBIT) {
-            *Color = GREY;
-          } else if ((Obj->GcData & BORAX_OBJECT_GCDATA_SPACEBIT) == ToSpace) {
-            *Color = BLACK;
-          } else {
-            *Color = WHITE;
-          }
-
-          return EFI_SUCCESS;
-        case BORAX_WIDETAG_UNINITIALIZED:
-          // The GcData field in this case is unlikely to be initialized. It
-          // also doesn't really matter what we return, but for consistency with
-          // fixnums, return black.
-          *Color = BLACK;
-          return EFI_SUCCESS;
-        default:
-          // We should never see this case
-          return EFI_INVALID_PARAMETER;
-      }
+      return GetProperObjectColor (Alloc, Obj, Color);
     }
   } else {
     // We should never see this case
@@ -223,7 +236,7 @@ GetObjectColor (
   }
 }
 
-STATIC VOID
+STATIC EFI_STATUS
 EFIAPI
 SetProperObjectColor (
   IN BORAX_ALLOCATOR      *Alloc,
@@ -249,7 +262,7 @@ SetProperObjectColor (
       break;
     default:
       // We should never see this case
-      return;
+      return EFI_INVALID_PARAMETER;
   }
 
   switch (Object->WideTag) {
@@ -258,10 +271,10 @@ SetProperObjectColor (
     case BORAX_WIDETAG_MOVED:
     case BORAX_WIDETAG_UNINITIALIZED:
       Object->GcData = SpaceBit | GreyBit;
-      break;
+      return EFI_SUCCESS;
     default:
       // We should never see this case
-      return;
+      return EFI_INVALID_PARAMETER;
   }
 }
 
@@ -303,7 +316,7 @@ MarkObjectIfWhite (
       CopyMem (NewObj, OldObj, sizeof (BORAX_CONS));
       OldObj->WideTag        = BORAX_WIDETAG_MOVED;
       OldObj->HeaderWords[1] = (UINTN)NewObj;
-      SetProperObjectColor (Alloc, OldObj, GREY);
+      (VOID)SetProperObjectColor (Alloc, OldObj, GREY);
       ConsGreyBitmapSet ((BORAX_CONS *)NewObj, 1);
     } else {
       switch (OldObj->WideTag) {
@@ -319,13 +332,13 @@ MarkObjectIfWhite (
           CopyMem (NewObj, OldObj, Size);
           OldObj->WideTag        = BORAX_WIDETAG_MOVED;
           OldObj->HeaderWords[1] = (UINTN)NewObj;
-          SetProperObjectColor (Alloc, OldObj, GREY);
-          SetProperObjectColor (Alloc, NewObj, GREY);
+          (VOID)SetProperObjectColor (Alloc, OldObj, GREY);
+          (VOID)SetProperObjectColor (Alloc, NewObj, GREY);
           break;
         }
         case BORAX_WIDETAG_PIN:
           // Don't move pins
-          SetProperObjectColor (Alloc, OldObj, GREY);
+          (VOID)SetProperObjectColor (Alloc, OldObj, GREY);
           break;
         case BORAX_WIDETAG_MOVED:
           // We've already processed this object
@@ -395,6 +408,89 @@ MarkSubObjectsIfWhite (
   }
 }
 
+STATIC EFI_STATUS
+EFIAPI
+MarkObjectBlack (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN BORAX_OBJECT     Object
+  )
+{
+  if (BORAX_IS_FIXNUM (Object)) {
+    // Nothing to do for fixnums
+    return EFI_SUCCESS;
+  } else if (BORAX_IS_POINTER (Object)) {
+    BORAX_OBJECT_HEADER  *Obj = BORAX_GET_POINTER (Object);
+    if (BORAX_IS_CONS (Obj->HeaderWords[0])) {
+      BORAX_CONS  *Cons = (BORAX_CONS *)Obj;
+
+      UpdateIfMoved (&Cons->Car);
+      UpdateIfMoved (&Cons->Cdr);
+      ConsGreyBitmapSet (Cons, 0);
+      return EFI_SUCCESS;
+    } else {
+      switch (Obj->WideTag) {
+        case BORAX_WIDETAG_PIN:
+        {
+          BORAX_PIN  *Pin = (BORAX_PIN *)Obj;
+          UpdateIfMoved (&Pin->Object);
+          SetProperObjectColor (Alloc, Obj, BLACK);
+          return EFI_SUCCESS;
+        }
+        case BORAX_WIDETAG_WEAK_POINTER:
+        case BORAX_WIDETAG_MOVED:
+        case BORAX_WIDETAG_UNINITIALIZED:
+          SetProperObjectColor (Alloc, Obj, BLACK);
+          return EFI_SUCCESS;
+        default:
+          // We should never see this case
+          return EFI_INVALID_PARAMETER;
+      }
+    }
+  } else {
+    // We should never see this case
+    return EFI_INVALID_PARAMETER;
+  }
+}
+
+STATIC VOID
+EFIAPI
+SweepPins (
+  IN BORAX_ALLOCATOR  *Alloc
+  )
+{
+  EFI_STATUS      Status;
+  COLOR           Color;
+  BORAX_PIN_LIST  *PinEntry;
+
+  PinEntry = Alloc->Pins.Next;
+  while (PinEntry != &Alloc->Pins) {
+    BORAX_PIN_LIST  *Next = PinEntry->Next;
+    BORAX_PIN_LIST  *Prev = PinEntry->Prev;
+    BORAX_PIN       *Pin  = BASE_CR (PinEntry, BORAX_PIN, ListEntry);
+
+    Status = GetProperObjectColor (Alloc, &Pin->Header, &Color);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+
+    switch (Color) {
+      case WHITE:
+        Next->Prev = Prev;
+        Prev->Next = Next;
+        Alloc->SysAlloc->FreePool (Alloc->SysAlloc, Pin);
+        break;
+      case GREY:
+        return EFI_INVALID_PARAMETER;
+      case BLACK:
+        break;
+    }
+
+    PinEntry = Next;
+  }
+
+  return EFI_SUCCESS;
+}
+
 EFI_STATUS
 EFIAPI
 BoraxAllocatorCollect (
@@ -433,8 +529,8 @@ BoraxAllocatorCollect (
     }
   }
 
+  // Remove white objects
   SweepPins (Alloc);
-
   ClearSpace (Alloc, &Alloc->FromSpace);
 
   // All remaining objects are marked black; the next collection will flip
