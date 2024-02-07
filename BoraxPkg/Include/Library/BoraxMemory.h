@@ -89,6 +89,20 @@ enum {
   BORAX_LOWTAG_MASK_HEAP    = 3,
 };
 
+#define BORAX_IS_FIXNUM(_obj) \
+(((_obj) & BORAX_LOWTAG_MASK_FIXNUM) == BORAX_LOWTAG_FIXNUM)
+
+#define BORAX_IS_POINTER(_obj) \
+(((_obj) & BORAX_LOWTAG_MASK_POINTER) == BORAX_LOWTAG_POINTER)
+
+#define BORAX_GET_POINTER(_obj) \
+((BORAX_OBJECT_HEADER *)((_obj) & ~BORAX_LOWTAG_MASK_POINTER))
+
+#define BORAX_IS_HEAP(_obj) \
+(((_obj) & BORAX_LOWTAG_MASK_HEAP) == BORAX_LOWTAG_HEAP)
+
+#define BORAX_IS_CONS(_obj)  (!BORAX_IS_HEAP(_obj))
+
 typedef enum {
   BORAX_WIDETAG_WEAK_POINTER  = 0xF3,
   BORAX_WIDETAG_PIN           = 0xF7,
@@ -204,7 +218,6 @@ struct _BORAX_CONS_PAGE {
 typedef struct {
   BORAX_CONS_PAGE    *Pages;
   UINTN              FillIndex; // Offset into the head page
-  UINTN              ToSpaceParity;
 } BORAX_CONS_ALLOCATOR;
 
 /*
@@ -269,11 +282,11 @@ typedef struct {
  * and move the chunk from the old set into the new set by pointer assignment.
  */
 
-enum {
+typedef enum {
   BORAX_OBJECT_GCDATA_WHITE = 0,
   BORAX_OBJECT_GCDATA_GREY  = 1,
   BORAX_OBJECT_GCDATA_BLACK = 2,
-};
+} BORAX_OBJECT_GCDATA;
 
 typedef struct _BORAX_OBJECT_CHUNK BORAX_OBJECT_CHUNK;
 
@@ -419,8 +432,14 @@ union _BORAX_WEAK_POINTER {
  */
 
 typedef struct {
-  BORAX_CONS_ALLOCATOR               Cons;
-  BORAX_OBJECT_ALLOCATOR             Object;
+  BORAX_CONS_ALLOCATOR      Cons;
+  BORAX_OBJECT_ALLOCATOR    Object;
+} BORAX_COPY_SPACE;
+
+typedef struct {
+  BORAX_COPY_SPACE                   FromSpace;
+  BORAX_COPY_SPACE                   ToSpace;
+  UINTN                              ToSpaceParity;
   BORAX_PIN_LIST                     Pins;
   BORAX_WEAK_POINTER                 *WeakPointers; // Non-owning pointer
   BORAX_SYSTEM_ALLOCATOR_PROTOCOL    *SysAlloc;
@@ -442,7 +461,7 @@ BoraxAllocatorCleanup (
 
 typedef struct {
   VOID    *Ctx;
-  BOOLEAN (EFIAPI *Next)(IN VOID *Ctx, OUT BORAX_OBJECT **Object);
+  BOOLEAN (EFIAPI *Next)(IN VOID *Ctx, OUT BORAX_OBJECT *Object);
 } BORAX_ROOTSET_ITERATOR;
 
 EFI_STATUS
