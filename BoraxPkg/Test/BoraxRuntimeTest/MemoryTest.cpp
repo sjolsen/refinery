@@ -176,6 +176,52 @@ operator<< (
   return os;
 }
 
+template <typename I>
+class RootSetIterator {
+private:
+  BORAX_ROOTSET_ITERATOR _Handle;
+  I _Begin;
+  I _End;
+
+  static BOOLEAN
+  EFIAPI
+  _ConsumeOne (
+    VOID          *Ctx,
+    BORAX_OBJECT  *Object
+    )
+  {
+    auto  This = static_cast<RootSetIterator*>(Ctx);
+
+    if (This->_Begin == This->_End) {
+      return FALSE;
+    } else {
+      *Object = *This->_Begin++;
+      return TRUE;
+    }
+  }
+
+public:
+  RootSetIterator(
+                  I  Begin,
+                  I  End
+                  )
+    : _Handle {this, _ConsumeOne},
+      _Begin {std::move (Begin)},
+      _End {std::move (End)}
+  {
+  }
+
+  BORAX_ROOTSET_ITERATOR *Get() { return &_Handle; }
+};
+
+template <typename Container>
+RootSetIterator<typename Container::const_iterator>
+MakeRootSetIterator(const Container& C) {
+  using std::begin;
+  using std::end;
+  return RootSetIterator(begin(C), end(C));
+}
+
 class MemoryLeakTests : public ::testing::Test {
 public:
   TracingAllocator Tracer;
@@ -196,6 +242,19 @@ TEST_F (MemoryLeakTests, NullUsage) {
   BORAX_ALLOCATOR  Alloc;
 
   BoraxAllocatorInit (&Alloc, Tracer.GetProtocol ());
+  BoraxAllocatorCleanup (&Alloc);
+  ValidateReport ();
+}
+
+TEST_F (MemoryLeakTests, CollectNothing) {
+  EFI_STATUS       Status;
+  BORAX_ALLOCATOR  Alloc;
+
+  BoraxAllocatorInit (&Alloc, Tracer.GetProtocol ());
+  std::vector<BORAX_OBJECT> RootSet = {};
+  auto RSI = MakeRootSetIterator(RootSet);
+  Status = BoraxAllocatorCollect (&Alloc, RSI.Get());
+  EXPECT_EQ (EFI_SUCCESS, Status);
   BoraxAllocatorCleanup (&Alloc);
   ValidateReport ();
 }
