@@ -160,17 +160,23 @@ ConsGreyBitmapSet (
   }
 }
 
+typedef enum {
+  WHITE, GREY, BLACK
+} COLOR;
+
 STATIC EFI_STATUS
 EFIAPI
 GetObjectColor (
-  IN BORAX_ALLOCATOR       *Alloc,
-  IN BORAX_OBJECT          Object,
-  OUT BORAX_OBJECT_GCDATA  *GcData
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN BORAX_OBJECT     Object,
+  OUT COLOR           *Color
   )
 {
+  UINTN  ToSpace = Alloc->ToSpaceParity;
+
   if (BORAX_IS_FIXNUM (Object)) {
     // Nothing to do for fixnums, so bypass processing by reporting black
-    *GcData = BORAX_OBJECT_GCDATA_BLACK;
+    *Color = BLACK;
     return EFI_SUCCESS;
   } else if (BORAX_IS_POINTER (Object)) {
     BORAX_OBJECT_HEADER  *Obj = BORAX_GET_POINTER (Object);
@@ -178,11 +184,11 @@ GetObjectColor (
       BORAX_CONS  *Cons = (BORAX_CONS *)Obj;
 
       if (ConsGreyBitmapGet (Cons)) {
-        *GcData = BORAX_OBJECT_GCDATA_GREY;
-      } else if (Page->SpaceParity == Alloc->ToSpaceParity) {
-        *GcData = BORAX_OBJECT_GCDATA_BLACK;
+        *Color = GREY;
+      } else if (Page->SpaceParity == ToSpace) {
+        *Color = BLACK;
       } else {
-        *GcData = BORAX_OBJECT_GCDATA_WHITE;
+        *Color = WHITE;
       }
 
       return EFI_SUCCESS;
@@ -191,13 +197,20 @@ GetObjectColor (
         case BORAX_WIDETAG_WEAK_POINTER:
         case BORAX_WIDETAG_PIN:
         case BORAX_WIDETAG_MOVED:
-          *GcData = Obj->GcData;
+          if (Obj->GcData & BORAX_OBJECT_GCDATA_GREYBIT) {
+            *Color = GREY;
+          } else if ((Obj->GcData & BORAX_OBJECT_GCDATA_SPACEBIT) == ToSpace) {
+            *Color = BLACK;
+          } else {
+            *Color = WHITE;
+          }
+
           return EFI_SUCCESS;
         case BORAX_WIDETAG_UNINITIALIZED:
           // The GcData field in this case is unlikely to be initialized. It
           // also doesn't really matter what we return, but for consistency with
           // fixnums, return black.
-          *GcData = BORAX_OBJECT_GCDATA_BLACK;
+          *Color = BLACK;
           return EFI_SUCCESS;
         default:
           // We should never see this case
@@ -210,6 +223,48 @@ GetObjectColor (
   }
 }
 
+STATIC VOID
+EFIAPI
+SetProperObjectColor (
+  IN BORAX_ALLOCATOR      *Alloc,
+  IN BORAX_OBJECT_HEADER  *Object,
+  IN COLOR                Color
+  )
+{
+  UINTN  SpaceBit;
+  UINTN  GreyBit;
+
+  switch (Color) {
+    case GREY:
+      SpaceBit = Object->GcData & BORAX_OBJECT_GCDATA_SPACEBIT;
+      GreyBit  = BORAX_OBJECT_GCDATA_GREYBIT;
+      break;
+    case BLACK:
+      SpaceBit = Alloc->ToSpaceParity;
+      GreyBit  = 0;
+      break;
+    case WHITE:
+      SpaceBit = Alloc->ToSpaceParity ^ BORAX_OBJECT_GCDATA_SPACEBIT;
+      GreyBit  = 0;
+      break;
+    default:
+      // We should never see this case
+      return;
+  }
+
+  switch (Object->WideTag) {
+    case BORAX_WIDETAG_WEAK_POINTER:
+    case BORAX_WIDETAG_PIN:
+    case BORAX_WIDETAG_MOVED:
+    case BORAX_WIDETAG_UNINITIALIZED:
+      Object->GcData = SpaceBit | GreyBit;
+      break;
+    default:
+      // We should never see this case
+      return;
+  }
+}
+
 STATIC EFI_STATUS
 EFIAPI
 MarkObjectIfWhite (
@@ -218,15 +273,15 @@ MarkObjectIfWhite (
   IN BORAX_OBJECT     Object
   )
 {
-  EFI_STATUS           Status;
-  BORAX_OBJECT_GCDATA  GcData;
+  EFI_STATUS  Status;
+  COLOR       Color;
 
-  Status = GetObjectColor (Alloc, Object, &GcData);
+  Status = GetObjectColor (Alloc, Object, &Color);
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
-  if (GcData != BORAX_OBJECT_GCDATA_WHITE) {
+  if (Color != WHITE) {
     return EFI_SUCCESS;
   }
 
@@ -243,14 +298,13 @@ MarkObjectIfWhite (
         return Status;
       }
 
-      // The mark on the old cons cell is not strictly necessary since future
-      // reads will see the moved widetag.
+      // Future reads to OldObj will interpret it as a "moved" object and will
+      // access GcData instead of the bitmap.
       CopyMem (NewObj, OldObj, sizeof (BORAX_CONS));
-      ConsGreyBitmapSet ((BORAX_CONS *)OldObj, 1);
-      ConsGreyBitmapSet ((BORAX_CONS *)NewObj, 1);
       OldObj->WideTag        = BORAX_WIDETAG_MOVED;
-      OldObj->GcData         = BORAX_OBJECT_GCDATA_GREY;
       OldObj->HeaderWords[1] = (UINTN)NewObj;
+      SetProperObjectColor (Alloc, OldObj, GREY);
+      ConsGreyBitmapSet ((BORAX_CONS *)NewObj, 1);
     } else {
       switch (OldObj->WideTag) {
         case BORAX_WIDETAG_WEAK_POINTER:
@@ -263,15 +317,15 @@ MarkObjectIfWhite (
           }
 
           CopyMem (NewObj, OldObj, Size);
-          NewObj->GcData         = BORAX_OBJECT_GCDATA_GREY;
           OldObj->WideTag        = BORAX_WIDETAG_MOVED;
-          OldObj->GcData         = BORAX_OBJECT_GCDATA_GREY;
           OldObj->HeaderWords[1] = (UINTN)NewObj;
+          SetProperObjectColor (Alloc, OldObj, GREY);
+          SetProperObjectColor (Alloc, NewObj, GREY);
           break;
         }
         case BORAX_WIDETAG_PIN:
           // Don't move pins
-          OldObj->GcData = BORAX_OBJECT_GCDATA_GREY;
+          SetProperObjectColor (Alloc, OldObj, GREY);
           break;
         case BORAX_WIDETAG_MOVED:
           // We've already processed this object
@@ -379,10 +433,12 @@ BoraxAllocatorCollect (
     }
   }
 
-  // TODO: Mark everything white... or just reinterpret black and white?
+  SweepPins (Alloc);
 
   ClearSpace (Alloc, &Alloc->FromSpace);
 
+  // All remaining objects are marked black; the next collection will flip
+  // Alloc->ToSpaceParity, which will effectively mark those object white
 cleanup:
   BoraxGreyListCleanup (&GreyList);
   return Status;
@@ -473,7 +529,7 @@ BoraxAllocateObject (
 
   // Allocate the object from the chunk
   NewObject         = (BORAX_OBJECT_HEADER *)((CHAR *)Chunk + Chunk->FillIndex);
-  NewObject->GcData = BORAX_OBJECT_GCDATA_WHITE;
+  NewObject->GcData = Alloc->ToSpaceParity;
   Chunk->FillIndex  = BORAX_ALIGN (Chunk->FillIndex + Size);
 
   // Store the chunk according to its remaining space
@@ -509,7 +565,7 @@ BoraxAllocatePin (
 
   // Initialize the pin and add it to the list
   NewPin->Header.WideTag       = BORAX_WIDETAG_PIN;
-  NewPin->Header.GcData        = BORAX_OBJECT_GCDATA_WHITE;
+  NewPin->Header.GcData        = Alloc->ToSpaceParity;
   NewPin->ListEntry.Next       = &Alloc->Pins;
   NewPin->ListEntry.Prev       = Alloc->Pins.Prev;
   NewPin->ListEntry.Prev->Next = &NewPin->ListEntry;
