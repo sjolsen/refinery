@@ -269,6 +269,12 @@ typedef struct {
  * and move the chunk from the old set into the new set by pointer assignment.
  */
 
+enum {
+  BORAX_OBJECT_GCDATA_WHITE = 0,
+  BORAX_OBJECT_GCDATA_GREY  = 1,
+  BORAX_OBJECT_GCDATA_BLACK = 2,
+};
+
 typedef struct _BORAX_OBJECT_CHUNK BORAX_OBJECT_CHUNK;
 
 struct _BORAX_OBJECT_CHUNK {
@@ -287,12 +293,12 @@ enum {
   BORAX_ALLOC_BIN_512   = 512,
   BORAX_ALLOC_BIN_1024  = 1024,
   BORAX_ALLOC_BIN_2048  = 2048,
-  BORAX_ALLOC_BIN_MAX   = BORAX_PAGE_SIZE - BORAX_OBJECT_FIRST_INDEX,
+  BORAX_ALLOC_BIN_MAX   = 3072,  // A chunk will never have 4 kiB free
   BORAX_ALLOC_BIN_COUNT = 8,
 };
 
 typedef struct {
-  BORAX_OBJECT_CHUNK    *Pages[BORAX_ALLOC_BIN_COUNT];
+  BORAX_OBJECT_CHUNK    *Chunks[BORAX_ALLOC_BIN_COUNT];
 } BORAX_OBJECT_ALLOCATOR;
 
 /*
@@ -309,14 +315,15 @@ typedef struct {
  * There are two possible solutions to this problem: fix the location of any
  * objects that will be referenced externally; or do not allow direct object
  * references to escape the lisp runtime. To simplify garbage collection, we opt
- * for the latter approach.
+ * for the latter approach (or to be precise: we do both).
  *
  * When the lisp runtime needs to supply a reference to an object O to the C
- * environment, it allocates a pin object P that refers to O. P itself is not
- * managed by the garbage collector; it must be explicitly deallocated when it
- * is no longer needed and will remain at a stable address for the duration of
- * its lifetime. P's internal reference to O will be traced and updated by the
- * garbage collector like any other object reference.
+ * environment, it allocates a pin object P that refers to O. P itself is
+ * managed by the garbage collector separately from other objects; it must be
+ * included in the root set as long as it is referenced externally and will
+ * remain at a stable address for the duration of its lifetime. P's internal
+ * reference to O will be traced and updated by the garbage collector like any
+ * other object reference.
  *
  * The external system may hold a reference to P for the duration of its
  * lifetime, but it may only access O and its descendants between garbage
@@ -326,23 +333,22 @@ typedef struct {
  * garbage collector at TPL_APPLICATION.
  */
 
-typedef union _BORAX_PIN BORAX_PIN;
+typedef struct _BORAX_PIN_LIST BORAX_PIN_LIST;
 
-union _BORAX_PIN {
+struct _BORAX_PIN_LIST {
+  BORAX_PIN_LIST    *Next;
+  BORAX_PIN_LIST    *Prev;
+};
+
+typedef union {
   // Pins are allocated manually and kept in a doubly-linked list
   BORAX_OBJECT_HEADER    Header;
   struct {
-    UINTN           Word0;
-    BORAX_OBJECT    Object;
-    BORAX_PIN       *Prev;
-    BORAX_PIN       *Next;
+    UINTN             Word0;
+    BORAX_PIN_LIST    ListEntry;
+    BORAX_OBJECT      Object;
   };
-};
-
-typedef struct {
-  BORAX_PIN    *Head;
-  BORAX_PIN    *Tail;
-} BORAX_PIN_ALLOCATOR;
+} BORAX_PIN;
 
 /*
  * Weak pointers
@@ -370,10 +376,6 @@ union _BORAX_WEAK_POINTER {
     BORAX_WEAK_POINTER    *Next;
   };
 };
-
-typedef struct {
-  BORAX_WEAK_POINTER    *Head;
-} BORAX_WEAK_POINTER_ALLOCATOR;
 
 /*
  * Triggering garbage collection
@@ -417,18 +419,19 @@ typedef struct {
  */
 
 typedef struct {
-  BORAX_CONS_ALLOCATOR            Cons;
-  BORAX_OBJECT_ALLOCATOR          Object;
-  BORAX_PIN_ALLOCATOR             Pin;
-  BORAX_WEAK_POINTER_ALLOCATOR    WeakPointer;
-  UINTN                           MaxPagesBeforeCollection;
-  UINTN                           UsedPages;
+  BORAX_CONS_ALLOCATOR               Cons;
+  BORAX_OBJECT_ALLOCATOR             Object;
+  BORAX_PIN_LIST                     Pins;
+  BORAX_WEAK_POINTER                 *WeakPointers; // Non-owning pointer
+  BORAX_SYSTEM_ALLOCATOR_PROTOCOL    *SysAlloc;
+  UINTN                              UsedPages;
 } BORAX_ALLOCATOR;
 
 VOID
 EFIAPI
 BoraxAllocatorInit (
-  OUT BORAX_ALLOCATOR  *Alloc
+  OUT BORAX_ALLOCATOR                 *Alloc,
+  IN BORAX_SYSTEM_ALLOCATOR_PROTOCOL  *SysAlloc
   );
 
 VOID
@@ -470,13 +473,6 @@ BoraxAllocatePin (
   IN BORAX_ALLOCATOR  *Alloc,
   IN BORAX_OBJECT     Object,
   OUT BORAX_PIN       **Pin
-  );
-
-EFI_STATUS
-EFIAPI
-BoraxDeallocatePin (
-  IN BORAX_ALLOCATOR  *Alloc,
-  IN BORAX_PIN        *Pin
   );
 
 EFI_STATUS
