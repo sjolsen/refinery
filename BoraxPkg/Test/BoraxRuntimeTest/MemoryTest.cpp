@@ -238,10 +238,82 @@ public:
   }
 };
 
-TEST_F (MemoryLeakTests, NullUsage) {
+TEST_F (MemoryLeakTests, CleanupNothing) {
   BORAX_ALLOCATOR  Alloc;
 
   BoraxAllocatorInit (&Alloc, Tracer.GetProtocol ());
+  BoraxAllocatorCleanup (&Alloc);
+  ValidateReport ();
+}
+
+TEST_F (MemoryLeakTests, CleanupCons) {
+  EFI_STATUS       Status;
+  BORAX_ALLOCATOR  Alloc;
+
+  BoraxAllocatorInit (&Alloc, Tracer.GetProtocol ());
+
+  for (int i = 0; i < 4000; ++i) {
+    BORAX_CONS *Cons;
+    Status = BoraxAllocateCons(&Alloc, &Cons);
+    EXPECT_EQ (EFI_SUCCESS, Status);
+  }
+
+  BoraxAllocatorCleanup (&Alloc);
+  ValidateReport ();
+}
+
+TEST_F (MemoryLeakTests, CleanupObject) {
+  EFI_STATUS       Status;
+  BORAX_ALLOCATOR  Alloc;
+
+  BoraxAllocatorInit (&Alloc, Tracer.GetProtocol ());
+
+  for (int i = 0; i < 100; ++i) {
+    BORAX_OBJECT_HEADER *Object;
+    Status = BoraxAllocateObject(&Alloc, 16 * i, &Object);
+    EXPECT_EQ (EFI_SUCCESS, Status);
+  }
+
+  BoraxAllocatorCleanup (&Alloc);
+  ValidateReport ();
+}
+
+TEST_F (MemoryLeakTests, CleanupPin) {
+  EFI_STATUS       Status;
+  BORAX_ALLOCATOR  Alloc;
+
+  BoraxAllocatorInit (&Alloc, Tracer.GetProtocol ());
+
+  for (int i = 0; i < 10; ++i) {
+    BORAX_CONS *Cons;
+    Status = BoraxAllocateCons(&Alloc, &Cons);
+    EXPECT_EQ (EFI_SUCCESS, Status);
+
+    BORAX_PIN *Pin;
+    Status = BoraxAllocatePin(&Alloc, BORAX_MAKE_POINTER(Cons), &Pin);
+    EXPECT_EQ (EFI_SUCCESS, Status);
+  }
+
+  BoraxAllocatorCleanup (&Alloc);
+  ValidateReport ();
+}
+
+TEST_F (MemoryLeakTests, CleanupWeakPointer) {
+  EFI_STATUS       Status;
+  BORAX_ALLOCATOR  Alloc;
+
+  BoraxAllocatorInit (&Alloc, Tracer.GetProtocol ());
+
+  for (int i = 0; i < 1000; ++i) {
+    BORAX_CONS *Cons;
+    Status = BoraxAllocateCons(&Alloc, &Cons);
+    EXPECT_EQ (EFI_SUCCESS, Status);
+
+    BORAX_WEAK_POINTER *Wp;
+    Status = BoraxAllocateWeakPointer(&Alloc, BORAX_MAKE_POINTER(Cons), &Wp);
+    EXPECT_EQ (EFI_SUCCESS, Status);
+  }
+
   BoraxAllocatorCleanup (&Alloc);
   ValidateReport ();
 }

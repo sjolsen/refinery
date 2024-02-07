@@ -107,6 +107,9 @@ enum {
 
 #define BORAX_IS_CONS(_obj)  (!BORAX_IS_HEAP(_obj))
 
+#define BORAX_MAKE_POINTER(_ptr) \
+((UINTN)(_ptr) | BORAX_LOWTAG_MASK_POINTER)
+
 typedef enum {
   BORAX_WIDETAG_WEAK_POINTER  = 0xF3,
   BORAX_WIDETAG_PIN           = 0xF7,
