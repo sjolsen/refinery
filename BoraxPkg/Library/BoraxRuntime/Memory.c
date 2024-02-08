@@ -352,6 +352,7 @@ MarkObjectIfWhite (
   }
 
   if (NewObj != NULL) {
+    GcData ^= BORAX_OBJECT_GCDATA_SPACEBIT;
     Status = SetObjectGcData (Alloc, NewObj, GcData);
     if (EFI_ERROR (Status)) {
       return Status;
