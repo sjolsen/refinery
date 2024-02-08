@@ -209,19 +209,22 @@ operator<< (
 
 std::ostream &
 operator<< (
-  std::ostream                            &os,
+  std::ostream                    &os,
   const TracingAllocator::Report  &Report
   )
 {
   for (auto PageAlloc : Report.PageAllocs) {
     os << PageAlloc << std::endl;
   }
+
   for (auto PoolAlloc : Report.PoolAllocs) {
     os << PoolAlloc << std::endl;
   }
-  for (const std::string& Error : Report.Errors) {
+
+  for (const std::string &Error : Report.Errors) {
     os << "Error: " << Error << std::endl;
   }
+
   return os;
 }
 
@@ -526,11 +529,12 @@ TEST_F (MemoryLeakTests, RootedCons) {
 }
 
 TEST_F (MemoryLeakTests, RootedList) {
-  std::vector<BORAX_CONS *> Conses = MakeConses (1000);
+  std::vector<BORAX_CONS *>  Conses = MakeConses (1000);
 
   for (size_t i = 0; i < Conses.size (); ++i) {
     Conses[i]->Car = i << 1;  // fixnum
   }
+
   for (size_t i = 0; i < Conses.size () - 1; ++i) {
     Conses[i]->Cdr = BORAX_MAKE_POINTER (Conses[i + 1]);
   }
@@ -548,9 +552,9 @@ TEST_F (MemoryLeakTests, RootedList) {
   ASSERT_TRUE (BORAX_IS_CONS (Header));
   BORAX_CONS  *P = reinterpret_cast<BORAX_CONS *>(Header);
 
-  for (size_t i = 0; i < Conses.size(); ++i) {
+  for (size_t i = 0; i < Conses.size (); ++i) {
     EXPECT_EQ (i << 1, P->Car);
-    if (i < Conses.size() - 1) {
+    if (i < Conses.size () - 1) {
       ASSERT_TRUE (BORAX_IS_POINTER (P->Cdr));
       Header = BORAX_GET_POINTER (P->Cdr);
       ASSERT_THAT (Header, IsValidAddress (Tracer));
