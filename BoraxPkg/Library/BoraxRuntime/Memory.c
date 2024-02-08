@@ -585,11 +585,9 @@ BoraxAllocateCons (
   OUT BORAX_CONS      **Cons
   )
 {
-  BORAX_CONS_PAGE  *Page;
+  BORAX_CONS_PAGE  *Page = Alloc->ToSpace.Cons.Pages;
 
-  if ((Alloc->ToSpace.Cons.Pages == NULL) ||
-      (Alloc->ToSpace.Cons.FillIndex == BORAX_PAGE_SIZE))
-  {
+  if ((Page == NULL) || (Alloc->ToSpace.Cons.FillIndex == BORAX_PAGE_SIZE)) {
     // No page or page is full; allocate one
     Page = FFAllocatePages (Alloc, 1);
     if (Page == NULL) {
