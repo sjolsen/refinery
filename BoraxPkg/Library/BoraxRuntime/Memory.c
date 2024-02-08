@@ -351,16 +351,25 @@ MarkObjectIfWhite (
     return Status;
   }
 
-  if (NewObj != NULL) {
+  if (NewObj == NULL) {
+    Status = BoraxGreyListPush (GreyList, Object);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+  } else {
     GcData ^= BORAX_OBJECT_GCDATA_SPACEBIT;
     Status = SetObjectGcData (Alloc, NewObj, GcData);
     if (EFI_ERROR (Status)) {
       return Status;
     }
+
+    Status = BoraxGreyListPush (GreyList, NewObj);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
   }
 
-  Status = BoraxGreyListPush (GreyList, Object);
-  return Status;
+  return EFI_SUCCESS;
 }
 
 STATIC EFI_STATUS
