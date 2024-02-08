@@ -134,152 +134,146 @@ BoraxAllocatorCleanup (
 #define CONS_BITMAP_BIT(_addr) \
 (CONS_BITMAP_INDEX(_addr) % sizeof (BORAX_WORD_BITS))
 
-STATIC BOOLEAN
+STATIC EFI_STATUS
 EFIAPI
-ConsGreyBitmapGet (
-  IN CONST BORAX_CONS  *Cons
+GetObjectGcData (
+  IN BORAX_ALLOCATOR      *Alloc,
+  IN BORAX_OBJECT_HEADER  *Object,
+  OUT UINTN               *GcData
   )
 {
-  BORAX_CONS_PAGE  *Page = CONS_PAGE (Cons);
-  UINTN            Word  = CONS_BITMAP_WORD (Cons);
-  UINTN            Bit   = CONS_BITMAP_BIT (Cons);
+  UINTN  Result = 0;
 
-  return Page->GreyBitmap[Word] & (1 << Bit);
+  if (BORAX_IS_CONS (Object)) {
+    BORAX_CONS       *Cons = (BORAX_CONS *)Object;
+    BORAX_CONS_PAGE  *Page = CONS_PAGE (Cons);
+    UINTN            Word  = CONS_BITMAP_WORD (Cons);
+    UINTN            Bit   = CONS_BITMAP_BIT (Cons);
+
+    if (Page->SpaceParity) {
+      Result |= BORAX_OBJECT_GCDATA_SPACEBIT;
+    }
+
+    if (Page->GreyBitmap[Word] & (1 << Bit)) {
+      Result |= BORAX_OBJECT_GCDATA_GREYBIT;
+    }
+  } else {
+    switch (Object->WideTag) {
+      case BORAX_WIDETAG_WEAK_POINTER:
+      case BORAX_WIDETAG_PIN:
+      case BORAX_WIDETAG_MOVED:
+      case BORAX_WIDETAG_UNINITIALIZED:
+        // The GcData field should be set even for uninitialized objects
+        Result = Object->GcData;
+        break;
+      default:
+        // We should never see this case
+        DEBUG ((
+          DEBUG_ERROR,
+          "%a: invalid widetag (%u)\n",
+          __func__,
+          Object->WideTag
+          ));
+        return EFI_INVALID_PARAMETER;
+    }
+  }
+
+  *GcData = Result;
+  return EFI_SUCCESS;
 }
 
-STATIC VOID
+STATIC EFI_STATUS
 EFIAPI
-ConsGreyBitmapSet (
-  IN CONST BORAX_CONS  *Cons,
-  IN BOOLEAN           Value
+SetObjectGcData (
+  IN BORAX_ALLOCATOR      *Alloc,
+  IN BORAX_OBJECT_HEADER  *Object,
+  IN UINTN                GcData
   )
 {
-  BORAX_CONS_PAGE  *Page = CONS_PAGE (Cons);
-  UINTN            Word  = CONS_BITMAP_WORD (Cons);
-  UINTN            Bit   = CONS_BITMAP_BIT (Cons);
+  if (BORAX_IS_CONS (Object)) {
+    BORAX_CONS       *Cons = (BORAX_CONS *)Object;
+    BORAX_CONS_PAGE  *Page = CONS_PAGE (Cons);
+    UINTN            Word  = CONS_BITMAP_WORD (Cons);
+    UINTN            Bit   = CONS_BITMAP_BIT (Cons);
 
-  if (Value) {
-    Page->GreyBitmap[Word] |= (1 << Bit);
+    if (GcData & BORAX_OBJECT_GCDATA_GREYBIT) {
+      Page->GreyBitmap[Word] |= (1 << Bit);
+    } else {
+      Page->GreyBitmap[Word] &= ~(1 << Bit);
+    }
+
+    // We can't set space parity at cell granularity, but we shouldn't need to
+    if ((GcData & BORAX_OBJECT_GCDATA_SPACEBIT) != Page->SpaceParity) {
+      DEBUG ((DEBUG_ERROR, "%a: cons space parity violated\n", __func__));
+      return EFI_INVALID_PARAMETER;
+    }
   } else {
-    Page->GreyBitmap[Word] &= ~(1 << Bit);
+    switch (Object->WideTag) {
+      case BORAX_WIDETAG_WEAK_POINTER:
+      case BORAX_WIDETAG_PIN:
+      case BORAX_WIDETAG_MOVED:
+      case BORAX_WIDETAG_UNINITIALIZED:
+        Object->GcData = GcData;
+        break;
+      default:
+        // We should never see this case
+        DEBUG ((
+          DEBUG_ERROR,
+          "%a: invalid widetag (%u)\n",
+          __func__,
+          Object->WideTag
+          ));
+        return EFI_INVALID_PARAMETER;
+    }
   }
+
+  return EFI_SUCCESS;
 }
 
 typedef enum {
   WHITE, GREY, BLACK
 } COLOR;
 
-STATIC EFI_STATUS
+STATIC COLOR
 EFIAPI
-GetObjectColor (
-  IN BORAX_ALLOCATOR      *Alloc,
-  IN BORAX_OBJECT_HEADER  *Object,
-  OUT COLOR               *Color
+DecodeColor (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN UINTN            GcData
   )
 {
   UINTN  ToSpace = Alloc->ToSpaceParity;
-  UINTN  SpaceBit;
-  UINTN  GreyBit;
 
-  if (BORAX_IS_CONS (Object)) {
-    BORAX_CONS       *Cons = (BORAX_CONS *)Object;
-    BORAX_CONS_PAGE  *Page = CONS_PAGE (Cons);
-    SpaceBit = Page->SpaceParity;
-    GreyBit  = ConsGreyBitmapGet (Cons);
+  if (GcData & BORAX_OBJECT_GCDATA_GREYBIT) {
+    return GREY;
+  } else if ((GcData & BORAX_OBJECT_GCDATA_SPACEBIT) == ToSpace) {
+    return BLACK;
   } else {
-    switch (Object->WideTag) {
-      case BORAX_WIDETAG_WEAK_POINTER:
-      case BORAX_WIDETAG_PIN:
-      case BORAX_WIDETAG_MOVED:
-        SpaceBit = Object->GcData & BORAX_OBJECT_GCDATA_SPACEBIT;
-        GreyBit  = Object->GcData & BORAX_OBJECT_GCDATA_GREYBIT;
-        break;
-      case BORAX_WIDETAG_UNINITIALIZED:
-        // The GcData field should be set even for uninitialized objects
-        DEBUG ((DEBUG_ERROR, "%a: uninitialized GcData\n", __func__));
-        return EFI_INVALID_PARAMETER;
-      default:
-        // We should never see this case
-        DEBUG ((
-          DEBUG_ERROR,
-          "%a: invalid widetag (%u)\n",
-          __func__,
-          Object->WideTag
-          ));
-        return EFI_INVALID_PARAMETER;
-    }
+    return WHITE;
   }
-
-  if (GreyBit) {
-    *Color = GREY;
-  } else if (SpaceBit == ToSpace) {
-    *Color = BLACK;
-  } else {
-    *Color = WHITE;
-  }
-
-  return EFI_SUCCESS;
 }
 
 STATIC EFI_STATUS
 EFIAPI
-SetObjectColor (
-  IN BORAX_ALLOCATOR      *Alloc,
-  IN BORAX_OBJECT_HEADER  *Object,
-  IN COLOR                Color
+UpdateColor (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN OUT UINTN        *GcData,
+  IN COLOR            Color
   )
 {
-  UINTN  SpaceBit;
-  UINTN  GreyBit;
-
   switch (Color) {
     case GREY:
-      SpaceBit = Object->GcData & BORAX_OBJECT_GCDATA_SPACEBIT;
-      GreyBit  = BORAX_OBJECT_GCDATA_GREYBIT;
-      break;
+      *GcData |= BORAX_OBJECT_GCDATA_GREYBIT;
+      return EFI_SUCCESS;
     case BLACK:
-      SpaceBit = Alloc->ToSpaceParity;
-      GreyBit  = 0;
-      break;
+      *GcData = Alloc->ToSpaceParity;
+      return EFI_SUCCESS;
     case WHITE:
-      SpaceBit = Alloc->ToSpaceParity ^ BORAX_OBJECT_GCDATA_SPACEBIT;
-      GreyBit  = 0;
-      break;
+      *GcData = Alloc->ToSpaceParity ^ BORAX_OBJECT_GCDATA_SPACEBIT;
+      return EFI_SUCCESS;
     default:
       // We should never see this case
       DEBUG ((DEBUG_ERROR, "%a: invalid color (%u)\n", __func__, Color));
       return EFI_INVALID_PARAMETER;
-  }
-
-  if (BORAX_IS_CONS (Object)) {
-    BORAX_CONS       *Cons = (BORAX_CONS *)Object;
-    BORAX_CONS_PAGE  *Page = CONS_PAGE (Cons);
-    ConsGreyBitmapSet (Cons, GreyBit);
-    if (Page->SpaceParity == SpaceBit) {
-      return EFI_SUCCESS;
-    } else {
-      // We can't set black/white at page granularity, but we shouldn't need to
-      DEBUG ((DEBUG_ERROR, "%a: cons color invariant violated\n", __func__));
-      return EFI_INVALID_PARAMETER;
-    }
-  } else {
-    switch (Object->WideTag) {
-      case BORAX_WIDETAG_WEAK_POINTER:
-      case BORAX_WIDETAG_PIN:
-      case BORAX_WIDETAG_MOVED:
-      case BORAX_WIDETAG_UNINITIALIZED:
-        Object->GcData = SpaceBit | GreyBit;
-        return EFI_SUCCESS;
-      default:
-        // We should never see this case
-        DEBUG ((
-          DEBUG_ERROR,
-          "%a: invalid widetag (%u)\n",
-          __func__,
-          Object->WideTag
-          ));
-        return EFI_INVALID_PARAMETER;
-    }
   }
 }
 
@@ -292,15 +286,15 @@ MarkObjectIfWhite (
   )
 {
   EFI_STATUS           Status;
-  COLOR                Color;
+  UINTN                GcData;
   BORAX_OBJECT_HEADER  *NewObj = NULL;
 
-  Status = GetObjectColor (Alloc, Object, &Color);
+  Status = GetObjectGcData (Alloc, Object, &GcData);
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
-  if (Color != WHITE) {
+  if (DecodeColor (Alloc, GcData) != WHITE) {
     // Nothing to do
     return EFI_SUCCESS;
   }
@@ -351,13 +345,14 @@ MarkObjectIfWhite (
   }
 
   // Mark the old and new copy (if it exists) grey
-  Status = SetObjectColor (Alloc, Object, GREY);
+  (VOID)UpdateColor (Alloc, &GcData, GREY);
+  Status = SetObjectGcData (Alloc, Object, GcData);
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
   if (NewObj != NULL) {
-    Status = SetObjectColor (Alloc, NewObj, GREY);
+    Status = SetObjectGcData (Alloc, NewObj, GcData);
     if (EFI_ERROR (Status)) {
       return Status;
     }
@@ -466,6 +461,9 @@ MarkObjectBlack (
   IN BORAX_OBJECT_HEADER  *Object
   )
 {
+  EFI_STATUS  Status;
+  UINTN       GcData;
+
   if (BORAX_IS_CONS (Object)) {
     BORAX_CONS  *Cons = (BORAX_CONS *)Object;
 
@@ -500,8 +498,14 @@ MarkObjectBlack (
     }
   }
 
-  SetObjectColor (Alloc, Object, BLACK);
-  return EFI_SUCCESS;
+  Status = GetObjectGcData (Alloc, Object, &GcData);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  (VOID)UpdateColor (Alloc, &GcData, BLACK);
+  Status = SetObjectGcData (Alloc, Object, GcData);
+  return Status;
 }
 
 STATIC EFI_STATUS
@@ -511,7 +515,7 @@ SweepPins (
   )
 {
   EFI_STATUS      Status;
-  COLOR           Color;
+  UINTN           GcData;
   BORAX_PIN_LIST  *PinEntry;
 
   PinEntry = Alloc->Pins.Next;
@@ -520,12 +524,12 @@ SweepPins (
     BORAX_PIN_LIST  *Prev = PinEntry->Prev;
     BORAX_PIN       *Pin  = BASE_CR (PinEntry, BORAX_PIN, ListEntry);
 
-    Status = GetObjectColor (Alloc, &Pin->Header, &Color);
+    Status = GetObjectGcData (Alloc, &Pin->Header, &GcData);
     if (EFI_ERROR (Status)) {
       return Status;
     }
 
-    switch (Color) {
+    switch (DecodeColor (Alloc, GcData)) {
       case WHITE:
         Next->Prev = Prev;
         Prev->Next = Next;
