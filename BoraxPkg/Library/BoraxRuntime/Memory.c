@@ -146,21 +146,19 @@ BoraxAllocatorCleanup (
 #define CONS_BITMAP_BIT(_addr) \
 (CONS_BITMAP_INDEX(_addr) % BORAX_WORD_BITS)
 
-STATIC EFI_STATUS
+STATIC UINTN
 EFIAPI
 GetObjectGcData (
   IN BORAX_ALLOCATOR      *Alloc,
-  IN BORAX_OBJECT_HEADER  *Object,
-  OUT UINTN               *GcData
+  IN BORAX_OBJECT_HEADER  *Object
   )
 {
-  UINTN  Result = 0;
-
   if (BORAX_IS_CONS (Object)) {
-    BORAX_CONS       *Cons = (BORAX_CONS *)Object;
-    BORAX_CONS_PAGE  *Page = CONS_PAGE (Cons);
-    UINTN            Word  = CONS_BITMAP_WORD (Cons);
-    UINTN            Bit   = CONS_BITMAP_BIT (Cons);
+    BORAX_CONS       *Cons  = (BORAX_CONS *)Object;
+    BORAX_CONS_PAGE  *Page  = CONS_PAGE (Cons);
+    UINTN            Word   = CONS_BITMAP_WORD (Cons);
+    UINTN            Bit    = CONS_BITMAP_BIT (Cons);
+    UINTN            Result = 0;
 
     if (Page->SpaceParity) {
       Result |= BORAX_OBJECT_GCDATA_SPACEBIT;
@@ -169,29 +167,12 @@ GetObjectGcData (
     if (Page->GreyBitmap[Word] & (1 << Bit)) {
       Result |= BORAX_OBJECT_GCDATA_GREYBIT;
     }
-  } else {
-    switch (Object->WideTag) {
-      case BORAX_WIDETAG_WEAK_POINTER:
-      case BORAX_WIDETAG_PIN:
-      case BORAX_WIDETAG_MOVED:
-      case BORAX_WIDETAG_UNINITIALIZED:
-        // The GcData field should be set even for uninitialized objects
-        Result = Object->GcData;
-        break;
-      default:
-        // We should never see this case
-        DEBUG ((
-          DEBUG_ERROR,
-          "%a: invalid widetag (%u)\n",
-          __func__,
-          Object->WideTag
-          ));
-        return EFI_INVALID_PARAMETER;
-    }
-  }
 
-  *GcData = Result;
-  return EFI_SUCCESS;
+    return Result;
+  } else {
+    // The GcData field should be set even for uninitialized objects
+    return Object->GcData;
+  }
 }
 
 STATIC EFI_STATUS
@@ -220,23 +201,7 @@ SetObjectGcData (
       return EFI_INVALID_PARAMETER;
     }
   } else {
-    switch (Object->WideTag) {
-      case BORAX_WIDETAG_WEAK_POINTER:
-      case BORAX_WIDETAG_PIN:
-      case BORAX_WIDETAG_MOVED:
-      case BORAX_WIDETAG_UNINITIALIZED:
-        Object->GcData = GcData;
-        break;
-      default:
-        // We should never see this case
-        DEBUG ((
-          DEBUG_ERROR,
-          "%a: invalid widetag (%u)\n",
-          __func__,
-          Object->WideTag
-          ));
-        return EFI_INVALID_PARAMETER;
-    }
+    Object->GcData = GcData;
   }
 
   return EFI_SUCCESS;
@@ -301,66 +266,62 @@ MarkObjectIfWhite (
   UINTN                GcData;
   BORAX_OBJECT_HEADER  *NewObj = NULL;
 
-  Status = GetObjectGcData (Alloc, Object, &GcData);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
+  GcData = GetObjectGcData (Alloc, Object);
   if (DecodeColor (Alloc, GcData) != WHITE) {
     // Nothing to do
     return EFI_SUCCESS;
   }
 
   // Copy from FromSpace to ToSpace
-  if (BORAX_IS_CONS (Object)) {
-    BORAX_CONS  *OldCons = (BORAX_CONS *)Object;
-    Status = BoraxAllocateCons (
-               Alloc,
-               OldCons->Car,
-               OldCons->Cdr,
-               (BORAX_CONS **)&NewObj
-               );
-    if (EFI_ERROR (Status)) {
-      return Status;
-    }
-
-    // Future reads to Object will interpret it as a "moved" object and will
-    // access GcData instead of the bitmap.
-    Object->WideTag        = BORAX_WIDETAG_MOVED;
-    Object->HeaderWords[1] = BORAX_MAKE_POINTER (NewObj);
-  } else {
-    switch (Object->WideTag) {
-      // TODO: Implement move optimization for large objects
-      case BORAX_WIDETAG_WEAK_POINTER:
-      {
-        BORAX_WEAK_POINTER  *Wp = (BORAX_WEAK_POINTER *)Object;
-        Status = BoraxAllocateWeakPointer (
-                   Alloc,
-                   Wp->Value,
-                   (BORAX_WEAK_POINTER **)&NewObj
-                   );
-        if (EFI_ERROR (Status)) {
-          return Status;
-        }
-
-        Object->WideTag        = BORAX_WIDETAG_MOVED;
-        Object->HeaderWords[1] = BORAX_MAKE_POINTER (NewObj);
-        break;
+  switch (BORAX_DISCRIMINATE_POINTER (Object)) {
+    case BORAX_DISCRIM_CONS:
+    {
+      BORAX_CONS  *OldCons = (BORAX_CONS *)Object;
+      Status = BoraxAllocateCons (
+                 Alloc,
+                 OldCons->Car,
+                 OldCons->Cdr,
+                 (BORAX_CONS **)&NewObj
+                 );
+      if (EFI_ERROR (Status)) {
+        return Status;
       }
-      case BORAX_WIDETAG_PIN:  // Don't move pins
-      case BORAX_WIDETAG_MOVED:
-      case BORAX_WIDETAG_UNINITIALIZED:
-        break;
-      default:
-        // We should never see this case
-        DEBUG ((
-          DEBUG_ERROR,
-          "%a: invalid widetag (%u)\n",
-          __func__,
-          Object->WideTag
-          ));
-        return EFI_INVALID_PARAMETER;
+
+      // Future reads to Object will interpret it as a "moved" object and will
+      // access GcData instead of the bitmap.
+      Object->WideTag        = BORAX_WIDETAG_MOVED;
+      Object->HeaderWords[1] = BORAX_MAKE_POINTER (NewObj);
+      break;
     }
+    // TODO: Implement move optimization for large objects
+    case BORAX_DISCRIM_WEAK_POINTER:
+    {
+      BORAX_WEAK_POINTER  *Wp = (BORAX_WEAK_POINTER *)Object;
+      Status = BoraxAllocateWeakPointer (
+                 Alloc,
+                 Wp->Value,
+                 (BORAX_WEAK_POINTER **)&NewObj
+                 );
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      Object->WideTag        = BORAX_WIDETAG_MOVED;
+      Object->HeaderWords[1] = BORAX_MAKE_POINTER (NewObj);
+      break;
+    }
+    case BORAX_DISCRIM_PIN:   // Don't move pins
+    case BORAX_DISCRIM_MOVED: // Not an object
+      break;
+    default:
+      // If a new widetag is added, we need to add support for it
+      DEBUG ((
+        DEBUG_ERROR,
+        "%a: gc not implemented for widetag (%u)\n",
+        __func__,
+        Object->WideTag
+        ));
+      return EFI_INVALID_PARAMETER;
   }
 
   // Mark the old and new copy (if it exists) grey
@@ -422,40 +383,39 @@ MarkSubObjectsIfWhite (
 {
   EFI_STATUS  Status;
 
-  if (BORAX_IS_CONS (Object)) {
-    BORAX_CONS  *Cons = (BORAX_CONS *)Object;
+  switch (BORAX_DISCRIMINATE_POINTER (Object)) {
+    case BORAX_DISCRIM_CONS:
+    {
+      BORAX_CONS  *Cons = (BORAX_CONS *)Object;
 
-    Status = MarkObjectWordIfWhite (Alloc, GreyList, Cons->Car);
-    if (EFI_ERROR (Status)) {
-      return Status;
-    }
-
-    // Mark CDR last to ensure it gets copied first
-    Status = MarkObjectWordIfWhite (Alloc, GreyList, Cons->Cdr);
-    return Status;
-  } else {
-    switch (Object->WideTag) {
-      case BORAX_WIDETAG_PIN:
-      {
-        BORAX_PIN  *Pin = (BORAX_PIN *)Object;
-        Status = MarkObjectWordIfWhite (Alloc, GreyList, Pin->Object);
+      Status = MarkObjectWordIfWhite (Alloc, GreyList, Cons->Car);
+      if (EFI_ERROR (Status)) {
         return Status;
       }
-      case BORAX_WIDETAG_WEAK_POINTER:
-      case BORAX_WIDETAG_MOVED:
-      case BORAX_WIDETAG_UNINITIALIZED:
-        // Nothing to do
-        return EFI_SUCCESS;
-      default:
-        // We should never see this case
-        DEBUG ((
-          DEBUG_ERROR,
-          "%a: invalid widetag (%u)\n",
-          __func__,
-          Object->WideTag
-          ));
-        return EFI_INVALID_PARAMETER;
+
+      // Mark CDR last to ensure it gets copied first
+      Status = MarkObjectWordIfWhite (Alloc, GreyList, Cons->Cdr);
+      return Status;
     }
+    case BORAX_DISCRIM_PIN:
+    {
+      BORAX_PIN  *Pin = (BORAX_PIN *)Object;
+      Status = MarkObjectWordIfWhite (Alloc, GreyList, Pin->Object);
+      return Status;
+    }
+    case BORAX_DISCRIM_WEAK_POINTER:
+    case BORAX_DISCRIM_MOVED:
+      // Nothing to do
+      return EFI_SUCCESS;
+    default:
+      // If a new widetag is added, we need to add support for it
+      DEBUG ((
+        DEBUG_ERROR,
+        "%a: gc not implemented for widetag (%u)\n",
+        __func__,
+        Object->WideTag
+        ));
+      return EFI_INVALID_PARAMETER;
   }
 }
 
@@ -465,22 +425,9 @@ UpdateIfMoved (
   IN OUT BORAX_OBJECT  *Object
   )
 {
-  BORAX_OBJECT_HEADER  *Obj;
-
-  if (!BORAX_IS_POINTER (*Object)) {
-    return;
+  if (BORAX_DISCRIMINATE (*Object) == BORAX_DISCRIM_MOVED) {
+    *Object = BORAX_GET_POINTER (*Object)->HeaderWords[1];
   }
-
-  Obj = BORAX_GET_POINTER (*Object);
-  if (!BORAX_IS_HEAP (Obj->HeaderWords[0])) {
-    return;
-  }
-
-  if (Obj->WideTag != BORAX_WIDETAG_MOVED) {
-    return;
-  }
-
-  *Object = Obj->HeaderWords[1];
 }
 
 STATIC EFI_STATUS
@@ -493,45 +440,40 @@ MarkObjectBlack (
   EFI_STATUS  Status;
   UINTN       GcData;
 
-  if (BORAX_IS_CONS (Object)) {
-    BORAX_CONS  *Cons = (BORAX_CONS *)Object;
+  switch (BORAX_DISCRIMINATE_POINTER (Object)) {
+    case BORAX_DISCRIM_CONS:
+    {
+      BORAX_CONS  *Cons = (BORAX_CONS *)Object;
 
-    UpdateIfMoved (&Cons->Car);
-    UpdateIfMoved (&Cons->Cdr);
-  } else {
-    switch (Object->WideTag) {
-      case BORAX_WIDETAG_PIN:
-      {
-        BORAX_PIN  *Pin = (BORAX_PIN *)Object;
-        UpdateIfMoved (&Pin->Object);
-        break;
-      }
-      case BORAX_WIDETAG_WEAK_POINTER:
-      {
-        BORAX_WEAK_POINTER  *Wp = (BORAX_WEAK_POINTER *)Object;
-        UpdateIfMoved (&Wp->Value);
-        break;
-      }
-      case BORAX_WIDETAG_MOVED:
-      case BORAX_WIDETAG_UNINITIALIZED:
-        break;
-      default:
-        // We should never see this case
-        DEBUG ((
-          DEBUG_ERROR,
-          "%a: invalid widetag (%u)\n",
-          __func__,
-          Object->WideTag
-          ));
-        return EFI_INVALID_PARAMETER;
+      UpdateIfMoved (&Cons->Car);
+      UpdateIfMoved (&Cons->Cdr);
+      break;
     }
+    case BORAX_DISCRIM_PIN:
+    {
+      BORAX_PIN  *Pin = (BORAX_PIN *)Object;
+      UpdateIfMoved (&Pin->Object);
+      break;
+    }
+    case BORAX_DISCRIM_WEAK_POINTER:
+    {
+      BORAX_WEAK_POINTER  *Wp = (BORAX_WEAK_POINTER *)Object;
+      UpdateIfMoved (&Wp->Value);
+      break;
+    }
+    case BORAX_WIDETAG_MOVED:  // Not an object
+      break;
+    default:
+      // If a new widetag is added, we need to add support for it
+      DEBUG ((
+        DEBUG_ERROR,
+        "%a: gc not implemented for widetag (%u)\n",
+        __func__,
+        Object->WideTag
+        ));
   }
 
-  Status = GetObjectGcData (Alloc, Object, &GcData);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
+  GcData = GetObjectGcData (Alloc, Object);
   (VOID)UpdateColor (Alloc, &GcData, BLACK);
   Status = SetObjectGcData (Alloc, Object, GcData);
   return Status;
@@ -543,18 +485,14 @@ SweepPins (
   IN BORAX_ALLOCATOR  *Alloc
   )
 {
-  EFI_STATUS  Status;
-  UINTN       GcData;
-  BORAX_PIN   **Iter;
-  BORAX_PIN   *Pin;
+  UINTN      GcData;
+  BORAX_PIN  **Iter;
+  BORAX_PIN  *Pin;
 
   Iter = &Alloc->Pins;
   while (*Iter != NULL) {
     Pin    = *Iter;
-    Status = GetObjectGcData (Alloc, &Pin->Header, &GcData);
-    if (EFI_ERROR (Status)) {
-      return Status;
-    }
+    GcData = GetObjectGcData (Alloc, &Pin->Header);
 
     switch (DecodeColor (Alloc, GcData)) {
       case WHITE:
@@ -579,7 +517,6 @@ SweepWeakPointers (
   IN BORAX_ALLOCATOR  *Alloc
   )
 {
-  EFI_STATUS           Status;
   UINTN                GcData;
   BORAX_WEAK_POINTER   *Wp;
   BORAX_OBJECT_HEADER  *Value;
@@ -591,11 +528,7 @@ SweepWeakPointers (
     }
 
     Value  = BORAX_GET_POINTER (Wp->Value);
-    Status = GetObjectGcData (Alloc, Value, &GcData);
-    if (EFI_ERROR (Status)) {
-      return Status;
-    }
-
+    GcData = GetObjectGcData (Alloc, Value);
     switch (DecodeColor (Alloc, GcData)) {
       case WHITE:
         Wp->Value = BORAX_IMMEDIATE_UNBOUND;

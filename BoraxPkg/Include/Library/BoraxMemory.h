@@ -95,7 +95,7 @@ enum {
 };
 
 enum {
-  BORAX_IMMEDIATE_UNBOUND = BORAX_LOWTAG_OTHER_IMMEDIATE | 0x08,
+  BORAX_IMMEDIATE_UNBOUND = 0x00 | BORAX_LOWTAG_OTHER_IMMEDIATE,
 };
 
 #define BORAX_IS_FIXNUM(_obj) \
@@ -107,21 +107,42 @@ enum {
 #define BORAX_GET_POINTER(_obj) \
 ((BORAX_OBJECT_HEADER *)((_obj) & ~BORAX_LOWTAG_MASK_POINTER))
 
-#define BORAX_IS_HEAP(_obj) \
-(((_obj) & BORAX_LOWTAG_MASK_HEAP) == BORAX_LOWTAG_HEAP)
-
-#define BORAX_IS_CONS(_ptr) \
-(!BORAX_IS_HEAP(_ptr->HeaderWords[0]))
-
 #define BORAX_MAKE_POINTER(_ptr) \
 ((UINTN)(_ptr) | BORAX_LOWTAG_POINTER)
 
-typedef enum {
+#define BORAX_IS_CONS(_ptr) \
+(((_ptr)->HeaderWords[0] & BORAX_LOWTAG_MASK_HEAP) != BORAX_LOWTAG_HEAP)
+
+enum {
   BORAX_WIDETAG_WEAK_POINTER  = 0xF3,
   BORAX_WIDETAG_PIN           = 0xF7,
   BORAX_WIDETAG_MOVED         = 0xFB,
   BORAX_WIDETAG_UNINITIALIZED = 0xFF,
-} BORAX_WIDETAG;
+};
+
+// Helper enum for simplifying switch statements. Values are implementation
+// details; use BORAX_DISCRIMINATE.
+enum {
+  // Immediates
+  BORAX_DISCRIM_FIXNUM  = 0x00,
+  BORAX_DISCRIM_UNBOUND = BORAX_IMMEDIATE_UNBOUND,
+  // Pointers
+  BORAX_DISCRIM_CONS          = 0x02,
+  BORAX_DISCRIM_WEAK_POINTER  = BORAX_WIDETAG_WEAK_POINTER,
+  BORAX_DISCRIM_PIN           = BORAX_WIDETAG_PIN,
+  BORAX_DISCRIM_MOVED         = BORAX_WIDETAG_MOVED,
+  BORAX_DISCRIM_UNINITIALIZED = BORAX_WIDETAG_UNINITIALIZED,
+};
+
+#define BORAX_DISCRIMINATE(_obj)                       \
+(BORAX_IS_FIXNUM(_obj)                                 \
+ ? BORAX_DISCRIM_FIXNUM                                \
+ : BORAX_IS_POINTER(_obj)                              \
+ ? BORAX_DISCRIMINATE_POINTER(BORAX_GET_POINTER(_obj)) \
+ : (_obj))
+
+#define BORAX_DISCRIMINATE_POINTER(_ptr) \
+(BORAX_IS_CONS(_ptr) ? BORAX_DISCRIM_CONS : (_ptr)->WideTag)
 
 #define BORAX_STORAGE_UNIT  (2 * sizeof(UINTN))
 #define BORAX_ALIGNMENT     (2 * sizeof(UINTN))
