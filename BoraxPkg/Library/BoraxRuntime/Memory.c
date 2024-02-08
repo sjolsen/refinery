@@ -72,9 +72,7 @@ BoraxAllocatorInit (
   )
 {
   SetMem (Alloc, sizeof (*Alloc), 0);
-  Alloc->Pins.Next = &Alloc->Pins;
-  Alloc->Pins.Prev = &Alloc->Pins;
-  Alloc->SysAlloc  = SysAlloc;
+  Alloc->SysAlloc = SysAlloc;
 }
 
 STATIC VOID
@@ -113,19 +111,18 @@ BoraxAllocatorCleanup (
   IN BORAX_ALLOCATOR  *Alloc
   )
 {
-  BORAX_PIN_LIST  *PinEntry;
+  BORAX_PIN  *Pin;
 
   // We may have aborted in the middle of a cycle, so clean both spaces
   ClearSpace (Alloc, &Alloc->FromSpace);
   ClearSpace (Alloc, &Alloc->ToSpace);
 
   // Free pin objects
-  PinEntry = Alloc->Pins.Next;
-  while (PinEntry != &Alloc->Pins) {
-    BORAX_PIN_LIST  *Next = PinEntry->Next;
-    BORAX_PIN       *Pin  = BASE_CR (PinEntry, BORAX_PIN, ListEntry);
+  Pin = Alloc->Pins;
+  while (Pin != NULL) {
+    BORAX_PIN  *Next = Pin->Next;
     InternalFreePool (Alloc, Pin);
-    PinEntry = Next;
+    Pin = Next;
   }
 
   // Weak pointers were stored in the object page chunks
@@ -546,16 +543,14 @@ SweepPins (
   IN BORAX_ALLOCATOR  *Alloc
   )
 {
-  EFI_STATUS      Status;
-  UINTN           GcData;
-  BORAX_PIN_LIST  *PinEntry;
+  EFI_STATUS  Status;
+  UINTN       GcData;
+  BORAX_PIN   **Iter;
+  BORAX_PIN   *Pin;
 
-  PinEntry = Alloc->Pins.Next;
-  while (PinEntry != &Alloc->Pins) {
-    BORAX_PIN_LIST  *Next = PinEntry->Next;
-    BORAX_PIN_LIST  *Prev = PinEntry->Prev;
-    BORAX_PIN       *Pin  = BASE_CR (PinEntry, BORAX_PIN, ListEntry);
-
+  Iter = &Alloc->Pins;
+  while (*Iter != NULL) {
+    Pin    = *Iter;
     Status = GetObjectGcData (Alloc, &Pin->Header, &GcData);
     if (EFI_ERROR (Status)) {
       return Status;
@@ -563,18 +558,16 @@ SweepPins (
 
     switch (DecodeColor (Alloc, GcData)) {
       case WHITE:
-        Next->Prev = Prev;
-        Prev->Next = Next;
+        *Iter = Pin->Next;
         InternalFreePool (Alloc, Pin);
         break;
       case GREY:
         DEBUG ((DEBUG_ERROR, "grey pin found during sweep\n"));
         return EFI_INVALID_PARAMETER;
       case BLACK:
+        Iter = &Pin->Next;
         break;
     }
-
-    PinEntry = Next;
   }
 
   return EFI_SUCCESS;
@@ -808,13 +801,11 @@ BoraxAllocatePin (
   }
 
   // Initialize the pin and add it to the list
-  NewPin->Header.WideTag       = BORAX_WIDETAG_PIN;
-  NewPin->Header.GcData        = Alloc->ToSpaceParity;
-  NewPin->ListEntry.Next       = &Alloc->Pins;
-  NewPin->ListEntry.Prev       = Alloc->Pins.Prev;
-  NewPin->ListEntry.Prev->Next = &NewPin->ListEntry;
-  NewPin->ListEntry.Next->Prev = &NewPin->ListEntry;
-  NewPin->Object               = Object;
+  NewPin->Header.WideTag = BORAX_WIDETAG_PIN;
+  NewPin->Header.GcData  = Alloc->ToSpaceParity;
+  NewPin->Next           = Alloc->Pins;
+  Alloc->Pins            = NewPin;
+  NewPin->Object         = Object;
 
   *Pin = NewPin;
   return EFI_SUCCESS;

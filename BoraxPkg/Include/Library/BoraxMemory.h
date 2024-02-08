@@ -359,22 +359,17 @@ typedef struct {
  * garbage collector at TPL_APPLICATION.
  */
 
-typedef struct _BORAX_PIN_LIST BORAX_PIN_LIST;
+typedef union _BORAX_PIN BORAX_PIN;
 
-struct _BORAX_PIN_LIST {
-  BORAX_PIN_LIST    *Next;
-  BORAX_PIN_LIST    *Prev;
-};
-
-typedef union {
-  // Pins are allocated manually and kept in a doubly-linked list
+union _BORAX_PIN {
+  // Pins are allocated manually and kept in a singly-linked list
   BORAX_OBJECT_HEADER    Header;
   struct {
-    UINTN             Word0;
-    BORAX_PIN_LIST    ListEntry;
-    BORAX_OBJECT      Object;
+    UINTN           Word0;
+    BORAX_OBJECT    Object;
+    BORAX_PIN       *Next;
   };
-} BORAX_PIN;
+};
 
 /*
  * Weak pointers
@@ -454,7 +449,7 @@ typedef struct {
   BORAX_COPY_SPACE                   FromSpace;
   BORAX_COPY_SPACE                   ToSpace;
   UINTN                              ToSpaceParity;
-  BORAX_PIN_LIST                     Pins;
+  BORAX_PIN                          *Pins;
   BORAX_SYSTEM_ALLOCATOR_PROTOCOL    *SysAlloc;
   UINTN                              UsedPages;
 } BORAX_ALLOCATOR;
