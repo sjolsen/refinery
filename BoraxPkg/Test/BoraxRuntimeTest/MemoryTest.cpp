@@ -338,13 +338,22 @@ public:
 
   BORAX_CONS *
   MakeCons (
+    BORAX_OBJECT  Car,
+    BORAX_OBJECT  Cdr
     )
   {
     BORAX_CONS  *Cons;
-    EFI_STATUS  Status = BoraxAllocateCons (&Alloc, &Cons);
+    EFI_STATUS  Status = BoraxAllocateCons (&Alloc, Car, Cdr, &Cons);
 
     EXPECT_EQ (EFI_SUCCESS, Status);
     return Cons;
+  }
+
+  BORAX_CONS *
+  MakeCons (
+    )
+  {
+    return MakeCons (BORAX_IMMEDIATE_UNBOUND, BORAX_IMMEDIATE_UNBOUND);
   }
 
   std::vector<BORAX_CONS *>
@@ -356,9 +365,7 @@ public:
 
     Result.reserve (Count);
     for (UINTN i = 0; i < Count; ++i) {
-      BORAX_CONS  *Cons;
-      EFI_STATUS  Status = BoraxAllocateCons (&Alloc, &Cons);
-      EXPECT_EQ (EFI_SUCCESS, Status);
+      BORAX_CONS  *Cons = MakeCons ();
       Result.push_back (Cons);
     }
 
@@ -419,6 +426,22 @@ public:
     return Result;
   }
 
+  BORAX_WEAK_POINTER *
+  MakeWeakPointer (
+    VOID  *Object
+    )
+  {
+    BORAX_WEAK_POINTER  *Wp;
+    EFI_STATUS          Status = BoraxAllocateWeakPointer (
+                                   &Alloc,
+                                   BORAX_MAKE_POINTER (Object),
+                                   &Wp
+                                   );
+
+    EXPECT_EQ (EFI_SUCCESS, Status);
+    return Wp;
+  }
+
   template <typename Container>
   std::vector<BORAX_WEAK_POINTER *>
   MakeWeakPointers (
@@ -429,13 +452,7 @@ public:
 
     Result.reserve (Objects.size ());
     for (auto *Object : Objects) {
-      BORAX_WEAK_POINTER  *Wp;
-      EFI_STATUS          Status = BoraxAllocateWeakPointer (
-                                     &Alloc,
-                                     BORAX_MAKE_POINTER (Object),
-                                     &Wp
-                                     );
-      EXPECT_EQ (EFI_SUCCESS, Status);
+      BORAX_WEAK_POINTER  *Wp = MakeWeakPointer (Object);
       Result.push_back (Wp);
     }
 
@@ -530,6 +547,7 @@ TEST_F (MemoryLeakTests, RootedCons) {
 
 TEST_F (MemoryLeakTests, RootedList) {
   std::vector<BORAX_CONS *>  Conses = MakeConses (1000);
+  BORAX_PIN                  *Pin   = MakePin (Conses[0]);
 
   for (size_t i = 0; i < Conses.size (); ++i) {
     Conses[i]->Car = i << 1;  // fixnum
@@ -539,7 +557,6 @@ TEST_F (MemoryLeakTests, RootedList) {
     Conses[i]->Cdr = BORAX_MAKE_POINTER (Conses[i + 1]);
   }
 
-  BORAX_PIN                  *Pin     = MakePin (Conses[0]);
   std::vector<BORAX_OBJECT>  RootObjs = { BORAX_MAKE_POINTER (Pin) };
 
   Collect (RootObjs);
@@ -564,6 +581,58 @@ TEST_F (MemoryLeakTests, RootedList) {
       ASSERT_FALSE (BORAX_IS_POINTER (P->Cdr));
     }
   }
+}
+
+TEST_F (MemoryLeakTests, WeakPointerIsWeak) {
+  BORAX_CONS          *Cons = MakeCons ();
+  BORAX_WEAK_POINTER  *Wp   = MakeWeakPointer (Cons);
+  BORAX_PIN           *Pin  = MakePin (Wp);
+
+  std::vector<BORAX_OBJECT>  RootObjs = { BORAX_MAKE_POINTER (Pin) };
+
+  Collect (RootObjs);
+
+  ASSERT_THAT (Pin, IsValidAddress (Tracer));
+  ASSERT_TRUE (BORAX_IS_POINTER (Pin->Object));
+  BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Pin->Object);
+
+  ASSERT_THAT (Header, IsValidAddress (Tracer));
+  ASSERT_EQ (BORAX_WIDETAG_WEAK_POINTER, Header->WideTag);
+  Wp = reinterpret_cast<BORAX_WEAK_POINTER *>(Header);
+
+  EXPECT_EQ (BORAX_IMMEDIATE_UNBOUND, Wp->Value);
+}
+
+TEST_F (MemoryLeakTests, WeakPointerCanAccessAfterCollection) {
+  BORAX_CONS          *Cons = MakeCons ();
+  BORAX_WEAK_POINTER  *Wp   = MakeWeakPointer (Cons);
+  BORAX_PIN           *Pin1 = MakePin (Wp);
+  BORAX_PIN           *Pin2 = MakePin (Cons);
+
+  Cons->Car = 343 << 1;  // fixnum
+  Cons->Cdr = 2401 << 1;
+
+  std::vector<BORAX_OBJECT>  RootObjs = {
+    BORAX_MAKE_POINTER (Pin1), BORAX_MAKE_POINTER (Pin2) };
+
+  Collect (RootObjs);
+
+  ASSERT_THAT (Pin1, IsValidAddress (Tracer));
+  ASSERT_TRUE (BORAX_IS_POINTER (Pin1->Object));
+  BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Pin1->Object);
+
+  ASSERT_THAT (Header, IsValidAddress (Tracer));
+  ASSERT_EQ (BORAX_WIDETAG_WEAK_POINTER, Header->WideTag);
+  Wp = reinterpret_cast<BORAX_WEAK_POINTER *>(Header);
+
+  ASSERT_TRUE (BORAX_IS_POINTER (Wp->Value));
+  Header = BORAX_GET_POINTER (Wp->Value);
+  ASSERT_THAT (Header, IsValidAddress (Tracer));
+  ASSERT_TRUE (BORAX_IS_CONS (Header));
+  BORAX_CONS  *P = reinterpret_cast<BORAX_CONS *>(Header);
+
+  EXPECT_EQ ((UINTN)(343 << 1), P->Car);
+  EXPECT_EQ ((UINTN)(2401 << 1), P->Cdr);
 }
 
 int

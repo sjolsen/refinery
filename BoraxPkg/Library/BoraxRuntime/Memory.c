@@ -316,14 +316,19 @@ MarkObjectIfWhite (
 
   // Copy from FromSpace to ToSpace
   if (BORAX_IS_CONS (Object)) {
-    Status = BoraxAllocateCons (Alloc, (BORAX_CONS **)&NewObj);
+    BORAX_CONS  *OldCons = (BORAX_CONS *)Object;
+    Status = BoraxAllocateCons (
+               Alloc,
+               OldCons->Car,
+               OldCons->Cdr,
+               (BORAX_CONS **)&NewObj
+               );
     if (EFI_ERROR (Status)) {
       return Status;
     }
 
     // Future reads to Object will interpret it as a "moved" object and will
     // access GcData instead of the bitmap.
-    CopyMem (NewObj, Object, sizeof (BORAX_CONS));
     Object->WideTag        = BORAX_WIDETAG_MOVED;
     Object->HeaderWords[1] = BORAX_MAKE_POINTER (NewObj);
   } else {
@@ -331,14 +336,16 @@ MarkObjectIfWhite (
       // TODO: Implement move optimization for large objects
       case BORAX_WIDETAG_WEAK_POINTER:
       {
-        UINTN  Size = sizeof (BORAX_WEAK_POINTER);
-
-        Status = BoraxAllocateObject (Alloc, Size, &NewObj);
+        BORAX_WEAK_POINTER  *Wp = (BORAX_WEAK_POINTER *)Object;
+        Status = BoraxAllocateWeakPointer (
+                   Alloc,
+                   Wp->Value,
+                   (BORAX_WEAK_POINTER **)&NewObj
+                   );
         if (EFI_ERROR (Status)) {
           return Status;
         }
 
-        CopyMem (NewObj, Object, Size);
         Object->WideTag        = BORAX_WIDETAG_MOVED;
         Object->HeaderWords[1] = BORAX_MAKE_POINTER (NewObj);
         break;
@@ -573,6 +580,44 @@ SweepPins (
   return EFI_SUCCESS;
 }
 
+STATIC EFI_STATUS
+EFIAPI
+SweepWeakPointers (
+  IN BORAX_ALLOCATOR  *Alloc
+  )
+{
+  EFI_STATUS           Status;
+  UINTN                GcData;
+  BORAX_WEAK_POINTER   *Wp;
+  BORAX_OBJECT_HEADER  *Value;
+
+  // Look for referents that are about to get collected
+  for (Wp = Alloc->ToSpace.WeakPointers; Wp != NULL; Wp = Wp->Next) {
+    if (!BORAX_IS_POINTER (Wp->Value)) {
+      continue;
+    }
+
+    Value  = BORAX_GET_POINTER (Wp->Value);
+    Status = GetObjectGcData (Alloc, Value, &GcData);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+
+    switch (DecodeColor (Alloc, GcData)) {
+      case WHITE:
+        Wp->Value = BORAX_IMMEDIATE_UNBOUND;
+        break;
+      case GREY:
+        DEBUG ((DEBUG_ERROR, "grey weak referent found during sweep\n"));
+        return EFI_INVALID_PARAMETER;
+      case BLACK:
+        break;
+    }
+  }
+
+  return EFI_SUCCESS;
+}
+
 EFI_STATUS
 EFIAPI
 BoraxAllocatorCollect (
@@ -618,13 +663,18 @@ BoraxAllocatorCollect (
   }
 
   // Remove white objects
-  ClearSpace (Alloc, &Alloc->FromSpace);
-  SetMem (&Alloc->FromSpace, sizeof (Alloc->FromSpace), 0);
-
   Status = SweepPins (Alloc);
   if (EFI_ERROR (Status)) {
     goto cleanup;
   }
+
+  Status = SweepWeakPointers (Alloc);
+  if (EFI_ERROR (Status)) {
+    goto cleanup;
+  }
+
+  ClearSpace (Alloc, &Alloc->FromSpace);
+  SetMem (&Alloc->FromSpace, sizeof (Alloc->FromSpace), 0);
 
   // All remaining objects are marked black; the next collection will flip
   // Alloc->ToSpaceParity, which will effectively mark those object white
@@ -637,6 +687,8 @@ EFI_STATUS
 EFIAPI
 BoraxAllocateCons (
   IN BORAX_ALLOCATOR  *Alloc,
+  IN BORAX_OBJECT     Car,
+  IN BORAX_OBJECT     Cdr,
   OUT BORAX_CONS      **Cons
   )
 {
@@ -662,6 +714,8 @@ BoraxAllocateCons (
 
   // Bump allocate
   *Cons                          = (BORAX_CONS *)((CHAR8 *)Page + Alloc->ToSpace.Cons.FillIndex);
+  (*Cons)->Car                   = Car;
+  (*Cons)->Cdr                   = Cdr;
   Alloc->ToSpace.Cons.FillIndex += sizeof (BORAX_CONS);
   return EFI_SUCCESS;
 }
@@ -788,10 +842,10 @@ BoraxAllocateWeakPointer (
   }
 
   // Initialize the weak pointer and add it to the list
-  NewWp->Header.WideTag = BORAX_WIDETAG_WEAK_POINTER;
-  NewWp->Value          = Object;
-  NewWp->Next           = Alloc->WeakPointers;
-  Alloc->WeakPointers   = NewWp;
+  NewWp->Header.WideTag       = BORAX_WIDETAG_WEAK_POINTER;
+  NewWp->Value                = Object;
+  NewWp->Next                 = Alloc->ToSpace.WeakPointers;
+  Alloc->ToSpace.WeakPointers = NewWp;
 
   *WeakPointer = NewWp;
   return EFI_SUCCESS;

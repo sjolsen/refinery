@@ -81,16 +81,21 @@ STATIC_ASSERT (
 typedef UINTN BORAX_OBJECT;
 
 typedef enum {
-  BORAX_LOWTAG_FIXNUM  = 0,
-  BORAX_LOWTAG_POINTER = 1,
-  // other immediates are currently unused
-  BORAX_LOWTAG_HEAP = 3,
+  BORAX_LOWTAG_FIXNUM          = 0,
+  BORAX_LOWTAG_POINTER         = 1,
+  BORAX_LOWTAG_OTHER_IMMEDIATE = 5,
+  BORAX_LOWTAG_HEAP            = 3,
 } BORAX_LOWTAG;
 
 enum {
-  BORAX_LOWTAG_MASK_FIXNUM  = 1,
-  BORAX_LOWTAG_MASK_POINTER = 7,
-  BORAX_LOWTAG_MASK_HEAP    = 3,
+  BORAX_LOWTAG_MASK_FIXNUM          = 1,
+  BORAX_LOWTAG_MASK_POINTER         = 7,
+  BORAX_LOWTAG_MASK_OTHER_IMMEDIATE = 7,
+  BORAX_LOWTAG_MASK_HEAP            = 3,
+};
+
+enum {
+  BORAX_IMMEDIATE_UNBOUND = BORAX_LOWTAG_OTHER_IMMEDIATE | 0x08,
 };
 
 #define BORAX_IS_FIXNUM(_obj) \
@@ -442,6 +447,7 @@ union _BORAX_WEAK_POINTER {
 typedef struct {
   BORAX_CONS_ALLOCATOR      Cons;
   BORAX_OBJECT_ALLOCATOR    Object;
+  BORAX_WEAK_POINTER        *WeakPointers;          // Non-owning pointer
 } BORAX_COPY_SPACE;
 
 typedef struct {
@@ -449,7 +455,6 @@ typedef struct {
   BORAX_COPY_SPACE                   ToSpace;
   UINTN                              ToSpaceParity;
   BORAX_PIN_LIST                     Pins;
-  BORAX_WEAK_POINTER                 *WeakPointers; // Non-owning pointer
   BORAX_SYSTEM_ALLOCATOR_PROTOCOL    *SysAlloc;
   UINTN                              UsedPages;
 } BORAX_ALLOCATOR;
@@ -483,6 +488,8 @@ EFI_STATUS
 EFIAPI
 BoraxAllocateCons (
   IN BORAX_ALLOCATOR  *Alloc,
+  IN BORAX_OBJECT     Car,
+  IN BORAX_OBJECT     Cdr,
   OUT BORAX_CONS      **Cons
   );
 
