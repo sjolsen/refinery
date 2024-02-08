@@ -4,6 +4,8 @@
 #include <gtest/gtest.h>
 
 extern "C" {
+  #include <Library/BaseLib.h>
+  #include <Library/BaseMemoryLib.h>
   #include <Library/BoraxMemory.h>
 }
 
@@ -458,6 +460,29 @@ public:
 
     return Result;
   }
+
+  BORAX_STRING *
+  MakeString (
+    CONST CHAR16  *Text
+    )
+  {
+    BORAX_STRING  *String;
+    EFI_STATUS    Status;
+    UINTN         Length = StrLen (Text) + 1; // NUL-terminated
+
+    Status = BoraxAllocateString (&Alloc, Length, &String);
+    EXPECT_EQ (EFI_SUCCESS, Status);
+    CopyMem (String->Data, Text, 2 * Length);
+    return String;
+  }
+
+  BORAX_STRING *
+  MakeString (
+    const wchar_t  *Text
+    )
+  {
+    return MakeString ((CONST CHAR16 *)Text);
+  }
 };
 
 TEST_F (MemoryLeakTests, CleanupNothing) {
@@ -481,6 +506,10 @@ TEST_F (MemoryLeakTests, CleanupWeakPointer) {
   auto  Conses = MakeConses (1000);
 
   (VOID)MakeWeakPointers (Conses);
+}
+
+TEST_F (MemoryLeakTests, CleanupString) {
+  (VOID)MakeString (L"Hello, world!");
 }
 
 TEST_F (MemoryLeakTests, CollectNothing) {
@@ -508,6 +537,11 @@ TEST_F (MemoryLeakTests, CollectRootlessWeakPointer) {
   auto  Conses = MakeConses (1000);
 
   (VOID)MakeWeakPointers (Conses);
+  Collect ();
+}
+
+TEST_F (MemoryLeakTests, CollectRootlessString) {
+  (VOID)MakeString (L"Hello, world!");
   Collect ();
 }
 
@@ -633,6 +667,23 @@ TEST_F (MemoryLeakTests, WeakPointerCanAccessAfterCollection) {
 
   EXPECT_EQ ((UINTN)(343 << 1), P->Car);
   EXPECT_EQ ((UINTN)(2401 << 1), P->Cdr);
+}
+
+TEST_F (MemoryLeakTests, RootedString) {
+  BORAX_STRING               *String  = MakeString (L"Hello, world!");
+  BORAX_PIN                  *Pin     = MakePin (String);
+  std::vector<BORAX_OBJECT>  RootObjs = { BORAX_MAKE_POINTER (Pin) };
+
+  Collect (RootObjs);
+
+  ASSERT_THAT (Pin, IsValidAddress (Tracer));
+  ASSERT_TRUE (BORAX_IS_POINTER (Pin->Object));
+  BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Pin->Object);
+
+  ASSERT_THAT (Header, IsValidAddress (Tracer));
+  ASSERT_EQ (BORAX_WIDETAG_STRING, Header->WideTag);
+  String = reinterpret_cast<BORAX_STRING *>(Header);
+  EXPECT_EQ (0, StrCmp((CONST CHAR16 *)L"Hello, world!", String->Data));
 }
 
 int

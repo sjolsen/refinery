@@ -294,6 +294,22 @@ MarkObjectIfWhite (
       break;
     }
     // TODO: Implement move optimization for large objects
+    case BORAX_DISCRIM_STRING:
+    {
+      BORAX_STRING  *String = (BORAX_STRING *)Object;
+      BORAX_STRING *NewStr;
+
+      Status = BoraxAllocateString ( Alloc, String->Length, &NewStr );
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      NewObj = &NewStr->Header;
+      CopyMem (NewStr->Data, String->Data, 2 * String->Length);
+      Object->WideTag        = BORAX_WIDETAG_MOVED;
+      Object->HeaderWords[1] = BORAX_MAKE_POINTER (NewObj);
+      break;
+    }
     case BORAX_DISCRIM_WEAK_POINTER:
     {
       BORAX_WEAK_POINTER  *Wp = (BORAX_WEAK_POINTER *)Object;
@@ -403,6 +419,7 @@ MarkSubObjectsIfWhite (
       Status = MarkObjectWordIfWhite (Alloc, GreyList, Pin->Object);
       return Status;
     }
+    case BORAX_DISCRIM_STRING:
     case BORAX_DISCRIM_WEAK_POINTER:
     case BORAX_DISCRIM_MOVED:
       // Nothing to do
@@ -461,7 +478,8 @@ MarkObjectBlack (
       UpdateIfMoved (&Wp->Value);
       break;
     }
-    case BORAX_WIDETAG_MOVED:  // Not an object
+    case BORAX_DISCRIM_STRING:  // No subobjects
+    case BORAX_DISCRIM_MOVED:  // Not an object
       break;
     default:
       // If a new widetag is added, we need to add support for it
@@ -772,5 +790,35 @@ BoraxAllocateWeakPointer (
   Alloc->ToSpace.WeakPointers = NewWp;
 
   *WeakPointer = NewWp;
+  return EFI_SUCCESS;
+}
+
+EFI_STATUS
+EFIAPI
+BoraxAllocateString (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN UINTN            Length,
+  OUT BORAX_STRING    **String
+  )
+{
+  EFI_STATUS    Status;
+  BORAX_STRING  *NewString;
+
+  // Allocate a regular lisp object
+  Status = BoraxAllocateObject (
+             Alloc,
+             sizeof (BORAX_STRING) + 2 * Length,
+             (BORAX_OBJECT_HEADER **)&NewString
+             );
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  // Initialize the string
+  NewString->Header.WideTag = BORAX_WIDETAG_STRING;
+  NewString->Length         = Length;
+  SetMem (NewString->Data, 2 * Length, 0);
+
+  *String = NewString;
   return EFI_SUCCESS;
 }

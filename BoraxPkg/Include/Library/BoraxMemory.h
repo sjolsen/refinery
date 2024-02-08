@@ -96,6 +96,7 @@ enum {
 
 enum {
   BORAX_IMMEDIATE_UNBOUND = 0x00 | BORAX_LOWTAG_OTHER_IMMEDIATE,
+  BORAX_IMMEDIATE_NIL     = 0x80 | BORAX_LOWTAG_OTHER_IMMEDIATE,
 };
 
 #define BORAX_IS_FIXNUM(_obj) \
@@ -114,6 +115,7 @@ enum {
 (((_ptr)->HeaderWords[0] & BORAX_LOWTAG_MASK_HEAP) != BORAX_LOWTAG_HEAP)
 
 enum {
+  BORAX_WIDETAG_STRING        = 0x03,
   BORAX_WIDETAG_WEAK_POINTER  = 0xF3,
   BORAX_WIDETAG_PIN           = 0xF7,
   BORAX_WIDETAG_MOVED         = 0xFB,
@@ -126,8 +128,10 @@ enum {
   // Immediates
   BORAX_DISCRIM_FIXNUM  = 0x00,
   BORAX_DISCRIM_UNBOUND = BORAX_IMMEDIATE_UNBOUND,
+  BORAX_DISCRIM_NIL     = BORAX_IMMEDIATE_NIL,
   // Pointers
   BORAX_DISCRIM_CONS          = 0x02,
+  BORAX_DISCRIM_STRING        = BORAX_WIDETAG_STRING,
   BORAX_DISCRIM_WEAK_POINTER  = BORAX_WIDETAG_WEAK_POINTER,
   BORAX_DISCRIM_PIN           = BORAX_WIDETAG_PIN,
   BORAX_DISCRIM_MOVED         = BORAX_WIDETAG_MOVED,
@@ -531,6 +535,38 @@ BoraxAllocateWeakPointer (
   IN BORAX_ALLOCATOR      *Alloc,
   IN BORAX_OBJECT         Object,
   OUT BORAX_WEAK_POINTER  **WeakPointer
+  );
+
+/*
+ * Strings
+ * =======
+ *
+ * Strings are UCS-2 encoded and NUL-terminated for UEFI interoperability. The
+ * Length field counts 16-bit characters and includes the NUL-terminator, so a
+ * valid string will never have zero length.
+ *
+ * Future directions:
+ *
+ * - Should strings be exposed as mutable or immutable to lisp software?
+ *
+ * - If immutable, should short strings be represented as immediates?
+ */
+
+typedef union {
+  BORAX_OBJECT_HEADER    Header;
+  struct {
+    UINTN     Word0;
+    UINTN     Length;
+    CHAR16    Data[];
+  };
+} BORAX_STRING;
+
+EFI_STATUS
+EFIAPI
+BoraxAllocateString (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN UINTN            Length,
+  OUT BORAX_STRING    **String
   );
 
 #endif // BORAX_MEMORY_H
