@@ -1,6 +1,7 @@
 #include <Library/BoraxMemory.h>
 
 #include <Library/BaseMemoryLib.h>
+#include <Library/DebugLib.h>
 
 #include "GreyList.h"
 
@@ -199,6 +200,12 @@ GetProperObjectColor (
       return EFI_SUCCESS;
     default:
       // We should never see this case
+      DEBUG ((
+        DEBUG_ERROR,
+        "%a: invalid widetag (%u)\n",
+        __func__,
+        Object->WideTag
+        ));
       return EFI_INVALID_PARAMETER;
   }
 }
@@ -237,6 +244,7 @@ GetObjectColor (
     }
   } else {
     // We should never see this case
+    DEBUG ((DEBUG_ERROR, "%a: invalid lowtag (%u)\n", __func__, Object & 7));
     return EFI_INVALID_PARAMETER;
   }
 }
@@ -267,6 +275,7 @@ SetProperObjectColor (
       break;
     default:
       // We should never see this case
+      DEBUG ((DEBUG_ERROR, "%a: invalid color (%u)\n", __func__, Color));
       return EFI_INVALID_PARAMETER;
   }
 
@@ -279,6 +288,12 @@ SetProperObjectColor (
       return EFI_SUCCESS;
     default:
       // We should never see this case
+      DEBUG ((
+        DEBUG_ERROR,
+        "%a: invalid widetag (%u)\n",
+        __func__,
+        Object->WideTag
+        ));
       return EFI_INVALID_PARAMETER;
   }
 }
@@ -355,11 +370,18 @@ MarkObjectIfWhite (
           break;
         default:
           // We should never see this case
+          DEBUG ((
+            DEBUG_ERROR,
+            "%a: invalid widetag (%u)\n",
+            __func__,
+            OldObj->WideTag
+            ));
           return EFI_INVALID_PARAMETER;
       }
     }
   } else {
     // We should never see this case
+    DEBUG ((DEBUG_ERROR, "%a: invalid lowtag (%u)\n", __func__, Object & 7));
     return EFI_INVALID_PARAMETER;
   }
 
@@ -408,11 +430,13 @@ MarkSubObjectsIfWhite (
           return EFI_SUCCESS;
         default:
           // We should never see this case
+          DEBUG ((DEBUG_ERROR, "%a: invalid widetag (%u)\n", __func__, Obj->WideTag));
           return EFI_INVALID_PARAMETER;
       }
     }
   } else {
     // We should never see this case
+    DEBUG ((DEBUG_ERROR, "%a: invalid lowtag (%u)\n", __func__, Object & 7));
     return EFI_INVALID_PARAMETER;
   }
 }
@@ -476,11 +500,18 @@ MarkObjectBlack (
           return EFI_SUCCESS;
         default:
           // We should never see this case
+          DEBUG ((
+            DEBUG_ERROR,
+            "%a: invalid widetag (%u)\n",
+            __func__,
+            Obj->WideTag
+            ));
           return EFI_INVALID_PARAMETER;
       }
     }
   } else {
     // We should never see this case
+    DEBUG ((DEBUG_ERROR, "%a: invalid lowtag (%u)\n", __func__, Object & 7));
     return EFI_INVALID_PARAMETER;
   }
 }
@@ -513,6 +544,7 @@ SweepPins (
         Alloc->SysAlloc->FreePool (Alloc->SysAlloc, Pin);
         break;
       case GREY:
+        DEBUG ((DEBUG_ERROR, "grey pin found during sweep\n"));
         return EFI_INVALID_PARAMETER;
       case BLACK:
         break;
@@ -591,6 +623,7 @@ BoraxAllocateCons (
     // No page or page is full; allocate one
     Page = FFAllocatePages (Alloc, 1);
     if (Page == NULL) {
+      DEBUG ((DEBUG_ERROR, "%a: out of memory\n", __func__));
       return EFI_OUT_OF_RESOURCES;
     }
 
@@ -652,6 +685,7 @@ BoraxAllocateObject (
 
     Chunk = FFAllocatePages (Alloc, Pages);
     if (Chunk == NULL) {
+      DEBUG ((DEBUG_ERROR, "%a: out of memory\n", __func__));
       return EFI_OUT_OF_RESOURCES;
     }
 
@@ -692,6 +726,7 @@ BoraxAllocatePin (
   // Get the memory for the pin
   NewPin = FFAllocatePool (Alloc, sizeof (*NewPin));
   if (NewPin == NULL) {
+    DEBUG ((DEBUG_ERROR, "%a: out of memory\n", __func__));
     return EFI_OUT_OF_RESOURCES;
   }
 
