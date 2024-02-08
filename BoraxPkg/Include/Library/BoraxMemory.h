@@ -109,7 +109,7 @@ enum {
 (!BORAX_IS_HEAP(_ptr->HeaderWords[0]))
 
 #define BORAX_MAKE_POINTER(_ptr) \
-((UINTN)(_ptr) | BORAX_LOWTAG_MASK_POINTER)
+((UINTN)(_ptr) | BORAX_LOWTAG_POINTER)
 
 typedef enum {
   BORAX_WIDETAG_WEAK_POINTER  = 0xF3,
