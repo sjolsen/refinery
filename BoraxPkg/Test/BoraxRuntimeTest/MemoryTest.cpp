@@ -225,6 +225,7 @@ MakeRootSetIterator(const Container& C) {
 class MemoryLeakTests : public ::testing::Test {
 public:
   TracingAllocator Tracer;
+  BORAX_ALLOCATOR  Alloc;
 
   void
   ValidateReport (
@@ -236,99 +237,65 @@ public:
     EXPECT_THAT (Report.PoolAllocs, IsEmpty ());
     EXPECT_THAT (Report.Errors, IsEmpty ());
   }
+
+  void SetUp() override {
+    BoraxAllocatorInit (&Alloc, Tracer.GetProtocol ());
+  }
+
+  void TearDown() override {
+    BoraxAllocatorCleanup (&Alloc);
+    ValidateReport ();
+  }
 };
 
 TEST_F (MemoryLeakTests, CleanupNothing) {
-  BORAX_ALLOCATOR  Alloc;
-
-  BoraxAllocatorInit (&Alloc, Tracer.GetProtocol ());
-  BoraxAllocatorCleanup (&Alloc);
-  ValidateReport ();
 }
 
 TEST_F (MemoryLeakTests, CleanupCons) {
-  EFI_STATUS       Status;
-  BORAX_ALLOCATOR  Alloc;
-
-  BoraxAllocatorInit (&Alloc, Tracer.GetProtocol ());
-
   for (int i = 0; i < 4000; ++i) {
     BORAX_CONS *Cons;
-    Status = BoraxAllocateCons(&Alloc, &Cons);
+    EFI_STATUS Status = BoraxAllocateCons(&Alloc, &Cons);
     EXPECT_EQ (EFI_SUCCESS, Status);
   }
-
-  BoraxAllocatorCleanup (&Alloc);
-  ValidateReport ();
 }
 
 TEST_F (MemoryLeakTests, CleanupObject) {
-  EFI_STATUS       Status;
-  BORAX_ALLOCATOR  Alloc;
-
-  BoraxAllocatorInit (&Alloc, Tracer.GetProtocol ());
-
   for (int i = 0; i < 100; ++i) {
     BORAX_OBJECT_HEADER *Object;
-    Status = BoraxAllocateObject(&Alloc, 16 * i, &Object);
+    EFI_STATUS Status = BoraxAllocateObject(&Alloc, 16 * i, &Object);
     EXPECT_EQ (EFI_SUCCESS, Status);
   }
-
-  BoraxAllocatorCleanup (&Alloc);
-  ValidateReport ();
 }
 
 TEST_F (MemoryLeakTests, CleanupPin) {
-  EFI_STATUS       Status;
-  BORAX_ALLOCATOR  Alloc;
-
-  BoraxAllocatorInit (&Alloc, Tracer.GetProtocol ());
-
   for (int i = 0; i < 10; ++i) {
     BORAX_CONS *Cons;
-    Status = BoraxAllocateCons(&Alloc, &Cons);
+    EFI_STATUS Status = BoraxAllocateCons(&Alloc, &Cons);
     EXPECT_EQ (EFI_SUCCESS, Status);
 
     BORAX_PIN *Pin;
     Status = BoraxAllocatePin(&Alloc, BORAX_MAKE_POINTER(Cons), &Pin);
     EXPECT_EQ (EFI_SUCCESS, Status);
   }
-
-  BoraxAllocatorCleanup (&Alloc);
-  ValidateReport ();
 }
 
 TEST_F (MemoryLeakTests, CleanupWeakPointer) {
-  EFI_STATUS       Status;
-  BORAX_ALLOCATOR  Alloc;
-
-  BoraxAllocatorInit (&Alloc, Tracer.GetProtocol ());
-
   for (int i = 0; i < 1000; ++i) {
     BORAX_CONS *Cons;
-    Status = BoraxAllocateCons(&Alloc, &Cons);
+    EFI_STATUS Status = BoraxAllocateCons(&Alloc, &Cons);
     EXPECT_EQ (EFI_SUCCESS, Status);
 
     BORAX_WEAK_POINTER *Wp;
     Status = BoraxAllocateWeakPointer(&Alloc, BORAX_MAKE_POINTER(Cons), &Wp);
     EXPECT_EQ (EFI_SUCCESS, Status);
   }
-
-  BoraxAllocatorCleanup (&Alloc);
-  ValidateReport ();
 }
 
 TEST_F (MemoryLeakTests, CollectNothing) {
-  EFI_STATUS       Status;
-  BORAX_ALLOCATOR  Alloc;
-
-  BoraxAllocatorInit (&Alloc, Tracer.GetProtocol ());
   std::vector<BORAX_OBJECT> RootSet = {};
   auto RSI = MakeRootSetIterator(RootSet);
-  Status = BoraxAllocatorCollect (&Alloc, RSI.Get());
+  EFI_STATUS Status = BoraxAllocatorCollect (&Alloc, RSI.Get());
   EXPECT_EQ (EFI_SUCCESS, Status);
-  BoraxAllocatorCleanup (&Alloc);
-  ValidateReport ();
 }
 
 int
