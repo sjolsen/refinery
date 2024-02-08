@@ -325,6 +325,7 @@ MarkObjectIfWhite (
       ConsGreyBitmapSet (NewCons, 1);
     } else {
       switch (OldObj->WideTag) {
+        // TODO: Implement move optimization for large objects
         case BORAX_WIDETAG_WEAK_POINTER:
         {
           BORAX_OBJECT_HEADER  *NewObj;

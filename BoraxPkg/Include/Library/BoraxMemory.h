@@ -278,15 +278,16 @@ typedef struct {
  * that our choice of moved pointer representation limits object size to a
  * minimum of two machine words.
  *
- * We make one optimization for large objects. Our allocation strategy ensures
- * that objects above a certain size (slightly less than the size of a page)
- * will only ever be located at the beginning of a page chunk. Such an object
- * may be followed by small objects at the end of the chunk, and the latter will
- * be copied normally, but we defer copying the large objects until the end of
- * the copy phase. At that point, any page chunks containing a large object will
- * contain only that large object, at exactly the beginning, with no live
- * objects following it, and we can simply reset the fill pointer accordingly
- * and move the chunk from the old set into the new set by pointer assignment.
+ * (Not yet implemented): We make one optimization for large objects. Our
+ * allocation strategy ensures that objects above a certain size (slightly less
+ * than the size of a page) will only ever be located at the beginning of a page
+ * chunk. Such an object may be followed by small objects at the end of the
+ * chunk, and the latter will be copied normally, but we defer copying the large
+ * objects until the end of the copy phase. At that point, any page chunks
+ * containing a large object will contain only that large object, at exactly the
+ * beginning, with no live objects following it, and we can simply reset the
+ * fill pointer accordingly and move the chunk from the old set into the new set
+ * by pointer assignment.
  */
 
 typedef enum {
