@@ -320,7 +320,7 @@ MarkObjectIfWhite (
       // access GcData instead of the bitmap.
       CopyMem (NewCons, OldObj, sizeof (BORAX_CONS));
       OldObj->WideTag        = BORAX_WIDETAG_MOVED;
-      OldObj->HeaderWords[1] = BORAX_MAKE_POINTER(NewCons);
+      OldObj->HeaderWords[1] = BORAX_MAKE_POINTER (NewCons);
       (VOID)SetProperObjectColor (Alloc, OldObj, GREY);
       ConsGreyBitmapSet (NewCons, 1);
     } else {
@@ -337,7 +337,7 @@ MarkObjectIfWhite (
 
           CopyMem (NewObj, OldObj, Size);
           OldObj->WideTag        = BORAX_WIDETAG_MOVED;
-          OldObj->HeaderWords[1] = BORAX_MAKE_POINTER(NewObj);
+          OldObj->HeaderWords[1] = BORAX_MAKE_POINTER (NewObj);
           (VOID)SetProperObjectColor (Alloc, OldObj, GREY);
           (VOID)SetProperObjectColor (Alloc, NewObj, GREY);
           break;
@@ -563,6 +563,8 @@ BoraxAllocatorCollect (
 
   // Remove white objects
   ClearSpace (Alloc, &Alloc->FromSpace);
+  SetMem (&Alloc->FromSpace, sizeof (Alloc->FromSpace), 0);
+
   Status = SweepPins (Alloc);
   if (EFI_ERROR (Status)) {
     goto cleanup;
