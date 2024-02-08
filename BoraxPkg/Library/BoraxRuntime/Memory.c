@@ -129,10 +129,10 @@ BoraxAllocatorCleanup (
 (CONS_PAGE_OFFSET(_addr) / sizeof (BORAX_CONS))
 
 #define CONS_BITMAP_WORD(_addr) \
-(CONS_BITMAP_INDEX(_addr) / sizeof (BORAX_WORD_BITS))
+(CONS_BITMAP_INDEX(_addr) / BORAX_WORD_BITS)
 
 #define CONS_BITMAP_BIT(_addr) \
-(CONS_BITMAP_INDEX(_addr) % sizeof (BORAX_WORD_BITS))
+(CONS_BITMAP_INDEX(_addr) % BORAX_WORD_BITS)
 
 STATIC EFI_STATUS
 EFIAPI
