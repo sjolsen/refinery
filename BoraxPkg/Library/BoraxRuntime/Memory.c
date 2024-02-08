@@ -7,7 +7,7 @@
 
 STATIC VOID *
 EFIAPI
-FFAllocatePages (
+InternalAllocatePages (
   IN BORAX_ALLOCATOR  *Alloc,
   IN UINTN            Pages
   )
@@ -19,13 +19,26 @@ FFAllocatePages (
     return NULL;
   }
 
+  Alloc->UsedPages += Pages;
   SetMem (Mem, BORAX_PAGE_SIZE * Pages, -1);
   return Mem;
 }
 
+STATIC VOID
+EFIAPI
+InternalFreePages (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN VOID             *Buffer,
+  IN UINTN            Pages
+  )
+{
+  Alloc->SysAlloc->FreePages (Alloc->SysAlloc, Buffer, Pages);
+  Alloc->UsedPages -= Pages;
+}
+
 STATIC VOID *
 EFIAPI
-FFAllocatePool (
+InternalAllocatePool (
   IN BORAX_ALLOCATOR  *Alloc,
   IN UINTN            AllocationSize
   )
@@ -39,6 +52,16 @@ FFAllocatePool (
 
   SetMem (Mem, AllocationSize, -1);
   return Mem;
+}
+
+STATIC VOID
+EFIAPI
+InternalFreePool (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN VOID             *Buffer
+  )
+{
+  Alloc->SysAlloc->FreePool (Alloc->SysAlloc, Buffer);
 }
 
 VOID
@@ -69,11 +92,7 @@ ClearSpace (
   ConsPage = Space->Cons.Pages;
   while (ConsPage != NULL) {
     BORAX_CONS_PAGE  *Next = ConsPage->Next;
-    Alloc->SysAlloc->FreePages (
-                       Alloc->SysAlloc,
-                       ConsPage,
-                       1
-                       );
+    InternalFreePages (Alloc, ConsPage, 1);
     ConsPage = Next;
   }
 
@@ -82,11 +101,7 @@ ClearSpace (
     ObjChunk = Space->Object.Chunks[Bin];
     while (ObjChunk != NULL) {
       BORAX_OBJECT_CHUNK  *Next = ObjChunk->Next;
-      Alloc->SysAlloc->FreePages (
-                         Alloc->SysAlloc,
-                         ObjChunk,
-                         ObjChunk->Pages
-                         );
+      InternalFreePages (Alloc, ObjChunk, ObjChunk->Pages);
       ObjChunk = Next;
     }
   }
@@ -109,7 +124,7 @@ BoraxAllocatorCleanup (
   while (PinEntry != &Alloc->Pins) {
     BORAX_PIN_LIST  *Next = PinEntry->Next;
     BORAX_PIN       *Pin  = BASE_CR (PinEntry, BORAX_PIN, ListEntry);
-    Alloc->SysAlloc->FreePool (Alloc->SysAlloc, Pin);
+    InternalFreePool (Alloc, Pin);
     PinEntry = Next;
   }
 
@@ -358,7 +373,7 @@ MarkObjectIfWhite (
     }
   } else {
     GcData ^= BORAX_OBJECT_GCDATA_SPACEBIT;
-    Status = SetObjectGcData (Alloc, NewObj, GcData);
+    Status  = SetObjectGcData (Alloc, NewObj, GcData);
     if (EFI_ERROR (Status)) {
       return Status;
     }
@@ -543,7 +558,7 @@ SweepPins (
       case WHITE:
         Next->Prev = Prev;
         Prev->Next = Next;
-        Alloc->SysAlloc->FreePool (Alloc->SysAlloc, Pin);
+        InternalFreePool (Alloc, Pin);
         break;
       case GREY:
         DEBUG ((DEBUG_ERROR, "grey pin found during sweep\n"));
@@ -629,7 +644,7 @@ BoraxAllocateCons (
 
   if ((Page == NULL) || (Alloc->ToSpace.Cons.FillIndex == BORAX_PAGE_SIZE)) {
     // No page or page is full; allocate one
-    Page = FFAllocatePages (Alloc, 1);
+    Page = InternalAllocatePages (Alloc, 1);
     if (Page == NULL) {
       DEBUG ((DEBUG_ERROR, "%a: out of memory\n", __func__));
       return EFI_OUT_OF_RESOURCES;
@@ -691,7 +706,7 @@ BoraxAllocateObject (
     UINTN  Bytes = BORAX_OBJECT_FIRST_INDEX + Size;
     UINTN  Pages = (Bytes + BORAX_PAGE_SIZE - 1) / BORAX_PAGE_SIZE;
 
-    Chunk = FFAllocatePages (Alloc, Pages);
+    Chunk = InternalAllocatePages (Alloc, Pages);
     if (Chunk == NULL) {
       DEBUG ((DEBUG_ERROR, "%a: out of memory\n", __func__));
       return EFI_OUT_OF_RESOURCES;
@@ -732,7 +747,7 @@ BoraxAllocatePin (
   BORAX_PIN  *NewPin;
 
   // Get the memory for the pin
-  NewPin = FFAllocatePool (Alloc, sizeof (*NewPin));
+  NewPin = InternalAllocatePool (Alloc, sizeof (*NewPin));
   if (NewPin == NULL) {
     DEBUG ((DEBUG_ERROR, "%a: out of memory\n", __func__));
     return EFI_OUT_OF_RESOURCES;
