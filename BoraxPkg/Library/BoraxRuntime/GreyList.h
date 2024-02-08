@@ -6,9 +6,9 @@
 typedef struct _BORAX_GREY_PAGE BORAX_GREY_PAGE;
 
 struct _BORAX_GREY_PAGE {
-  BORAX_GREY_PAGE    *Next;
-  UINTN              FillIndex; // Array index, not byte offset
-  BORAX_OBJECT       Objects[];
+  BORAX_GREY_PAGE        *Next;
+  UINTN                  FillIndex; // Array index, not byte offset
+  BORAX_OBJECT_HEADER    *Objects[];
 };
 
 typedef struct {
@@ -32,15 +32,15 @@ BoraxGreyListCleanup (
 EFI_STATUS
 EFIAPI
 BoraxGreyListPush (
-  IN BORAX_GREY_LIST  *GreyList,
-  IN BORAX_OBJECT     Object
+  IN BORAX_GREY_LIST      *GreyList,
+  IN BORAX_OBJECT_HEADER  *Object
   );
 
 BOOLEAN
 EFIAPI
 BoraxGreyListPop (
-  IN BORAX_GREY_LIST  *GreyList,
-  OUT BORAX_OBJECT    *Object
+  IN BORAX_GREY_LIST       *GreyList,
+  OUT BORAX_OBJECT_HEADER  **Object
   );
 
 #endif // BORAX_GREY_LIST_H

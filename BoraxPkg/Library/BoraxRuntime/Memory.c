@@ -171,87 +171,59 @@ typedef enum {
 
 STATIC EFI_STATUS
 EFIAPI
-GetProperObjectColor (
+GetObjectColor (
   IN BORAX_ALLOCATOR      *Alloc,
   IN BORAX_OBJECT_HEADER  *Object,
   OUT COLOR               *Color
   )
 {
   UINTN  ToSpace = Alloc->ToSpaceParity;
+  UINTN  SpaceBit;
+  UINTN  GreyBit;
 
-  switch (Object->WideTag) {
-    case BORAX_WIDETAG_WEAK_POINTER:
-    case BORAX_WIDETAG_PIN:
-    case BORAX_WIDETAG_MOVED:
-      if (Object->GcData & BORAX_OBJECT_GCDATA_GREYBIT) {
-        *Color = GREY;
-      } else if ((Object->GcData & BORAX_OBJECT_GCDATA_SPACEBIT) == ToSpace) {
-        *Color = BLACK;
-      } else {
-        *Color = WHITE;
-      }
-
-      return EFI_SUCCESS;
-    case BORAX_WIDETAG_UNINITIALIZED:
-      // The GcData field in this case is unlikely to be initialized. It
-      // also doesn't really matter what we return, but for consistency with
-      // fixnums, return black.
-      *Color = BLACK;
-      return EFI_SUCCESS;
-    default:
-      // We should never see this case
-      DEBUG ((
-        DEBUG_ERROR,
-        "%a: invalid widetag (%u)\n",
-        __func__,
-        Object->WideTag
-        ));
-      return EFI_INVALID_PARAMETER;
-  }
-}
-
-STATIC EFI_STATUS
-EFIAPI
-GetObjectColor (
-  IN BORAX_ALLOCATOR  *Alloc,
-  IN BORAX_OBJECT     Object,
-  OUT COLOR           *Color
-  )
-{
-  UINTN  ToSpace = Alloc->ToSpaceParity;
-
-  if (BORAX_IS_FIXNUM (Object)) {
-    // Nothing to do for fixnums, so bypass processing by reporting black
-    *Color = BLACK;
-    return EFI_SUCCESS;
-  } else if (BORAX_IS_POINTER (Object)) {
-    BORAX_OBJECT_HEADER  *Obj = BORAX_GET_POINTER (Object);
-    if (BORAX_IS_CONS (Obj)) {
-      BORAX_CONS       *Cons = (BORAX_CONS *)Obj;
-      BORAX_CONS_PAGE  *Page = CONS_PAGE (Cons);
-
-      if (ConsGreyBitmapGet (Cons)) {
-        *Color = GREY;
-      } else if (Page->SpaceParity == ToSpace) {
-        *Color = BLACK;
-      } else {
-        *Color = WHITE;
-      }
-
-      return EFI_SUCCESS;
-    } else {
-      return GetProperObjectColor (Alloc, Obj, Color);
-    }
+  if (BORAX_IS_CONS (Object)) {
+    BORAX_CONS       *Cons = (BORAX_CONS *)Object;
+    BORAX_CONS_PAGE  *Page = CONS_PAGE (Cons);
+    SpaceBit = Page->SpaceParity;
+    GreyBit  = ConsGreyBitmapGet (Cons);
   } else {
-    // We should never see this case
-    DEBUG ((DEBUG_ERROR, "%a: invalid lowtag (%u)\n", __func__, Object & 7));
-    return EFI_INVALID_PARAMETER;
+    switch (Object->WideTag) {
+      case BORAX_WIDETAG_WEAK_POINTER:
+      case BORAX_WIDETAG_PIN:
+      case BORAX_WIDETAG_MOVED:
+        SpaceBit = Object->GcData & BORAX_OBJECT_GCDATA_SPACEBIT;
+        GreyBit  = Object->GcData & BORAX_OBJECT_GCDATA_GREYBIT;
+        break;
+      case BORAX_WIDETAG_UNINITIALIZED:
+        // The GcData field should be set even for uninitialized objects
+        DEBUG ((DEBUG_ERROR, "%a: uninitialized GcData\n", __func__));
+        return EFI_INVALID_PARAMETER;
+      default:
+        // We should never see this case
+        DEBUG ((
+          DEBUG_ERROR,
+          "%a: invalid widetag (%u)\n",
+          __func__,
+          Object->WideTag
+          ));
+        return EFI_INVALID_PARAMETER;
+    }
   }
+
+  if (GreyBit) {
+    *Color = GREY;
+  } else if (SpaceBit == ToSpace) {
+    *Color = BLACK;
+  } else {
+    *Color = WHITE;
+  }
+
+  return EFI_SUCCESS;
 }
 
 STATIC EFI_STATUS
 EFIAPI
-SetProperObjectColor (
+SetObjectColor (
   IN BORAX_ALLOCATOR      *Alloc,
   IN BORAX_OBJECT_HEADER  *Object,
   IN COLOR                Color
@@ -279,35 +251,49 @@ SetProperObjectColor (
       return EFI_INVALID_PARAMETER;
   }
 
-  switch (Object->WideTag) {
-    case BORAX_WIDETAG_WEAK_POINTER:
-    case BORAX_WIDETAG_PIN:
-    case BORAX_WIDETAG_MOVED:
-    case BORAX_WIDETAG_UNINITIALIZED:
-      Object->GcData = SpaceBit | GreyBit;
+  if (BORAX_IS_CONS (Object)) {
+    BORAX_CONS       *Cons = (BORAX_CONS *)Object;
+    BORAX_CONS_PAGE  *Page = CONS_PAGE (Cons);
+    ConsGreyBitmapSet (Cons, GreyBit);
+    if (Page->SpaceParity == SpaceBit) {
       return EFI_SUCCESS;
-    default:
-      // We should never see this case
-      DEBUG ((
-        DEBUG_ERROR,
-        "%a: invalid widetag (%u)\n",
-        __func__,
-        Object->WideTag
-        ));
+    } else {
+      // We can't set black/white at page granularity, but we shouldn't need to
+      DEBUG ((DEBUG_ERROR, "%a: cons color invariant violated\n", __func__));
       return EFI_INVALID_PARAMETER;
+    }
+  } else {
+    switch (Object->WideTag) {
+      case BORAX_WIDETAG_WEAK_POINTER:
+      case BORAX_WIDETAG_PIN:
+      case BORAX_WIDETAG_MOVED:
+      case BORAX_WIDETAG_UNINITIALIZED:
+        Object->GcData = SpaceBit | GreyBit;
+        return EFI_SUCCESS;
+      default:
+        // We should never see this case
+        DEBUG ((
+          DEBUG_ERROR,
+          "%a: invalid widetag (%u)\n",
+          __func__,
+          Object->WideTag
+          ));
+        return EFI_INVALID_PARAMETER;
+    }
   }
 }
 
 STATIC EFI_STATUS
 EFIAPI
 MarkObjectIfWhite (
-  IN BORAX_ALLOCATOR  *Alloc,
-  IN BORAX_GREY_LIST  *GreyList,
-  IN BORAX_OBJECT     Object
+  IN BORAX_ALLOCATOR      *Alloc,
+  IN BORAX_GREY_LIST      *GreyList,
+  IN BORAX_OBJECT_HEADER  *Object
   )
 {
-  EFI_STATUS  Status;
-  COLOR       Color;
+  EFI_STATUS           Status;
+  COLOR                Color;
+  BORAX_OBJECT_HEADER  *NewObj = NULL;
 
   Status = GetObjectColor (Alloc, Object, &Color);
   if (EFI_ERROR (Status)) {
@@ -315,74 +301,66 @@ MarkObjectIfWhite (
   }
 
   if (Color != WHITE) {
+    // Nothing to do
     return EFI_SUCCESS;
   }
 
-  if (BORAX_IS_FIXNUM (Object)) {
-    // Nothing to do for fixnums
-    return EFI_SUCCESS;
-  } else if (BORAX_IS_POINTER (Object)) {
-    BORAX_OBJECT_HEADER  *OldObj = BORAX_GET_POINTER (Object);
-    if (BORAX_IS_CONS (OldObj)) {
-      BORAX_CONS  *NewCons;
-
-      Status = BoraxAllocateCons (Alloc, &NewCons);
-      if (EFI_ERROR (Status)) {
-        return Status;
-      }
-
-      // Future reads to OldObj will interpret it as a "moved" object and will
-      // access GcData instead of the bitmap.
-      CopyMem (NewCons, OldObj, sizeof (BORAX_CONS));
-      OldObj->WideTag        = BORAX_WIDETAG_MOVED;
-      OldObj->HeaderWords[1] = BORAX_MAKE_POINTER (NewCons);
-      (VOID)SetProperObjectColor (Alloc, OldObj, GREY);
-      ConsGreyBitmapSet (NewCons, 1);
-    } else {
-      switch (OldObj->WideTag) {
-        // TODO: Implement move optimization for large objects
-        case BORAX_WIDETAG_WEAK_POINTER:
-        {
-          BORAX_OBJECT_HEADER  *NewObj;
-          UINTN                Size = sizeof (BORAX_WEAK_POINTER);
-
-          Status = BoraxAllocateObject (Alloc, Size, &NewObj);
-          if (EFI_ERROR (Status)) {
-            return Status;
-          }
-
-          CopyMem (NewObj, OldObj, Size);
-          OldObj->WideTag        = BORAX_WIDETAG_MOVED;
-          OldObj->HeaderWords[1] = BORAX_MAKE_POINTER (NewObj);
-          (VOID)SetProperObjectColor (Alloc, OldObj, GREY);
-          (VOID)SetProperObjectColor (Alloc, NewObj, GREY);
-          break;
-        }
-        case BORAX_WIDETAG_PIN:
-          // Don't move pins
-          (VOID)SetProperObjectColor (Alloc, OldObj, GREY);
-          break;
-        case BORAX_WIDETAG_MOVED:
-          // We've already processed this object
-          break;
-        case BORAX_WIDETAG_UNINITIALIZED:
-          // Not an object
-          break;
-        default:
-          // We should never see this case
-          DEBUG ((
-            DEBUG_ERROR,
-            "%a: invalid widetag (%u)\n",
-            __func__,
-            OldObj->WideTag
-            ));
-          return EFI_INVALID_PARAMETER;
-      }
+  // Copy from FromSpace to ToSpace
+  if (BORAX_IS_CONS (Object)) {
+    Status = BoraxAllocateCons (Alloc, (BORAX_CONS **)&NewObj);
+    if (EFI_ERROR (Status)) {
+      return Status;
     }
+
+    // Future reads to Object will interpret it as a "moved" object and will
+    // access GcData instead of the bitmap.
+    CopyMem (NewObj, Object, sizeof (BORAX_CONS));
+    Object->WideTag        = BORAX_WIDETAG_MOVED;
+    Object->HeaderWords[1] = BORAX_MAKE_POINTER (NewObj);
   } else {
-    // We should never see this case
-    DEBUG ((DEBUG_ERROR, "%a: invalid lowtag (%u)\n", __func__, Object & 7));
-    return EFI_INVALID_PARAMETER;
+    switch (Object->WideTag) {
+      // TODO: Implement move optimization for large objects
+      case BORAX_WIDETAG_WEAK_POINTER:
+      {
+        UINTN  Size = sizeof (BORAX_WEAK_POINTER);
+
+        Status = BoraxAllocateObject (Alloc, Size, &NewObj);
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        CopyMem (NewObj, Object, Size);
+        Object->WideTag        = BORAX_WIDETAG_MOVED;
+        Object->HeaderWords[1] = BORAX_MAKE_POINTER (NewObj);
+        break;
+      }
+      case BORAX_WIDETAG_PIN:  // Don't move pins
+      case BORAX_WIDETAG_MOVED:
+      case BORAX_WIDETAG_UNINITIALIZED:
+        break;
+      default:
+        // We should never see this case
+        DEBUG ((
+          DEBUG_ERROR,
+          "%a: invalid widetag (%u)\n",
+          __func__,
+          Object->WideTag
+          ));
+        return EFI_INVALID_PARAMETER;
+    }
+  }
+
+  // Mark the old and new copy (if it exists) grey
+  Status = SetObjectColor (Alloc, Object, GREY);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  if (NewObj != NULL) {
+    Status = SetObjectColor (Alloc, NewObj, GREY);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
   }
 
   Status = BoraxGreyListPush (GreyList, Object);
@@ -391,53 +369,69 @@ MarkObjectIfWhite (
 
 STATIC EFI_STATUS
 EFIAPI
-MarkSubObjectsIfWhite (
+MarkObjectWordIfWhite (
   IN BORAX_ALLOCATOR  *Alloc,
   IN BORAX_GREY_LIST  *GreyList,
-  IN BORAX_OBJECT     Object
+  IN BORAX_OBJECT     ObjectWord
+  )
+{
+  EFI_STATUS           Status;
+  BORAX_OBJECT_HEADER  *Object;
+
+  // There's only work to be done if we're looking at an unmarked heap object
+  if (!BORAX_IS_POINTER (ObjectWord)) {
+    return EFI_SUCCESS;
+  }
+
+  Object = BORAX_GET_POINTER (ObjectWord);
+  Status = MarkObjectIfWhite (Alloc, GreyList, Object);
+  return Status;
+}
+
+STATIC EFI_STATUS
+EFIAPI
+MarkSubObjectsIfWhite (
+  IN BORAX_ALLOCATOR      *Alloc,
+  IN BORAX_GREY_LIST      *GreyList,
+  IN BORAX_OBJECT_HEADER  *Object
   )
 {
   EFI_STATUS  Status;
 
-  if (BORAX_IS_FIXNUM (Object)) {
-    // Nothing to do for fixnums
-    return EFI_SUCCESS;
-  } else if (BORAX_IS_POINTER (Object)) {
-    BORAX_OBJECT_HEADER  *Obj = BORAX_GET_POINTER (Object);
-    if (BORAX_IS_CONS (Obj)) {
-      BORAX_CONS  *Cons = (BORAX_CONS *)Obj;
+  if (BORAX_IS_CONS (Object)) {
+    BORAX_CONS  *Cons = (BORAX_CONS *)Object;
 
-      Status = MarkObjectIfWhite (Alloc, GreyList, Cons->Car);
-      if (EFI_ERROR (Status)) {
+    Status = MarkObjectWordIfWhite (Alloc, GreyList, Cons->Car);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+
+    // Mark CDR last to ensure it gets copied first
+    Status = MarkObjectWordIfWhite (Alloc, GreyList, Cons->Cdr);
+    return Status;
+  } else {
+    switch (Object->WideTag) {
+      case BORAX_WIDETAG_PIN:
+      {
+        BORAX_PIN  *Pin = (BORAX_PIN *)Object;
+        Status = MarkObjectWordIfWhite (Alloc, GreyList, Pin->Object);
         return Status;
       }
-
-      // Mark CDR last to ensure it gets copied first
-      Status = MarkObjectIfWhite (Alloc, GreyList, Cons->Cdr);
-      return Status;
-    } else {
-      switch (Obj->WideTag) {
-        case BORAX_WIDETAG_PIN:
-        {
-          BORAX_PIN  *Pin = (BORAX_PIN *)Obj;
-          Status = MarkObjectIfWhite (Alloc, GreyList, Pin->Object);
-          return Status;
-        }
-        case BORAX_WIDETAG_WEAK_POINTER:
-        case BORAX_WIDETAG_MOVED:
-        case BORAX_WIDETAG_UNINITIALIZED:
-          // Nothing to do
-          return EFI_SUCCESS;
-        default:
-          // We should never see this case
-          DEBUG ((DEBUG_ERROR, "%a: invalid widetag (%u)\n", __func__, Obj->WideTag));
-          return EFI_INVALID_PARAMETER;
-      }
+      case BORAX_WIDETAG_WEAK_POINTER:
+      case BORAX_WIDETAG_MOVED:
+      case BORAX_WIDETAG_UNINITIALIZED:
+        // Nothing to do
+        return EFI_SUCCESS;
+      default:
+        // We should never see this case
+        DEBUG ((
+          DEBUG_ERROR,
+          "%a: invalid widetag (%u)\n",
+          __func__,
+          Object->WideTag
+          ));
+        return EFI_INVALID_PARAMETER;
     }
-  } else {
-    // We should never see this case
-    DEBUG ((DEBUG_ERROR, "%a: invalid lowtag (%u)\n", __func__, Object & 7));
-    return EFI_INVALID_PARAMETER;
   }
 }
 
@@ -468,52 +462,46 @@ UpdateIfMoved (
 STATIC EFI_STATUS
 EFIAPI
 MarkObjectBlack (
-  IN BORAX_ALLOCATOR  *Alloc,
-  IN BORAX_OBJECT     Object
+  IN BORAX_ALLOCATOR      *Alloc,
+  IN BORAX_OBJECT_HEADER  *Object
   )
 {
-  if (BORAX_IS_FIXNUM (Object)) {
-    // Nothing to do for fixnums
-    return EFI_SUCCESS;
-  } else if (BORAX_IS_POINTER (Object)) {
-    BORAX_OBJECT_HEADER  *Obj = BORAX_GET_POINTER (Object);
-    if (BORAX_IS_CONS (Obj)) {
-      BORAX_CONS  *Cons = (BORAX_CONS *)Obj;
+  if (BORAX_IS_CONS (Object)) {
+    BORAX_CONS  *Cons = (BORAX_CONS *)Object;
 
-      UpdateIfMoved (&Cons->Car);
-      UpdateIfMoved (&Cons->Cdr);
-      ConsGreyBitmapSet (Cons, 0);
-      return EFI_SUCCESS;
-    } else {
-      switch (Obj->WideTag) {
-        case BORAX_WIDETAG_PIN:
-        {
-          BORAX_PIN  *Pin = (BORAX_PIN *)Obj;
-          UpdateIfMoved (&Pin->Object);
-          SetProperObjectColor (Alloc, Obj, BLACK);
-          return EFI_SUCCESS;
-        }
-        case BORAX_WIDETAG_WEAK_POINTER:
-        case BORAX_WIDETAG_MOVED:
-        case BORAX_WIDETAG_UNINITIALIZED:
-          SetProperObjectColor (Alloc, Obj, BLACK);
-          return EFI_SUCCESS;
-        default:
-          // We should never see this case
-          DEBUG ((
-            DEBUG_ERROR,
-            "%a: invalid widetag (%u)\n",
-            __func__,
-            Obj->WideTag
-            ));
-          return EFI_INVALID_PARAMETER;
-      }
-    }
+    UpdateIfMoved (&Cons->Car);
+    UpdateIfMoved (&Cons->Cdr);
   } else {
-    // We should never see this case
-    DEBUG ((DEBUG_ERROR, "%a: invalid lowtag (%u)\n", __func__, Object & 7));
-    return EFI_INVALID_PARAMETER;
+    switch (Object->WideTag) {
+      case BORAX_WIDETAG_PIN:
+      {
+        BORAX_PIN  *Pin = (BORAX_PIN *)Object;
+        UpdateIfMoved (&Pin->Object);
+        break;
+      }
+      case BORAX_WIDETAG_WEAK_POINTER:
+      {
+        BORAX_WEAK_POINTER  *Wp = (BORAX_WEAK_POINTER *)Object;
+        UpdateIfMoved (&Wp->Value);
+        break;
+      }
+      case BORAX_WIDETAG_MOVED:
+      case BORAX_WIDETAG_UNINITIALIZED:
+        break;
+      default:
+        // We should never see this case
+        DEBUG ((
+          DEBUG_ERROR,
+          "%a: invalid widetag (%u)\n",
+          __func__,
+          Object->WideTag
+          ));
+        return EFI_INVALID_PARAMETER;
+    }
   }
+
+  SetObjectColor (Alloc, Object, BLACK);
+  return EFI_SUCCESS;
 }
 
 STATIC EFI_STATUS
@@ -532,7 +520,7 @@ SweepPins (
     BORAX_PIN_LIST  *Prev = PinEntry->Prev;
     BORAX_PIN       *Pin  = BASE_CR (PinEntry, BORAX_PIN, ListEntry);
 
-    Status = GetProperObjectColor (Alloc, &Pin->Header, &Color);
+    Status = GetObjectColor (Alloc, &Pin->Header, &Color);
     if (EFI_ERROR (Status)) {
       return Status;
     }
@@ -563,9 +551,10 @@ BoraxAllocatorCollect (
   IN CONST BORAX_ROOTSET_ITERATOR  *RootSet
   )
 {
-  EFI_STATUS       Status;
-  BORAX_GREY_LIST  GreyList;
-  BORAX_OBJECT     Object;
+  EFI_STATUS           Status;
+  BORAX_GREY_LIST      GreyList;
+  BORAX_OBJECT         ObjectWord;
+  BORAX_OBJECT_HEADER  *Object;
 
   // Begin by flipping spaces
   Alloc->FromSpace = Alloc->ToSpace;
@@ -574,7 +563,12 @@ BoraxAllocatorCollect (
 
   // Mark the initial set of root objects grey
   BoraxGreyListInit (&GreyList, Alloc->SysAlloc);
-  while (RootSet->Next (RootSet->Ctx, &Object)) {
+  while (RootSet->Next (RootSet->Ctx, &ObjectWord)) {
+    if (!BORAX_IS_POINTER (ObjectWord)) {
+      continue;
+    }
+
+    Object = BORAX_GET_POINTER (ObjectWord);
     Status = MarkObjectIfWhite (Alloc, &GreyList, Object);
     if (EFI_ERROR (Status)) {
       goto cleanup;

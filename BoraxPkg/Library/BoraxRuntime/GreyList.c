@@ -29,7 +29,7 @@ BoraxGreyListCleanup (
 
 #define MAX_FILL \
 ((BORAX_PAGE_SIZE - OFFSET_OF (BORAX_GREY_PAGE, Objects)) \
- / sizeof (BORAX_OBJECT))
+ / sizeof (BORAX_OBJECT_HEADER *))
 
 STATIC_ASSERT (
   OFFSET_OF (BORAX_GREY_PAGE, Objects[MAX_FILL]) <= BORAX_PAGE_SIZE,
@@ -39,8 +39,8 @@ STATIC_ASSERT (
 EFI_STATUS
 EFIAPI
 BoraxGreyListPush (
-  IN BORAX_GREY_LIST  *GreyList,
-  IN BORAX_OBJECT     Object
+  IN BORAX_GREY_LIST      *GreyList,
+  IN BORAX_OBJECT_HEADER  *Object
   )
 {
   if ((GreyList->Top == NULL) || (GreyList->Top->FillIndex == MAX_FILL)) {
@@ -63,8 +63,8 @@ BoraxGreyListPush (
 BOOLEAN
 EFIAPI
 BoraxGreyListPop (
-  IN BORAX_GREY_LIST  *GreyList,
-  OUT BORAX_OBJECT    *Object
+  IN BORAX_GREY_LIST       *GreyList,
+  OUT BORAX_OBJECT_HEADER  **Object
   )
 {
   if (GreyList->Top == NULL) {
