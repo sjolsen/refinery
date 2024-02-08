@@ -8,6 +8,8 @@ extern "C" {
 }
 
 using ::testing::IsEmpty;
+using ::testing::Each;
+using ::testing::Not;
 
 #define WRAP_FN(_memfn)                               \
 [](auto This, auto... Args) [[gnu::ms_abi]] -> auto { \
@@ -151,6 +153,32 @@ public:
     Result.Errors = _Errors;
     return Result;
   }
+
+  bool
+  IsValidAddress (
+    VOID  *Ptr
+    ) const
+  {
+    auto  Address = (UINTN)Ptr;
+
+    for (auto [_, PageAlloc] : _PageAllocs) {
+      auto  Begin = (UINTN)PageAlloc.Address;
+      auto  End   = Begin + BORAX_PAGE_SIZE * PageAlloc.Pages;
+      if ((Begin <= Address) && (Address < End)) {
+        return true;
+      }
+    }
+
+    for (auto [_, PoolAlloc] : _PoolAllocs) {
+      auto  Begin = (UINTN)PoolAlloc.Address;
+      auto  End   = Begin + PoolAlloc.Size;
+      if ((Begin <= Address) && (Address < End)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
 };
 
 std::ostream &
@@ -177,6 +205,28 @@ operator<< (
   << ", " << std::dec << PoolAlloc.Size
   << " }";
   return os;
+}
+
+std::ostream &
+operator<< (
+  std::ostream                            &os,
+  const TracingAllocator::Report  &Report
+  )
+{
+  for (auto PageAlloc : Report.PageAllocs) {
+    os << PageAlloc << std::endl;
+  }
+  for (auto PoolAlloc : Report.PoolAllocs) {
+    os << PoolAlloc << std::endl;
+  }
+  for (const std::string& Error : Report.Errors) {
+    os << "Error: " << Error << std::endl;
+  }
+  return os;
+}
+
+MATCHER_P (IsValidAddress, Alloc, "is a valid address") {
+  return Alloc.IsValidAddress (arg);
 }
 
 template <typename I>
@@ -283,6 +333,17 @@ public:
     Collect (std::initializer_list<BORAX_OBJECT>{ });
   }
 
+  BORAX_CONS *
+  MakeCons (
+    )
+  {
+    BORAX_CONS  *Cons;
+    EFI_STATUS  Status = BoraxAllocateCons (&Alloc, &Cons);
+
+    EXPECT_EQ (EFI_SUCCESS, Status);
+    return Cons;
+  }
+
   std::vector<BORAX_CONS *>
   MakeConses (
     UINTN  Count
@@ -323,6 +384,22 @@ public:
     return Result;
   }
 
+  BORAX_PIN *
+  MakePin (
+    VOID  *Object
+    )
+  {
+    BORAX_PIN   *Pin;
+    EFI_STATUS  Status = BoraxAllocatePin (
+                           &Alloc,
+                           BORAX_MAKE_POINTER (Object),
+                           &Pin
+                           );
+
+    EXPECT_EQ (EFI_SUCCESS, Status);
+    return Pin;
+  }
+
   template <typename Container>
   std::vector<BORAX_PIN *>
   MakePins (
@@ -333,14 +410,7 @@ public:
 
     Result.reserve (Objects.size ());
     for (auto *Object : Objects) {
-      BORAX_PIN   *Pin;
-      EFI_STATUS  Status = BoraxAllocatePin (
-                             &Alloc,
-                             BORAX_MAKE_POINTER (Object),
-                             &Pin
-                             );
-      EXPECT_EQ (EFI_SUCCESS, Status);
-      Result.push_back (Pin);
+      Result.push_back (MakePin (Object));
     }
 
     return Result;
@@ -419,6 +489,77 @@ TEST_F (MemoryLeakTests, CollectRootlessWeakPointer) {
 
   (VOID)MakeWeakPointers (Conses);
   Collect ();
+}
+
+TEST_F (MemoryLeakTests, IsValidSanityCheck) {
+  auto  Conses1 = MakeConses (1000);
+
+  EXPECT_THAT (Conses1, Each (IsValidAddress (Tracer)));
+  Collect ();
+  auto  Conses2 = MakeConses (1000);
+
+  EXPECT_THAT (Conses1, Each (Not (IsValidAddress (Tracer))));
+  EXPECT_THAT (Conses2, Each (IsValidAddress (Tracer)));
+}
+
+TEST_F (MemoryLeakTests, RootedCons) {
+  BORAX_CONS  *Cons = MakeCons ();
+  BORAX_PIN   *Pin  = MakePin (Cons);
+
+  Cons->Car = 42 << 1;  // fixnums
+  Cons->Cdr = 77 << 1;
+
+  std::vector<BORAX_OBJECT>  RootObjs = { BORAX_MAKE_POINTER (Pin) };
+
+  Collect (RootObjs);
+
+  ASSERT_THAT (Pin, IsValidAddress (Tracer));
+  ASSERT_TRUE (BORAX_IS_POINTER (Pin->Object));
+  BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Pin->Object);
+
+  ASSERT_THAT (Header, IsValidAddress (Tracer));
+  ASSERT_TRUE (BORAX_IS_CONS (Header));
+  BORAX_CONS  *P = reinterpret_cast<BORAX_CONS *>(Header);
+
+  EXPECT_EQ ((UINTN)(42 << 1), P->Car);
+  EXPECT_EQ ((UINTN)(77 << 1), P->Cdr);
+}
+
+TEST_F (MemoryLeakTests, RootedList) {
+  std::vector<BORAX_CONS *> Conses = MakeConses (1000);
+
+  for (size_t i = 0; i < Conses.size (); ++i) {
+    Conses[i]->Car = i << 1;  // fixnum
+  }
+  for (size_t i = 0; i < Conses.size () - 1; ++i) {
+    Conses[i]->Cdr = BORAX_MAKE_POINTER (Conses[i + 1]);
+  }
+
+  BORAX_PIN                  *Pin     = MakePin (Conses[0]);
+  std::vector<BORAX_OBJECT>  RootObjs = { BORAX_MAKE_POINTER (Pin) };
+
+  Collect (RootObjs);
+
+  ASSERT_THAT (Pin, IsValidAddress (Tracer));
+  ASSERT_TRUE (BORAX_IS_POINTER (Pin->Object));
+  BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Pin->Object);
+
+  ASSERT_THAT (Header, IsValidAddress (Tracer));
+  ASSERT_TRUE (BORAX_IS_CONS (Header));
+  BORAX_CONS  *P = reinterpret_cast<BORAX_CONS *>(Header);
+
+  for (size_t i = 0; i < Conses.size(); ++i) {
+    EXPECT_EQ (i << 1, P->Car);
+    if (i < Conses.size() - 1) {
+      ASSERT_TRUE (BORAX_IS_POINTER (P->Cdr));
+      Header = BORAX_GET_POINTER (P->Cdr);
+      ASSERT_THAT (Header, IsValidAddress (Tracer));
+      ASSERT_TRUE (BORAX_IS_CONS (Header));
+      P = reinterpret_cast<BORAX_CONS *>(Header);
+    } else {
+      ASSERT_FALSE (BORAX_IS_POINTER (P->Cdr));
+    }
+  }
 }
 
 int
