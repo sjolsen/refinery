@@ -219,7 +219,7 @@ GetObjectColor (
     return EFI_SUCCESS;
   } else if (BORAX_IS_POINTER (Object)) {
     BORAX_OBJECT_HEADER  *Obj = BORAX_GET_POINTER (Object);
-    if (BORAX_IS_CONS (Obj->HeaderWords[0])) {
+    if (BORAX_IS_CONS (Obj)) {
       BORAX_CONS       *Cons = (BORAX_CONS *)Obj;
       BORAX_CONS_PAGE  *Page = CONS_PAGE (Cons);
 
@@ -308,7 +308,7 @@ MarkObjectIfWhite (
     return EFI_SUCCESS;
   } else if (BORAX_IS_POINTER (Object)) {
     BORAX_OBJECT_HEADER  *OldObj = BORAX_GET_POINTER (Object);
-    if (BORAX_IS_CONS (OldObj->HeaderWords[0])) {
+    if (BORAX_IS_CONS (OldObj)) {
       BORAX_CONS  *NewCons;
 
       Status = BoraxAllocateCons (Alloc, &NewCons);
@@ -382,7 +382,7 @@ MarkSubObjectsIfWhite (
     return EFI_SUCCESS;
   } else if (BORAX_IS_POINTER (Object)) {
     BORAX_OBJECT_HEADER  *Obj = BORAX_GET_POINTER (Object);
-    if (BORAX_IS_CONS (Obj->HeaderWords[0])) {
+    if (BORAX_IS_CONS (Obj)) {
       BORAX_CONS  *Cons = (BORAX_CONS *)Obj;
 
       Status = MarkObjectIfWhite (Alloc, GreyList, Cons->Car);
@@ -453,7 +453,7 @@ MarkObjectBlack (
     return EFI_SUCCESS;
   } else if (BORAX_IS_POINTER (Object)) {
     BORAX_OBJECT_HEADER  *Obj = BORAX_GET_POINTER (Object);
-    if (BORAX_IS_CONS (Obj->HeaderWords[0])) {
+    if (BORAX_IS_CONS (Obj)) {
       BORAX_CONS  *Cons = (BORAX_CONS *)Obj;
 
       UpdateIfMoved (&Cons->Car);

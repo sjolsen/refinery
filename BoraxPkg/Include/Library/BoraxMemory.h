@@ -105,7 +105,8 @@ enum {
 #define BORAX_IS_HEAP(_obj) \
 (((_obj) & BORAX_LOWTAG_MASK_HEAP) == BORAX_LOWTAG_HEAP)
 
-#define BORAX_IS_CONS(_obj)  (!BORAX_IS_HEAP(_obj))
+#define BORAX_IS_CONS(_ptr) \
+(!BORAX_IS_HEAP(_ptr->HeaderWords[0]))
 
 #define BORAX_MAKE_POINTER(_ptr) \
 ((UINTN)(_ptr) | BORAX_LOWTAG_MASK_POINTER)
