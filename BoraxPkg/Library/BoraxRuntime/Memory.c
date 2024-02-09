@@ -675,9 +675,8 @@ BoraxAllocatorCollect (
   )
 {
   EFI_STATUS           Status;
-  BORAX_STACK          Roots;
   BORAX_STACK          GreyList;
-  BORAX_OBJECT         *Root;
+  BORAX_OBJECT         ObjectWord;
   BORAX_OBJECT_HEADER  *Object;
 
   // Begin by flipping spaces
@@ -686,20 +685,13 @@ BoraxAllocatorCollect (
   Alloc->ToSpaceParity = !Alloc->ToSpaceParity;
 
   // Mark the initial set of root objects grey
-  BoraxStackInit (&Roots, Alloc->SysAlloc);
   BoraxStackInit (&GreyList, Alloc->SysAlloc);
-  while (RootSet->Next (RootSet->Ctx, &Root)) {
-    if (!BORAX_IS_POINTER (*Root)) {
+  while (RootSet->Next (RootSet->Ctx, &ObjectWord)) {
+    if (!BORAX_IS_POINTER (ObjectWord)) {
       continue;
     }
 
-    // Save the root so we can update it later
-    Status = BoraxStackPush (&Roots, (UINTN)Root);
-    if (EFI_ERROR (Status)) {
-      goto cleanup;
-    }
-
-    Object = BORAX_GET_POINTER (*Root);
+    Object = BORAX_GET_POINTER (ObjectWord);
     Status = MarkObjectIfWhite (Alloc, &GreyList, Object);
     if (EFI_ERROR (Status)) {
       goto cleanup;
@@ -717,11 +709,6 @@ BoraxAllocatorCollect (
     if (EFI_ERROR (Status)) {
       goto cleanup;
     }
-  }
-
-  // Update roots
-  while (BoraxStackPop (&Roots, (UINTN *)&Root)) {
-    UpdateIfMoved (Root);
   }
 
   // Remove white objects

@@ -526,7 +526,7 @@ BoraxAllocatorCleanup (
 
 typedef struct {
   VOID    *Ctx;
-  BOOLEAN (EFIAPI *Next)(IN VOID *Ctx, OUT BORAX_OBJECT **Object);
+  BOOLEAN (EFIAPI *Next)(IN VOID *Ctx, OUT BORAX_OBJECT *Object);
 } BORAX_ROOTSET_ITERATOR;
 
 EFI_STATUS
