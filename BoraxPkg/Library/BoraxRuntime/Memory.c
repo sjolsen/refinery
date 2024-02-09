@@ -606,6 +606,7 @@ SweepPins (
   UINTN      GcData;
   BORAX_PIN  **Iter;
   BORAX_PIN  *Pin;
+  BOOLEAN    Live;
 
   Iter = &Alloc->Pins;
   while (*Iter != NULL) {
@@ -614,15 +615,21 @@ SweepPins (
 
     switch (DecodeColor (Alloc, GcData)) {
       case WHITE:
-        *Iter = Pin->Next;
-        InternalFreePool (Alloc, Pin);
+        Live = Pin->Live;
         break;
       case GREY:
         DEBUG ((DEBUG_ERROR, "grey pin found during sweep\n"));
         return EFI_INVALID_PARAMETER;
       case BLACK:
-        Iter = &Pin->Next;
+        Live = TRUE;
         break;
+    }
+
+    if (Live) {
+      Iter = &Pin->Next;
+    } else {
+      *Iter = Pin->Next;
+      InternalFreePool (Alloc, Pin);
     }
   }
 
@@ -668,13 +675,12 @@ SweepWeakPointers (
 EFI_STATUS
 EFIAPI
 BoraxAllocatorCollect (
-  IN BORAX_ALLOCATOR               *Alloc,
-  IN CONST BORAX_ROOTSET_ITERATOR  *RootSet
+  IN BORAX_ALLOCATOR  *Alloc
   )
 {
   EFI_STATUS           Status;
+  BORAX_PIN            *Pin;
   BORAX_STACK          GreyList;
-  BORAX_OBJECT         ObjectWord;
   BORAX_OBJECT_HEADER  *Object;
 
   // Begin by flipping spaces
@@ -684,15 +690,12 @@ BoraxAllocatorCollect (
 
   // Mark the initial set of root objects grey
   BoraxStackInit (&GreyList, Alloc->SysAlloc);
-  while (RootSet->Next (RootSet->Ctx, &ObjectWord)) {
-    if (!BORAX_IS_POINTER (ObjectWord)) {
-      continue;
-    }
-
-    Object = BORAX_GET_POINTER (ObjectWord);
-    Status = MarkObjectIfWhite (Alloc, &GreyList, Object);
-    if (EFI_ERROR (Status)) {
-      goto cleanup;
+  for (Pin = Alloc->Pins; Pin != NULL; Pin = Pin->Next) {
+    if (Pin->Live) {
+      Status = MarkObjectIfWhite (Alloc, &GreyList, &Pin->Header);
+      if (EFI_ERROR (Status)) {
+        goto cleanup;
+      }
     }
   }
 
@@ -857,12 +860,22 @@ BoraxAllocatePin (
   // Initialize the pin and add it to the list
   NewPin->Header.WideTag = BORAX_WIDETAG_PIN;
   NewPin->Header.GcData  = Alloc->ToSpaceParity;
+  NewPin->Live           = TRUE;
   NewPin->Next           = Alloc->Pins;
   Alloc->Pins            = NewPin;
   NewPin->Object         = Object;
 
   *Pin = NewPin;
   return EFI_SUCCESS;
+}
+
+VOID
+EFIAPI
+BoraxReleasePin (
+  IN BORAX_PIN  *Pin
+  )
+{
+  Pin->Live = FALSE;
 }
 
 EFI_STATUS

@@ -395,8 +395,7 @@ typedef struct {
  *
  * When the lisp runtime needs to supply a reference to an object O to the C
  * environment, it allocates a pin object P that refers to O. P itself is
- * managed by the garbage collector separately from other objects; it must be
- * included in the root set as long as it is referenced externally and will
+ * managed by the garbage collector separately from other objects; it will
  * remain at a stable address for the duration of its lifetime. P's internal
  * reference to O will be traced and updated by the garbage collector like any
  * other object reference.
@@ -407,13 +406,6 @@ typedef struct {
  * will be invalidated by a collection cycle. This limits, for instance, the
  * ways a TPL_CALLBACK routine can interact with the lisp system, which runs the
  * garbage collector at TPL_APPLICATION.
- *
- * Future directions:
- *
- * - It may be cumbersome to arrange for pins to be included in the root set. It
- *   might be better to have a refcount for use by the external environment
- *   (it still needs to be traced by the collector to prevent dangling
- *   references from the lisp environment).
  */
 
 typedef union _BORAX_PIN BORAX_PIN;
@@ -422,9 +414,10 @@ union _BORAX_PIN {
   // Pins are allocated manually and kept in a singly-linked list
   BORAX_OBJECT_HEADER    Header;
   struct {
-    UINTN           Word0;
-    BORAX_OBJECT    Object;
-    BORAX_PIN       *Next;
+    BORAX_HALFWORD    HalfWord0;
+    BORAX_HALFWORD    Live;
+    BORAX_PIN         *Next;
+    BORAX_OBJECT      Object;
   };
 };
 
@@ -450,8 +443,8 @@ union _BORAX_WEAK_POINTER {
   BORAX_OBJECT_HEADER    Header;
   struct {
     UINTN                 Word0;
-    BORAX_OBJECT          Value;
     BORAX_WEAK_POINTER    *Next;
+    BORAX_OBJECT          Value;
   };
 };
 
@@ -524,16 +517,10 @@ BoraxAllocatorCleanup (
   IN BORAX_ALLOCATOR  *Alloc
   );
 
-typedef struct {
-  VOID    *Ctx;
-  BOOLEAN (EFIAPI *Next)(IN VOID *Ctx, OUT BORAX_OBJECT *Object);
-} BORAX_ROOTSET_ITERATOR;
-
 EFI_STATUS
 EFIAPI
 BoraxAllocatorCollect (
-  IN BORAX_ALLOCATOR               *Alloc,
-  IN CONST BORAX_ROOTSET_ITERATOR  *RootSet
+  IN BORAX_ALLOCATOR  *Alloc
   );
 
 EFI_STATUS
@@ -559,6 +546,12 @@ BoraxAllocatePin (
   IN BORAX_ALLOCATOR  *Alloc,
   IN BORAX_OBJECT     Object,
   OUT BORAX_PIN       **Pin
+  );
+
+VOID
+EFIAPI
+BoraxReleasePin (
+  IN BORAX_PIN  *Pin
   );
 
 EFI_STATUS
