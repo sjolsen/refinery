@@ -294,22 +294,6 @@ MarkObjectIfWhite (
       break;
     }
     // TODO: Implement move optimization for large objects
-    case BORAX_DISCRIM_STRING:
-    {
-      BORAX_STRING  *String = (BORAX_STRING *)Object;
-      BORAX_STRING  *NewStr;
-
-      Status = BoraxAllocateString (Alloc, String->Length, &NewStr);
-      if (EFI_ERROR (Status)) {
-        return Status;
-      }
-
-      NewObj = &NewStr->Header;
-      CopyMem (NewStr->Data, String->Data, 2 * String->Length);
-      Object->WideTag        = BORAX_WIDETAG_MOVED;
-      Object->HeaderWords[1] = BORAX_MAKE_POINTER (NewObj);
-      break;
-    }
     case BORAX_DISCRIM_VECTOR:
     {
       BORAX_VECTOR  *Vector = (BORAX_VECTOR *)Object;
@@ -317,6 +301,7 @@ MarkObjectIfWhite (
 
       Status = BoraxAllocateVectorUninitialized (
                  Alloc,
+                 Vector->ContainsObjects,
                  Vector->Length,
                  &NewVec
                  );
@@ -325,11 +310,7 @@ MarkObjectIfWhite (
       }
 
       NewObj = &NewVec->Header;
-      CopyMem (
-        NewVec->Data,
-        Vector->Data,
-        sizeof (BORAX_OBJECT) * Vector->Length
-        );
+      CopyMem (NewVec->Data, Vector->Data, sizeof (UINTN) * Vector->Length);
       Object->WideTag        = BORAX_WIDETAG_MOVED;
       Object->HeaderWords[1] = BORAX_MAKE_POINTER (NewObj);
       break;
@@ -473,10 +454,12 @@ MarkSubObjectsIfWhite (
       BORAX_VECTOR  *Vector = (BORAX_VECTOR *)Object;
       UINTN         I;
 
-      for (I = 0; I < Vector->Length; ++I) {
-        Status = MarkObjectWordIfWhite (Alloc, GreyList, Vector->Data[I]);
-        if (EFI_ERROR (Status)) {
-          return Status;
+      if (Vector->ContainsObjects) {
+        for (I = 0; I < Vector->Length; ++I) {
+          Status = MarkObjectWordIfWhite (Alloc, GreyList, Vector->Data[I]);
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
         }
       }
 
@@ -501,7 +484,6 @@ MarkSubObjectsIfWhite (
 
       return EFI_SUCCESS;
     }
-    case BORAX_DISCRIM_STRING:
     case BORAX_DISCRIM_WEAK_POINTER:
     case BORAX_DISCRIM_MOVED:
       // Nothing to do
@@ -559,8 +541,10 @@ MarkObjectBlack (
       BORAX_VECTOR  *Vector = (BORAX_VECTOR *)Object;
       UINTN         I;
 
-      for (I = 0; I < Vector->Length; ++I) {
-        UpdateIfMoved (&Vector->Data[I]);
+      if (Vector->ContainsObjects) {
+        for (I = 0; I < Vector->Length; ++I) {
+          UpdateIfMoved (&Vector->Data[I]);
+        }
       }
 
       break;
@@ -577,7 +561,6 @@ MarkObjectBlack (
 
       break;
     }
-    case BORAX_DISCRIM_STRING:       // No subobjects
     case BORAX_DISCRIM_WEAK_POINTER: // Will get updated later
     case BORAX_DISCRIM_MOVED:        // Not an object
       break;
@@ -911,51 +894,27 @@ BoraxAllocateWeakPointer (
 
 EFI_STATUS
 EFIAPI
-BoraxAllocateString (
-  IN BORAX_ALLOCATOR  *Alloc,
-  IN UINTN            Length,
-  OUT BORAX_STRING    **String
-  )
-{
-  EFI_STATUS    Status;
-  BORAX_STRING  *NewString;
-
-  // Allocate a regular lisp object
-  Status = BoraxAllocateObject (
-             Alloc,
-             sizeof (BORAX_STRING) + 2 * Length,
-             (BORAX_OBJECT_HEADER **)&NewString
-             );
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  // Initialize the string
-  NewString->Header.WideTag = BORAX_WIDETAG_STRING;
-  NewString->Length         = Length;
-  SetMem (NewString->Data, 2 * Length, 0);
-
-  *String = NewString;
-  return EFI_SUCCESS;
-}
-
-EFI_STATUS
-EFIAPI
 BoraxAllocateVector (
   IN BORAX_ALLOCATOR  *Alloc,
+  IN BOOLEAN          ContainsObjects,
   IN UINTN            Length,
-  IN BORAX_OBJECT     InitialElement,
+  IN UINTN            InitialElement,
   OUT BORAX_VECTOR    **Vector
   )
 {
   EFI_STATUS  Status;
 
-  Status = BoraxAllocateVectorUninitialized (Alloc, Length, Vector);
+  Status = BoraxAllocateVectorUninitialized (
+             Alloc,
+             ContainsObjects,
+             Length,
+             Vector
+             );
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
-  SetMemN ((*Vector)->Data, sizeof (BORAX_OBJECT) * Length, InitialElement);
+  SetMemN ((*Vector)->Data, sizeof (UINTN) * Length, InitialElement);
   return EFI_SUCCESS;
 }
 
@@ -963,6 +922,7 @@ EFI_STATUS
 EFIAPI
 BoraxAllocateVectorUninitialized (
   IN BORAX_ALLOCATOR  *Alloc,
+  IN BOOLEAN          ContainsObjects,
   IN UINTN            Length,
   OUT BORAX_VECTOR    **Vector
   )
@@ -973,7 +933,7 @@ BoraxAllocateVectorUninitialized (
   // Allocate a regular lisp object
   Status = BoraxAllocateObject (
              Alloc,
-             sizeof (BORAX_VECTOR) + sizeof (BORAX_OBJECT) * Length,
+             sizeof (BORAX_VECTOR) + sizeof (UINTN) * Length,
              (BORAX_OBJECT_HEADER **)&NewVector
              );
   if (EFI_ERROR (Status)) {
@@ -981,8 +941,9 @@ BoraxAllocateVectorUninitialized (
   }
 
   // Initialize the vector
-  NewVector->Header.WideTag = BORAX_WIDETAG_VECTOR;
-  NewVector->Length         = Length;
+  NewVector->Header.WideTag  = BORAX_WIDETAG_VECTOR;
+  NewVector->ContainsObjects = ContainsObjects;
+  NewVector->Length          = Length;
 
   *Vector = NewVector;
   return EFI_SUCCESS;

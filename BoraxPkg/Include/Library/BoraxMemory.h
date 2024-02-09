@@ -58,9 +58,8 @@
  *
  *   Tag   Interpretation
  *   ====  ==============
- *   0x03  string
- *   0x07  vector
- *   0x0B  record
+ *   0x03  vector
+ *   0x07  record
  *   ...
  *   0xF3  weak-pointer
  *   0xF7  pin
@@ -134,9 +133,8 @@ enum {
 (((_ptr)->HeaderWords[0] & BORAX_LOWTAG_MASK_HEAP) != BORAX_LOWTAG_HEAP)
 
 enum {
-  BORAX_WIDETAG_STRING        = 0x03,
-  BORAX_WIDETAG_VECTOR        = 0x07,
-  BORAX_WIDETAG_RECORD        = 0x0B,
+  BORAX_WIDETAG_VECTOR        = 0x03,
+  BORAX_WIDETAG_RECORD        = 0x07,
   BORAX_WIDETAG_WEAK_POINTER  = 0xF3,
   BORAX_WIDETAG_PIN           = 0xF7,
   BORAX_WIDETAG_MOVED         = 0xFB,
@@ -152,7 +150,6 @@ enum {
   BORAX_DISCRIM_CHARACTER = BORAX_IMMEDIATE_CHARACTER_BEGIN,
   // Pointers
   BORAX_DISCRIM_CONS          = 0x02,
-  BORAX_DISCRIM_STRING        = BORAX_WIDETAG_STRING,
   BORAX_DISCRIM_VECTOR        = BORAX_WIDETAG_VECTOR,
   BORAX_DISCRIM_RECORD        = BORAX_WIDETAG_RECORD,
   BORAX_DISCRIM_WEAK_POINTER  = BORAX_WIDETAG_WEAK_POINTER,
@@ -563,51 +560,21 @@ BoraxAllocateWeakPointer (
   );
 
 /*
- * Strings
- * =======
- *
- * Strings are UCS-2 encoded and NUL-terminated for UEFI interoperability. The
- * Length field counts 16-bit characters and includes the NUL-terminator, so a
- * valid string will never have zero length.
- *
- * Future directions:
- *
- * - Should strings be exposed as mutable or immutable to lisp software?
- *
- * - If immutable, should short strings be represented as immediates?
- */
-
-typedef union {
-  BORAX_OBJECT_HEADER    Header;
-  struct {
-    UINTN     Word0;
-    UINTN     Length;
-    CHAR16    Data[];
-  };
-} BORAX_STRING;
-
-EFI_STATUS
-EFIAPI
-BoraxAllocateString (
-  IN BORAX_ALLOCATOR  *Alloc,
-  IN UINTN            Length,
-  OUT BORAX_STRING    **String
-  );
-
-/*
  * Vectors
  * =======
  *
- * Vectors are simple, fixed-length, non-specialized sequences of object words
- * arranged contiguously in memory.
+ * Vectors are simple, fixed-length sequences of words arranged contiguously in
+ * memory. A vector may be a homogeneous sequence of raw words or a homogeneous
+ * sequence of object words.
  */
 
 typedef union {
   BORAX_OBJECT_HEADER    Header;
   struct {
-    UINTN           Word0;
-    UINTN           Length;
-    BORAX_OBJECT    Data[];
+    BORAX_HALFWORD    HalfWord0;
+    BORAX_HALFWORD    ContainsObjects;
+    UINTN             Length; // Count of words
+    UINTN             Data[];
   };
 } BORAX_VECTOR;
 
@@ -615,8 +582,9 @@ EFI_STATUS
 EFIAPI
 BoraxAllocateVector (
   IN BORAX_ALLOCATOR  *Alloc,
+  IN BOOLEAN          ContainsObjects,
   IN UINTN            Length,
-  IN BORAX_OBJECT     InitialElement,
+  IN UINTN            InitialElement,
   OUT BORAX_VECTOR    **Vector
   );
 
@@ -624,6 +592,7 @@ EFI_STATUS
 EFIAPI
 BoraxAllocateVectorUninitialized (
   IN BORAX_ALLOCATOR  *Alloc,
+  IN BOOLEAN          ContainsObjects,
   IN UINTN            Length,
   OUT BORAX_VECTOR    **Vector
   );

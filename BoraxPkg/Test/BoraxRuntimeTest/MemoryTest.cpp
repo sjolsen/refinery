@@ -409,27 +409,19 @@ public:
     return Result;
   }
 
-  BORAX_STRING *
-  MakeString (
-    CONST CHAR16  *Text
+  BORAX_VECTOR *
+  MakeRawVector (
+    UINTN         Length,
+    UINTN  InitialElement
     )
   {
-    BORAX_STRING  *String;
+    BORAX_VECTOR  *Vector;
     EFI_STATUS    Status;
-    UINTN         Length = StrLen (Text) + 1; // NUL-terminated
 
-    Status = BoraxAllocateString (&Alloc, Length, &String);
+    Status = BoraxAllocateVector (&Alloc, FALSE,
+                                  Length, InitialElement, &Vector);
     EXPECT_EQ (EFI_SUCCESS, Status);
-    CopyMem (String->Data, Text, 2 * Length);
-    return String;
-  }
-
-  BORAX_STRING *
-  MakeString (
-    const wchar_t  *Text
-    )
-  {
-    return MakeString ((CONST CHAR16 *)Text);
+    return Vector;
   }
 
   BORAX_VECTOR *
@@ -441,7 +433,8 @@ public:
     BORAX_VECTOR  *Vector;
     EFI_STATUS    Status;
 
-    Status = BoraxAllocateVector (&Alloc, Length, InitialElement, &Vector);
+    Status = BoraxAllocateVector (&Alloc, TRUE,
+                                  Length, InitialElement, &Vector);
     EXPECT_EQ (EFI_SUCCESS, Status);
     return Vector;
   }
@@ -486,8 +479,8 @@ TEST_F (MemoryLeakTests, CleanupWeakPointer) {
   (VOID)MakeWeakPointers (Conses);
 }
 
-TEST_F (MemoryLeakTests, CleanupString) {
-  (VOID)MakeString (L"Hello, world!");
+TEST_F (MemoryLeakTests, CleanupRawVector) {
+  (VOID)MakeRawVector (1000, BORAX_LOWTAG_POINTER);
 }
 
 TEST_F (MemoryLeakTests, CleanupVector) {
@@ -526,8 +519,8 @@ TEST_F (MemoryLeakTests, CollectRootlessWeakPointer) {
   Collect ();
 }
 
-TEST_F (MemoryLeakTests, CollectRootlessString) {
-  (VOID)MakeString (L"Hello, world!");
+TEST_F (MemoryLeakTests, CollectRootlessRawVector) {
+  (VOID)MakeRawVector (1000, BORAX_LOWTAG_POINTER);
   Collect ();
 }
 
@@ -656,9 +649,9 @@ TEST_F (MemoryLeakTests, WeakPointerCanAccessAfterCollection) {
   EXPECT_EQ ((UINTN)(2401 << 1), P->Cdr);
 }
 
-TEST_F (MemoryLeakTests, RootedString) {
-  BORAX_STRING  *String = MakeString (L"Hello, world!");
-  AutoPin       Pin     = MakePin (String);
+TEST_F (MemoryLeakTests, RootedRawVector) {
+  BORAX_VECTOR  *Vector = MakeRawVector (20, BORAX_LOWTAG_POINTER);
+  AutoPin       Pin     = MakePin (Vector);
 
   Collect ();
 
@@ -667,10 +660,11 @@ TEST_F (MemoryLeakTests, RootedString) {
   BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Pin->Object);
 
   ASSERT_THAT (Header, IsValidAddress (Tracer));
-  ASSERT_EQ (BORAX_WIDETAG_STRING, Header->WideTag);
+  ASSERT_EQ (BORAX_WIDETAG_VECTOR, Header->WideTag);
 
-  String = reinterpret_cast<BORAX_STRING *>(Header);
-  EXPECT_EQ (0, StrCmp ((CONST CHAR16 *)L"Hello, world!", String->Data));
+  Vector = reinterpret_cast<BORAX_VECTOR *>(Header);
+  EXPECT_EQ (BORAX_LOWTAG_POINTER, Vector->Data[0]);
+  EXPECT_EQ (BORAX_LOWTAG_POINTER, Vector->Data[19]);
 }
 
 TEST_F (MemoryLeakTests, RootedVector) {
