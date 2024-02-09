@@ -245,7 +245,7 @@ private:
   EFIAPI
   _ConsumeOne (
     VOID          *Ctx,
-    BORAX_OBJECT  *Object
+    BORAX_OBJECT  **Object
     )
   {
     auto  This = static_cast<RootSetIterator *>(Ctx);
@@ -335,7 +335,7 @@ public:
   Collect (
     )
   {
-    Collect (std::initializer_list<BORAX_OBJECT>{ });
+    Collect (std::initializer_list<BORAX_OBJECT *>{ });
   }
 
   BORAX_CONS *
@@ -606,18 +606,17 @@ TEST_F (MemoryLeakTests, IsValidSanityCheck) {
 
 TEST_F (MemoryLeakTests, RootedCons) {
   BORAX_CONS  *Cons = MakeCons ();
-  BORAX_PIN   *Pin  = MakePin (Cons);
 
   Cons->Car = 42 << 1;  // fixnums
   Cons->Cdr = 77 << 1;
 
-  std::vector<BORAX_OBJECT>  RootObjs = { BORAX_MAKE_POINTER (Pin) };
+  BORAX_OBJECT                 Root  = BORAX_MAKE_POINTER (Cons);
+  std::vector<BORAX_OBJECT *>  Roots = { &Root };
 
-  Collect (RootObjs);
+  Collect (Roots);
 
-  ASSERT_THAT (Pin, IsValidAddress (Tracer));
-  ASSERT_TRUE (BORAX_IS_POINTER (Pin->Object));
-  BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Pin->Object);
+  ASSERT_TRUE (BORAX_IS_POINTER (Root));
+  BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Root);
 
   ASSERT_THAT (Header, IsValidAddress (Tracer));
   ASSERT_TRUE (BORAX_IS_CONS (Header));
@@ -629,7 +628,6 @@ TEST_F (MemoryLeakTests, RootedCons) {
 
 TEST_F (MemoryLeakTests, RootedList) {
   std::vector<BORAX_CONS *>  Conses = MakeConses (1000);
-  BORAX_PIN                  *Pin   = MakePin (Conses[0]);
 
   for (size_t i = 0; i < Conses.size (); ++i) {
     Conses[i]->Car = i << 1;  // fixnum
@@ -639,13 +637,13 @@ TEST_F (MemoryLeakTests, RootedList) {
     Conses[i]->Cdr = BORAX_MAKE_POINTER (Conses[i + 1]);
   }
 
-  std::vector<BORAX_OBJECT>  RootObjs = { BORAX_MAKE_POINTER (Pin) };
+  BORAX_OBJECT                 Root  = BORAX_MAKE_POINTER (Conses[0]);
+  std::vector<BORAX_OBJECT *>  Roots = { &Root };
 
-  Collect (RootObjs);
+  Collect (Roots);
 
-  ASSERT_THAT (Pin, IsValidAddress (Tracer));
-  ASSERT_TRUE (BORAX_IS_POINTER (Pin->Object));
-  BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Pin->Object);
+  ASSERT_TRUE (BORAX_IS_POINTER (Root));
+  BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Root);
 
   ASSERT_THAT (Header, IsValidAddress (Tracer));
   ASSERT_TRUE (BORAX_IS_CONS (Header));
@@ -666,17 +664,15 @@ TEST_F (MemoryLeakTests, RootedList) {
 }
 
 TEST_F (MemoryLeakTests, WeakPointerIsWeak) {
-  BORAX_CONS          *Cons = MakeCons ();
-  BORAX_WEAK_POINTER  *Wp   = MakeWeakPointer (Cons);
-  BORAX_PIN           *Pin  = MakePin (Wp);
+  BORAX_CONS                   *Cons = MakeCons ();
+  BORAX_WEAK_POINTER           *Wp   = MakeWeakPointer (Cons);
+  BORAX_OBJECT                 Root  = BORAX_MAKE_POINTER (Wp);
+  std::vector<BORAX_OBJECT *>  Roots = { &Root };
 
-  std::vector<BORAX_OBJECT>  RootObjs = { BORAX_MAKE_POINTER (Pin) };
+  Collect (Roots);
 
-  Collect (RootObjs);
-
-  ASSERT_THAT (Pin, IsValidAddress (Tracer));
-  ASSERT_TRUE (BORAX_IS_POINTER (Pin->Object));
-  BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Pin->Object);
+  ASSERT_TRUE (BORAX_IS_POINTER (Root));
+  BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Root);
 
   ASSERT_THAT (Header, IsValidAddress (Tracer));
   ASSERT_EQ (BORAX_WIDETAG_WEAK_POINTER, Header->WideTag);
@@ -688,20 +684,18 @@ TEST_F (MemoryLeakTests, WeakPointerIsWeak) {
 TEST_F (MemoryLeakTests, WeakPointerCanAccessAfterCollection) {
   BORAX_CONS          *Cons = MakeCons ();
   BORAX_WEAK_POINTER  *Wp   = MakeWeakPointer (Cons);
-  BORAX_PIN           *Pin1 = MakePin (Wp);
-  BORAX_PIN           *Pin2 = MakePin (Cons);
+  BORAX_OBJECT        Root1 = BORAX_MAKE_POINTER (Wp);
+  BORAX_OBJECT        Root2 = BORAX_MAKE_POINTER (Cons);
 
   Cons->Car = 343 << 1;  // fixnum
   Cons->Cdr = 2401 << 1;
 
-  std::vector<BORAX_OBJECT>  RootObjs = {
-    BORAX_MAKE_POINTER (Pin1), BORAX_MAKE_POINTER (Pin2) };
+  std::vector<BORAX_OBJECT *>  Roots = { &Root1, &Root2 };
 
-  Collect (RootObjs);
+  Collect (Roots);
 
-  ASSERT_THAT (Pin1, IsValidAddress (Tracer));
-  ASSERT_TRUE (BORAX_IS_POINTER (Pin1->Object));
-  BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Pin1->Object);
+  ASSERT_TRUE (BORAX_IS_POINTER (Root1));
+  BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Root1);
 
   ASSERT_THAT (Header, IsValidAddress (Tracer));
   ASSERT_EQ (BORAX_WIDETAG_WEAK_POINTER, Header->WideTag);
@@ -718,15 +712,14 @@ TEST_F (MemoryLeakTests, WeakPointerCanAccessAfterCollection) {
 }
 
 TEST_F (MemoryLeakTests, RootedString) {
-  BORAX_STRING               *String  = MakeString (L"Hello, world!");
-  BORAX_PIN                  *Pin     = MakePin (String);
-  std::vector<BORAX_OBJECT>  RootObjs = { BORAX_MAKE_POINTER (Pin) };
+  BORAX_STRING                 *String = MakeString (L"Hello, world!");
+  BORAX_OBJECT                 Root    = BORAX_MAKE_POINTER (String);
+  std::vector<BORAX_OBJECT *>  Roots   = { &Root };
 
-  Collect (RootObjs);
+  Collect (Roots);
 
-  ASSERT_THAT (Pin, IsValidAddress (Tracer));
-  ASSERT_TRUE (BORAX_IS_POINTER (Pin->Object));
-  BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Pin->Object);
+  ASSERT_TRUE (BORAX_IS_POINTER (Root));
+  BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Root);
 
   ASSERT_THAT (Header, IsValidAddress (Tracer));
   ASSERT_EQ (BORAX_WIDETAG_STRING, Header->WideTag);
@@ -735,15 +728,14 @@ TEST_F (MemoryLeakTests, RootedString) {
 }
 
 TEST_F (MemoryLeakTests, RootedVector) {
-  BORAX_VECTOR               *Vector  = MakeVector (100, 42 << 1);
-  BORAX_PIN                  *Pin     = MakePin (Vector);
-  std::vector<BORAX_OBJECT>  RootObjs = { BORAX_MAKE_POINTER (Pin) };
+  BORAX_VECTOR                 *Vector = MakeVector (100, 42 << 1);
+  BORAX_OBJECT                 Root    = BORAX_MAKE_POINTER (Vector);
+  std::vector<BORAX_OBJECT *>  Roots   = { &Root };
 
-  Collect (RootObjs);
+  Collect (Roots);
 
-  ASSERT_THAT (Pin, IsValidAddress (Tracer));
-  ASSERT_TRUE (BORAX_IS_POINTER (Pin->Object));
-  BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Pin->Object);
+  ASSERT_TRUE (BORAX_IS_POINTER (Root));
+  BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Root);
 
   ASSERT_THAT (Header, IsValidAddress (Tracer));
   ASSERT_EQ (BORAX_WIDETAG_VECTOR, Header->WideTag);
@@ -753,15 +745,14 @@ TEST_F (MemoryLeakTests, RootedVector) {
 }
 
 TEST_F (MemoryLeakTests, RootedRecord) {
-  BORAX_RECORD               *Record  = MakeRecord (gSomeVal, 10);
-  BORAX_PIN                  *Pin     = MakePin (Record);
-  std::vector<BORAX_OBJECT>  RootObjs = { BORAX_MAKE_POINTER (Pin) };
+  BORAX_RECORD                 *Record = MakeRecord (gSomeVal, 10);
+  BORAX_OBJECT                 Root    = BORAX_MAKE_POINTER (Record);
+  std::vector<BORAX_OBJECT *>  Roots   = { &Root };
 
-  Collect (RootObjs);
+  Collect (Roots);
 
-  ASSERT_THAT (Pin, IsValidAddress (Tracer));
-  ASSERT_TRUE (BORAX_IS_POINTER (Pin->Object));
-  BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Pin->Object);
+  ASSERT_TRUE (BORAX_IS_POINTER (Root));
+  BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Root);
 
   ASSERT_THAT (Header, IsValidAddress (Tracer));
   ASSERT_EQ (BORAX_WIDETAG_RECORD, Header->WideTag);
