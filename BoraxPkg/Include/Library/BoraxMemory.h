@@ -642,7 +642,7 @@ typedef union {
   struct {
     BORAX_HALFWORD    HalfWord0;
     BORAX_HALFWORD    Length;
-    BORAX_OBJECT      Type;
+    BORAX_OBJECT      Class;
     BORAX_OBJECT      Slots[];
   };
 } BORAX_RECORD;
@@ -651,7 +651,7 @@ EFI_STATUS
 EFIAPI
 BoraxAllocateRecord (
   IN BORAX_ALLOCATOR  *Alloc,
-  IN BORAX_OBJECT     Type,
+  IN BORAX_OBJECT     Class,
   IN UINTN            Length,
   OUT BORAX_RECORD    **Record
   );

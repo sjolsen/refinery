@@ -341,7 +341,7 @@ MarkObjectIfWhite (
 
       Status = BoraxAllocateRecord (
                  Alloc,
-                 Record->Type,
+                 Record->Class,
                  Record->Length,
                  &NewRec
                  );
@@ -487,7 +487,7 @@ MarkSubObjectsIfWhite (
       BORAX_RECORD  *Record = (BORAX_RECORD *)Object;
       UINTN         I;
 
-      Status = MarkObjectWordIfWhite (Alloc, GreyList, Record->Type);
+      Status = MarkObjectWordIfWhite (Alloc, GreyList, Record->Class);
       if (EFI_ERROR (Status)) {
         return Status;
       }
@@ -570,7 +570,7 @@ MarkObjectBlack (
       BORAX_RECORD  *Record = (BORAX_RECORD *)Object;
       UINTN         I;
 
-      UpdateIfMoved (&Record->Type);
+      UpdateIfMoved (&Record->Class);
       for (I = 0; I < Record->Length; ++I) {
         UpdateIfMoved (&Record->Slots[I]);
       }
@@ -992,7 +992,7 @@ EFI_STATUS
 EFIAPI
 BoraxAllocateRecord (
   IN BORAX_ALLOCATOR  *Alloc,
-  IN BORAX_OBJECT     Type,
+  IN BORAX_OBJECT     Class,
   IN UINTN            Length,
   OUT BORAX_RECORD    **Record
   )
@@ -1019,7 +1019,7 @@ BoraxAllocateRecord (
   // Initialize the record
   NewRecord->Header.WideTag = BORAX_WIDETAG_RECORD;
   NewRecord->Length         = Length;
-  NewRecord->Type           = Type;
+  NewRecord->Class          = Class;
   SetMemN (
     NewRecord->Slots,
     sizeof (BORAX_OBJECT) * Length,

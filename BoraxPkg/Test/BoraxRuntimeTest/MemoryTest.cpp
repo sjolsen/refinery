@@ -448,14 +448,14 @@ public:
 
   BORAX_RECORD *
   MakeRecord (
-    BORAX_OBJECT  Type,
+    BORAX_OBJECT  Class,
     UINTN         Length
     )
   {
     BORAX_RECORD  *Record;
     EFI_STATUS    Status;
 
-    Status = BoraxAllocateRecord (&Alloc, Type, Length, &Record);
+    Status = BoraxAllocateRecord (&Alloc, Class, Length, &Record);
     EXPECT_EQ (EFI_SUCCESS, Status);
     return Record;
   }
@@ -703,7 +703,7 @@ TEST_F (MemoryLeakTests, RootedRecord) {
   ASSERT_THAT (Header, IsValidAddress (Tracer));
   ASSERT_EQ (BORAX_WIDETAG_RECORD, Header->WideTag);
   Record = reinterpret_cast<BORAX_RECORD *>(Header);
-  EXPECT_EQ (gSomeVal, Record->Type);
+  EXPECT_EQ (gSomeVal, Record->Class);
   EXPECT_EQ (BORAX_IMMEDIATE_UNBOUND, Record->Slots[0]);
   EXPECT_EQ (BORAX_IMMEDIATE_UNBOUND, Record->Slots[9]);
 }
