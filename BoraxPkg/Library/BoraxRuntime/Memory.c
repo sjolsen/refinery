@@ -3,7 +3,7 @@
 #include <Library/BaseMemoryLib.h>
 #include <Library/DebugLib.h>
 
-#include "GreyList.h"
+#include "Stack.h"
 
 STATIC VOID *
 EFIAPI
@@ -258,7 +258,7 @@ STATIC EFI_STATUS
 EFIAPI
 MarkObjectIfWhite (
   IN BORAX_ALLOCATOR      *Alloc,
-  IN BORAX_GREY_LIST      *GreyList,
+  IN BORAX_STACK          *GreyList,
   IN BORAX_OBJECT_HEADER  *Object
   )
 {
@@ -397,7 +397,7 @@ MarkObjectIfWhite (
   }
 
   if (NewObj == NULL) {
-    Status = BoraxGreyListPush (GreyList, Object);
+    Status = BoraxStackPush (GreyList, (UINTN)Object);
     if (EFI_ERROR (Status)) {
       return Status;
     }
@@ -408,7 +408,7 @@ MarkObjectIfWhite (
       return Status;
     }
 
-    Status = BoraxGreyListPush (GreyList, NewObj);
+    Status = BoraxStackPush (GreyList, (UINTN)NewObj);
     if (EFI_ERROR (Status)) {
       return Status;
     }
@@ -421,7 +421,7 @@ STATIC EFI_STATUS
 EFIAPI
 MarkObjectWordIfWhite (
   IN BORAX_ALLOCATOR  *Alloc,
-  IN BORAX_GREY_LIST  *GreyList,
+  IN BORAX_STACK      *GreyList,
   IN BORAX_OBJECT     ObjectWord
   )
 {
@@ -442,7 +442,7 @@ STATIC EFI_STATUS
 EFIAPI
 MarkSubObjectsIfWhite (
   IN BORAX_ALLOCATOR      *Alloc,
-  IN BORAX_GREY_LIST      *GreyList,
+  IN BORAX_STACK          *GreyList,
   IN BORAX_OBJECT_HEADER  *Object
   )
 {
@@ -675,7 +675,7 @@ BoraxAllocatorCollect (
   )
 {
   EFI_STATUS           Status;
-  BORAX_GREY_LIST      GreyList;
+  BORAX_STACK          GreyList;
   BORAX_OBJECT         ObjectWord;
   BORAX_OBJECT_HEADER  *Object;
 
@@ -685,7 +685,7 @@ BoraxAllocatorCollect (
   Alloc->ToSpaceParity = !Alloc->ToSpaceParity;
 
   // Mark the initial set of root objects grey
-  BoraxGreyListInit (&GreyList, Alloc->SysAlloc);
+  BoraxStackInit (&GreyList, Alloc->SysAlloc);
   while (RootSet->Next (RootSet->Ctx, &ObjectWord)) {
     if (!BORAX_IS_POINTER (ObjectWord)) {
       continue;
@@ -699,7 +699,7 @@ BoraxAllocatorCollect (
   }
 
   // Walk the graph
-  while (BoraxGreyListPop (&GreyList, &Object)) {
+  while (BoraxStackPop (&GreyList, (UINTN *)&Object)) {
     Status = MarkSubObjectsIfWhite (Alloc, &GreyList, Object);
     if (EFI_ERROR (Status)) {
       goto cleanup;
@@ -728,7 +728,7 @@ BoraxAllocatorCollect (
   // All remaining objects are marked black; the next collection will flip
   // Alloc->ToSpaceParity, which will effectively mark those object white
 cleanup:
-  BoraxGreyListCleanup (&GreyList);
+  BoraxStackCleanup (&GreyList);
   return Status;
 }
 
