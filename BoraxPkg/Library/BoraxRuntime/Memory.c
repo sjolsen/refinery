@@ -554,12 +554,6 @@ MarkObjectBlack (
       UpdateIfMoved (&Pin->Object);
       break;
     }
-    case BORAX_DISCRIM_WEAK_POINTER:
-    {
-      BORAX_WEAK_POINTER  *Wp = (BORAX_WEAK_POINTER *)Object;
-      UpdateIfMoved (&Wp->Value);
-      break;
-    }
     case BORAX_DISCRIM_VECTOR:
     {
       BORAX_VECTOR  *Vector = (BORAX_VECTOR *)Object;
@@ -583,8 +577,9 @@ MarkObjectBlack (
 
       break;
     }
-    case BORAX_DISCRIM_STRING: // No subobjects
-    case BORAX_DISCRIM_MOVED:  // Not an object
+    case BORAX_DISCRIM_STRING:       // No subobjects
+    case BORAX_DISCRIM_WEAK_POINTER: // Will get updated later
+    case BORAX_DISCRIM_MOVED:        // Not an object
       break;
     default:
       // If a new widetag is added, we need to add support for it
@@ -646,6 +641,9 @@ SweepWeakPointers (
 
   // Look for referents that are about to get collected
   for (Wp = Alloc->ToSpace.WeakPointers; Wp != NULL; Wp = Wp->Next) {
+    // If the weak pointer was marked before its referent, it will not have
+    // had a chance to see the moved tag, so we delay that logic until here.
+    UpdateIfMoved (&Wp->Value);
     if (!BORAX_IS_POINTER (Wp->Value)) {
       continue;
     }
