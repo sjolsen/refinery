@@ -513,6 +513,8 @@ public:
   }
 };
 
+constexpr const BORAX_OBJECT  gSomeVal = 8675309 << 1; // fixnum
+
 TEST_F (MemoryLeakTests, CleanupNothing) {
 }
 
@@ -541,11 +543,11 @@ TEST_F (MemoryLeakTests, CleanupString) {
 }
 
 TEST_F (MemoryLeakTests, CleanupVector) {
-  (VOID)MakeVector (1000, BORAX_IMMEDIATE_NIL);
+  (VOID)MakeVector (1000, gSomeVal);
 }
 
 TEST_F (MemoryLeakTests, CleanupRecord) {
-  (VOID)MakeRecord (BORAX_IMMEDIATE_NIL, 20);
+  (VOID)MakeRecord (gSomeVal, 20);
 }
 
 TEST_F (MemoryLeakTests, CollectNothing) {
@@ -582,12 +584,12 @@ TEST_F (MemoryLeakTests, CollectRootlessString) {
 }
 
 TEST_F (MemoryLeakTests, CollectRootlessVector) {
-  (VOID)MakeVector (1000, BORAX_IMMEDIATE_NIL);
+  (VOID)MakeVector (1000, gSomeVal);
   Collect ();
 }
 
 TEST_F (MemoryLeakTests, CleanupRootlessRecord) {
-  (VOID)MakeRecord (BORAX_IMMEDIATE_NIL, 20);
+  (VOID)MakeRecord (gSomeVal, 20);
   Collect ();
 }
 
@@ -751,7 +753,7 @@ TEST_F (MemoryLeakTests, RootedVector) {
 }
 
 TEST_F (MemoryLeakTests, RootedRecord) {
-  BORAX_RECORD               *Record  = MakeRecord (BORAX_IMMEDIATE_NIL, 10);
+  BORAX_RECORD               *Record  = MakeRecord (gSomeVal, 10);
   BORAX_PIN                  *Pin     = MakePin (Record);
   std::vector<BORAX_OBJECT>  RootObjs = { BORAX_MAKE_POINTER (Pin) };
 
@@ -764,7 +766,7 @@ TEST_F (MemoryLeakTests, RootedRecord) {
   ASSERT_THAT (Header, IsValidAddress (Tracer));
   ASSERT_EQ (BORAX_WIDETAG_RECORD, Header->WideTag);
   Record = reinterpret_cast<BORAX_RECORD *>(Header);
-  EXPECT_EQ (BORAX_IMMEDIATE_NIL, Record->Type);
+  EXPECT_EQ (gSomeVal, Record->Type);
   EXPECT_EQ (BORAX_IMMEDIATE_UNBOUND, Record->Slots[0]);
   EXPECT_EQ (BORAX_IMMEDIATE_UNBOUND, Record->Slots[9]);
 }
