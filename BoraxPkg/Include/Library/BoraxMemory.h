@@ -407,6 +407,13 @@ typedef struct {
  * will be invalidated by a collection cycle. This limits, for instance, the
  * ways a TPL_CALLBACK routine can interact with the lisp system, which runs the
  * garbage collector at TPL_APPLICATION.
+ *
+ * Future directions:
+ *
+ * - It may be cumbersome to arrange for pins to be included in the root set. It
+ *   might be better to have a refcount for use by the external environment
+ *   (it still needs to be traced by the collector to prevent dangling
+ *   references from the lisp environment).
  */
 
 typedef union _BORAX_PIN BORAX_PIN;
