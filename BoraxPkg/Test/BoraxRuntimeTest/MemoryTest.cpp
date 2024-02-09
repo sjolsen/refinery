@@ -483,6 +483,34 @@ public:
   {
     return MakeString ((CONST CHAR16 *)Text);
   }
+
+  BORAX_VECTOR *
+  MakeVector (
+    UINTN         Length,
+    BORAX_OBJECT  InitialElement
+    )
+  {
+    BORAX_VECTOR  *Vector;
+    EFI_STATUS    Status;
+
+    Status = BoraxAllocateVector (&Alloc, Length, InitialElement, &Vector);
+    EXPECT_EQ (EFI_SUCCESS, Status);
+    return Vector;
+  }
+
+  BORAX_RECORD *
+  MakeRecord (
+    BORAX_OBJECT  Type,
+    UINTN         Length
+    )
+  {
+    BORAX_RECORD  *Record;
+    EFI_STATUS    Status;
+
+    Status = BoraxAllocateRecord (&Alloc, Type, Length, &Record);
+    EXPECT_EQ (EFI_SUCCESS, Status);
+    return Record;
+  }
 };
 
 TEST_F (MemoryLeakTests, CleanupNothing) {
@@ -510,6 +538,14 @@ TEST_F (MemoryLeakTests, CleanupWeakPointer) {
 
 TEST_F (MemoryLeakTests, CleanupString) {
   (VOID)MakeString (L"Hello, world!");
+}
+
+TEST_F (MemoryLeakTests, CleanupVector) {
+  (VOID)MakeVector (1000, BORAX_IMMEDIATE_NIL);
+}
+
+TEST_F (MemoryLeakTests, CleanupRecord) {
+  (VOID)MakeRecord (BORAX_IMMEDIATE_NIL, 20);
 }
 
 TEST_F (MemoryLeakTests, CollectNothing) {
@@ -542,6 +578,16 @@ TEST_F (MemoryLeakTests, CollectRootlessWeakPointer) {
 
 TEST_F (MemoryLeakTests, CollectRootlessString) {
   (VOID)MakeString (L"Hello, world!");
+  Collect ();
+}
+
+TEST_F (MemoryLeakTests, CollectRootlessVector) {
+  (VOID)MakeVector (1000, BORAX_IMMEDIATE_NIL);
+  Collect ();
+}
+
+TEST_F (MemoryLeakTests, CleanupRootlessRecord) {
+  (VOID)MakeRecord (BORAX_IMMEDIATE_NIL, 20);
   Collect ();
 }
 
@@ -683,7 +729,44 @@ TEST_F (MemoryLeakTests, RootedString) {
   ASSERT_THAT (Header, IsValidAddress (Tracer));
   ASSERT_EQ (BORAX_WIDETAG_STRING, Header->WideTag);
   String = reinterpret_cast<BORAX_STRING *>(Header);
-  EXPECT_EQ (0, StrCmp((CONST CHAR16 *)L"Hello, world!", String->Data));
+  EXPECT_EQ (0, StrCmp ((CONST CHAR16 *)L"Hello, world!", String->Data));
+}
+
+TEST_F (MemoryLeakTests, RootedVector) {
+  BORAX_VECTOR               *Vector  = MakeVector (100, 42 << 1);
+  BORAX_PIN                  *Pin     = MakePin (Vector);
+  std::vector<BORAX_OBJECT>  RootObjs = { BORAX_MAKE_POINTER (Pin) };
+
+  Collect (RootObjs);
+
+  ASSERT_THAT (Pin, IsValidAddress (Tracer));
+  ASSERT_TRUE (BORAX_IS_POINTER (Pin->Object));
+  BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Pin->Object);
+
+  ASSERT_THAT (Header, IsValidAddress (Tracer));
+  ASSERT_EQ (BORAX_WIDETAG_VECTOR, Header->WideTag);
+  Vector = reinterpret_cast<BORAX_VECTOR *>(Header);
+  EXPECT_EQ ((UINTN)(42 << 1), Vector->Data[0]);
+  EXPECT_EQ ((UINTN)(42 << 1), Vector->Data[99]);
+}
+
+TEST_F (MemoryLeakTests, RootedRecord) {
+  BORAX_RECORD               *Record  = MakeRecord (BORAX_IMMEDIATE_NIL, 10);
+  BORAX_PIN                  *Pin     = MakePin (Record);
+  std::vector<BORAX_OBJECT>  RootObjs = { BORAX_MAKE_POINTER (Pin) };
+
+  Collect (RootObjs);
+
+  ASSERT_THAT (Pin, IsValidAddress (Tracer));
+  ASSERT_TRUE (BORAX_IS_POINTER (Pin->Object));
+  BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Pin->Object);
+
+  ASSERT_THAT (Header, IsValidAddress (Tracer));
+  ASSERT_EQ (BORAX_WIDETAG_RECORD, Header->WideTag);
+  Record = reinterpret_cast<BORAX_RECORD *>(Header);
+  EXPECT_EQ (BORAX_IMMEDIATE_NIL, Record->Type);
+  EXPECT_EQ (BORAX_IMMEDIATE_UNBOUND, Record->Slots[0]);
+  EXPECT_EQ (BORAX_IMMEDIATE_UNBOUND, Record->Slots[9]);
 }
 
 int

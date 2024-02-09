@@ -58,8 +58,9 @@
  *
  *   Tag   Interpretation
  *   ====  ==============
- *   0x03  ...
- *   0x07  ...
+ *   0x03  string
+ *   0x07  vector
+ *   0x0B  record
  *   ...
  *   0xF3  weak-pointer
  *   0xF7  pin
@@ -77,6 +78,16 @@ STATIC_ASSERT (
   sizeof (UINTN) == sizeof (VOID *),
   "UINTN expected to be the same size as VOID *"
   );
+
+#if defined (MDE_CPU_IA32)
+#define BORAX_HALFWORD      UINT16
+#define BORAX_HALFWORD_MAX  MAX_UINT16
+#elif defined (MDE_CPU_X64)
+#define BORAX_HALFWORD      UINT32
+#define BORAX_HALFWORD_MAX  MAX_UINT32
+#else
+  #error "Don't know how large to make a halfword"
+#endif
 
 typedef UINTN BORAX_OBJECT;
 
@@ -116,6 +127,8 @@ enum {
 
 enum {
   BORAX_WIDETAG_STRING        = 0x03,
+  BORAX_WIDETAG_VECTOR        = 0x07,
+  BORAX_WIDETAG_RECORD        = 0x0B,
   BORAX_WIDETAG_WEAK_POINTER  = 0xF3,
   BORAX_WIDETAG_PIN           = 0xF7,
   BORAX_WIDETAG_MOVED         = 0xFB,
@@ -132,6 +145,8 @@ enum {
   // Pointers
   BORAX_DISCRIM_CONS          = 0x02,
   BORAX_DISCRIM_STRING        = BORAX_WIDETAG_STRING,
+  BORAX_DISCRIM_VECTOR        = BORAX_WIDETAG_VECTOR,
+  BORAX_DISCRIM_RECORD        = BORAX_WIDETAG_RECORD,
   BORAX_DISCRIM_WEAK_POINTER  = BORAX_WIDETAG_WEAK_POINTER,
   BORAX_DISCRIM_PIN           = BORAX_WIDETAG_PIN,
   BORAX_DISCRIM_MOVED         = BORAX_WIDETAG_MOVED,
@@ -567,6 +582,68 @@ BoraxAllocateString (
   IN BORAX_ALLOCATOR  *Alloc,
   IN UINTN            Length,
   OUT BORAX_STRING    **String
+  );
+
+/*
+ * Vectors
+ * =======
+ *
+ * Vectors are simple, fixed-length, non-specialized sequences of object words
+ * arranged contiguously in memory.
+ */
+
+typedef union {
+  BORAX_OBJECT_HEADER    Header;
+  struct {
+    UINTN           Word0;
+    UINTN           Length;
+    BORAX_OBJECT    Data[];
+  };
+} BORAX_VECTOR;
+
+EFI_STATUS
+EFIAPI
+BoraxAllocateVector (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN UINTN            Length,
+  IN BORAX_OBJECT     InitialElement,
+  OUT BORAX_VECTOR    **Vector
+  );
+
+EFI_STATUS
+EFIAPI
+BoraxAllocateVectorUninitialized (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN UINTN            Length,
+  OUT BORAX_VECTOR    **Vector
+  );
+
+/*
+ * Records
+ * =======
+ *
+ * Records are sequences of slots, the interpretation of which are left up to
+ * higher levels of the runtime. The length is packed into a halfword; a record
+ * with more than 65535 slots is unlikely to be necessary ;-)
+ */
+
+typedef union {
+  BORAX_OBJECT_HEADER    Header;
+  struct {
+    BORAX_HALFWORD    HalfWord0;
+    BORAX_HALFWORD    Length;
+    BORAX_OBJECT      Type;
+    BORAX_OBJECT      Slots[];
+  };
+} BORAX_RECORD;
+
+EFI_STATUS
+EFIAPI
+BoraxAllocateRecord (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN BORAX_OBJECT     Type,
+  IN UINTN            Length,
+  OUT BORAX_RECORD    **Record
   );
 
 #endif // BORAX_MEMORY_H

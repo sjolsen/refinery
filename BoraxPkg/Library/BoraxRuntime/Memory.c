@@ -297,15 +297,64 @@ MarkObjectIfWhite (
     case BORAX_DISCRIM_STRING:
     {
       BORAX_STRING  *String = (BORAX_STRING *)Object;
-      BORAX_STRING *NewStr;
+      BORAX_STRING  *NewStr;
 
-      Status = BoraxAllocateString ( Alloc, String->Length, &NewStr );
+      Status = BoraxAllocateString (Alloc, String->Length, &NewStr);
       if (EFI_ERROR (Status)) {
         return Status;
       }
 
       NewObj = &NewStr->Header;
       CopyMem (NewStr->Data, String->Data, 2 * String->Length);
+      Object->WideTag        = BORAX_WIDETAG_MOVED;
+      Object->HeaderWords[1] = BORAX_MAKE_POINTER (NewObj);
+      break;
+    }
+    case BORAX_DISCRIM_VECTOR:
+    {
+      BORAX_VECTOR  *Vector = (BORAX_VECTOR *)Object;
+      BORAX_VECTOR  *NewVec;
+
+      Status = BoraxAllocateVectorUninitialized (
+                 Alloc,
+                 Vector->Length,
+                 &NewVec
+                 );
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      NewObj = &NewVec->Header;
+      CopyMem (
+        NewVec->Data,
+        Vector->Data,
+        sizeof (BORAX_OBJECT) * Vector->Length
+        );
+      Object->WideTag        = BORAX_WIDETAG_MOVED;
+      Object->HeaderWords[1] = BORAX_MAKE_POINTER (NewObj);
+      break;
+    }
+    case BORAX_DISCRIM_RECORD:
+    {
+      BORAX_RECORD  *Record = (BORAX_RECORD *)Object;
+      BORAX_RECORD  *NewRec;
+
+      Status = BoraxAllocateRecord (
+                 Alloc,
+                 Record->Type,
+                 Record->Length,
+                 &NewRec
+                 );
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      NewObj = &NewRec->Header;
+      CopyMem (
+        NewRec->Slots,
+        Record->Slots,
+        sizeof (BORAX_OBJECT) * Record->Length
+        );
       Object->WideTag        = BORAX_WIDETAG_MOVED;
       Object->HeaderWords[1] = BORAX_MAKE_POINTER (NewObj);
       break;
@@ -419,6 +468,39 @@ MarkSubObjectsIfWhite (
       Status = MarkObjectWordIfWhite (Alloc, GreyList, Pin->Object);
       return Status;
     }
+    case BORAX_DISCRIM_VECTOR:
+    {
+      BORAX_VECTOR  *Vector = (BORAX_VECTOR *)Object;
+      UINTN         I;
+
+      for (I = 0; I < Vector->Length; ++I) {
+        Status = MarkObjectWordIfWhite (Alloc, GreyList, Vector->Data[I]);
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+      }
+
+      return EFI_SUCCESS;
+    }
+    case BORAX_DISCRIM_RECORD:
+    {
+      BORAX_RECORD  *Record = (BORAX_RECORD *)Object;
+      UINTN         I;
+
+      Status = MarkObjectWordIfWhite (Alloc, GreyList, Record->Type);
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      for (I = 0; I < Record->Length; ++I) {
+        Status = MarkObjectWordIfWhite (Alloc, GreyList, Record->Slots[I]);
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+      }
+
+      return EFI_SUCCESS;
+    }
     case BORAX_DISCRIM_STRING:
     case BORAX_DISCRIM_WEAK_POINTER:
     case BORAX_DISCRIM_MOVED:
@@ -478,7 +560,30 @@ MarkObjectBlack (
       UpdateIfMoved (&Wp->Value);
       break;
     }
-    case BORAX_DISCRIM_STRING:  // No subobjects
+    case BORAX_DISCRIM_VECTOR:
+    {
+      BORAX_VECTOR  *Vector = (BORAX_VECTOR *)Object;
+      UINTN         I;
+
+      for (I = 0; I < Vector->Length; ++I) {
+        UpdateIfMoved (&Vector->Data[I]);
+      }
+
+      break;
+    }
+    case BORAX_DISCRIM_RECORD:
+    {
+      BORAX_RECORD  *Record = (BORAX_RECORD *)Object;
+      UINTN         I;
+
+      UpdateIfMoved (&Record->Type);
+      for (I = 0; I < Record->Length; ++I) {
+        UpdateIfMoved (&Record->Slots[I]);
+      }
+
+      break;
+    }
+    case BORAX_DISCRIM_STRING: // No subobjects
     case BORAX_DISCRIM_MOVED:  // Not an object
       break;
     default:
@@ -820,5 +925,96 @@ BoraxAllocateString (
   SetMem (NewString->Data, 2 * Length, 0);
 
   *String = NewString;
+  return EFI_SUCCESS;
+}
+
+EFI_STATUS
+EFIAPI
+BoraxAllocateVector (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN UINTN            Length,
+  IN BORAX_OBJECT     InitialElement,
+  OUT BORAX_VECTOR    **Vector
+  )
+{
+  EFI_STATUS  Status;
+
+  Status = BoraxAllocateVectorUninitialized (Alloc, Length, Vector);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  SetMemN ((*Vector)->Data, sizeof (BORAX_OBJECT) * Length, InitialElement);
+  return EFI_SUCCESS;
+}
+
+EFI_STATUS
+EFIAPI
+BoraxAllocateVectorUninitialized (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN UINTN            Length,
+  OUT BORAX_VECTOR    **Vector
+  )
+{
+  EFI_STATUS    Status;
+  BORAX_VECTOR  *NewVector;
+
+  // Allocate a regular lisp object
+  Status = BoraxAllocateObject (
+             Alloc,
+             sizeof (BORAX_VECTOR) + sizeof (BORAX_OBJECT) * Length,
+             (BORAX_OBJECT_HEADER **)&NewVector
+             );
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  // Initialize the vector
+  NewVector->Header.WideTag = BORAX_WIDETAG_VECTOR;
+  NewVector->Length         = Length;
+
+  *Vector = NewVector;
+  return EFI_SUCCESS;
+}
+
+EFI_STATUS
+EFIAPI
+BoraxAllocateRecord (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN BORAX_OBJECT     Type,
+  IN UINTN            Length,
+  OUT BORAX_RECORD    **Record
+  )
+{
+  EFI_STATUS    Status;
+  BORAX_RECORD  *NewRecord;
+
+  // Halfword length limits the possible size of the record
+  if (Length > BORAX_HALFWORD_MAX) {
+    DEBUG ((DEBUG_ERROR, "%a: oversized record (%u)\n", __func__, Length));
+    return EFI_INVALID_PARAMETER;
+  }
+
+  // Allocate a regular lisp object
+  Status = BoraxAllocateObject (
+             Alloc,
+             sizeof (BORAX_RECORD) + sizeof (BORAX_OBJECT) * Length,
+             (BORAX_OBJECT_HEADER **)&NewRecord
+             );
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  // Initialize the record
+  NewRecord->Header.WideTag = BORAX_WIDETAG_RECORD;
+  NewRecord->Length         = Length;
+  NewRecord->Type           = Type;
+  SetMemN (
+    NewRecord->Slots,
+    sizeof (BORAX_OBJECT) * Length,
+    BORAX_IMMEDIATE_UNBOUND
+    );
+
+  *Record = NewRecord;
   return EFI_SUCCESS;
 }
