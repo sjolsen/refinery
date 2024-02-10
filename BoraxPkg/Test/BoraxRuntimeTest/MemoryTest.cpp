@@ -44,7 +44,7 @@ private:
     .FreePool      = WRAP_FN (_FreePool),
   };
 
-  std::vector<std::shared_ptr<void>> _Allocs;
+  std::vector<std::shared_ptr<void> > _Allocs;
   std::unordered_map<UINTN, PageAllocation> _PageAllocs;
   std::unordered_map<UINTN, PoolAllocation> _PoolAllocs;
   std::vector<std::string> _Errors;
@@ -412,15 +412,20 @@ public:
 
   BORAX_VECTOR *
   MakeRawVector (
-    UINTN         Length,
+    UINTN  Length,
     UINTN  InitialElement
     )
   {
     BORAX_VECTOR  *Vector;
     EFI_STATUS    Status;
 
-    Status = BoraxAllocateVector (&Alloc, FALSE,
-                                  Length, InitialElement, &Vector);
+    Status = BoraxAllocateVector (
+               &Alloc,
+               FALSE,
+               Length,
+               InitialElement,
+               &Vector
+               );
     EXPECT_EQ (EFI_SUCCESS, Status);
     return Vector;
   }
@@ -434,8 +439,13 @@ public:
     BORAX_VECTOR  *Vector;
     EFI_STATUS    Status;
 
-    Status = BoraxAllocateVector (&Alloc, TRUE,
-                                  Length, InitialElement, &Vector);
+    Status = BoraxAllocateVector (
+               &Alloc,
+               TRUE,
+               Length,
+               InitialElement,
+               &Vector
+               );
     EXPECT_EQ (EFI_SUCCESS, Status);
     return Vector;
   }
