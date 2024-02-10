@@ -44,6 +44,7 @@ private:
     .FreePool      = WRAP_FN (_FreePool),
   };
 
+  std::vector<std::shared_ptr<void>> _Allocs;
   std::unordered_map<UINTN, PageAllocation> _PageAllocs;
   std::unordered_map<UINTN, PoolAllocation> _PoolAllocs;
   std::vector<std::string> _Errors;
@@ -67,6 +68,7 @@ private:
                    );
     PageAllocation  Record = { Mem, Pages };
 
+    _Allocs.emplace_back (Mem, free);
     _PageAllocs.emplace ((UINTN)Mem, Record);
     return Mem;
   }
@@ -96,7 +98,6 @@ private:
       }
 
       _PageAllocs.erase (It);
-      free (Buffer);
     }
   }
 
@@ -108,6 +109,7 @@ private:
     VOID            *Mem   = malloc (AllocationSize);
     PoolAllocation  Record = { Mem, AllocationSize };
 
+    _Allocs.emplace_back (Mem, free);
     _PoolAllocs.emplace ((UINTN)Mem, Record);
     return Mem;
   }
@@ -126,7 +128,6 @@ private:
       _Errors.push_back (std::move (ss).str ());
     } else {
       _PoolAllocs.erase (It);
-      free (Buffer);
     }
   }
 
