@@ -58,8 +58,8 @@
  *
  *   Tag   Interpretation
  *   ====  ==============
- *   0x03  vector
- *   0x07  record
+ *   0x03  word-record
+ *   0x07  object-record
  *   ...
  *   0xF3  weak-pointer
  *   0xF7  pin
@@ -133,8 +133,8 @@ enum {
 (((_ptr)->HeaderWords[0] & BORAX_LOWTAG_MASK_HEAP) != BORAX_LOWTAG_HEAP)
 
 enum {
-  BORAX_WIDETAG_VECTOR        = 0x03,
-  BORAX_WIDETAG_RECORD        = 0x07,
+  BORAX_WIDETAG_WORD_RECORD   = 0x03,
+  BORAX_WIDETAG_OBJECT_RECORD = 0x07,
   BORAX_WIDETAG_WEAK_POINTER  = 0xF3,
   BORAX_WIDETAG_PIN           = 0xF7,
   BORAX_WIDETAG_MOVED         = 0xFB,
@@ -150,8 +150,8 @@ enum {
   BORAX_DISCRIM_CHARACTER = BORAX_IMMEDIATE_CHARACTER_BEGIN,
   // Pointers
   BORAX_DISCRIM_CONS          = 0x02,
-  BORAX_DISCRIM_VECTOR        = BORAX_WIDETAG_VECTOR,
-  BORAX_DISCRIM_RECORD        = BORAX_WIDETAG_RECORD,
+  BORAX_DISCRIM_WORD_RECORD   = BORAX_WIDETAG_WORD_RECORD,
+  BORAX_DISCRIM_OBJECT_RECORD = BORAX_WIDETAG_OBJECT_RECORD,
   BORAX_DISCRIM_WEAK_POINTER  = BORAX_WIDETAG_WEAK_POINTER,
   BORAX_DISCRIM_PIN           = BORAX_WIDETAG_PIN,
   BORAX_DISCRIM_MOVED         = BORAX_WIDETAG_MOVED,
@@ -446,6 +446,34 @@ union _BORAX_WEAK_POINTER {
 };
 
 /*
+ * Records
+ * =======
+ *
+ * Records are a generalization of simple vectors and instances and come in two
+ * flavors: "word records," which contain arbitrary data not traced by the
+ * garbage collector; and "object records," which contain objects that the
+ * garbage collector does trace.
+ *
+ * Records reference a class object that describes to higher levels of the
+ * runtime how to interpret the contents of the record. The garbage collector
+ * does not make use of the Class field except to trace it. The length of the
+ * record in words is fixed at object creation time. Some types like bit vectors
+ * need to record the length at finer than word granularity; the LengthAux field
+ * is provided for this purpose.
+ */
+
+typedef union {
+  BORAX_OBJECT_HEADER    Header;
+  struct {
+    BORAX_HALFWORD    HalfWord0;
+    BORAX_HALFWORD    LengthAux; // Extra length bits for sub-word granularity
+    UINTN             Length;    // Count of words
+    BORAX_OBJECT      Class;
+    UINTN             Data[];
+  };
+} BORAX_RECORD;
+
+/*
  * Triggering garbage collection
  * =============================
  *
@@ -559,69 +587,26 @@ BoraxAllocateWeakPointer (
   OUT BORAX_WEAK_POINTER  **WeakPointer
   );
 
-/*
- * Vectors
- * =======
- *
- * Vectors are simple, fixed-length sequences of words arranged contiguously in
- * memory. A vector may be a homogeneous sequence of raw words or a homogeneous
- * sequence of object words.
- */
-
-typedef union {
-  BORAX_OBJECT_HEADER    Header;
-  struct {
-    BORAX_HALFWORD    HalfWord0;
-    BORAX_HALFWORD    ContainsObjects;
-    UINTN             Length; // Count of words
-    UINTN             Data[];
-  };
-} BORAX_VECTOR;
-
-EFI_STATUS
-EFIAPI
-BoraxAllocateVector (
-  IN BORAX_ALLOCATOR  *Alloc,
-  IN BOOLEAN          ContainsObjects,
-  IN UINTN            Length,
-  IN UINTN            InitialElement,
-  OUT BORAX_VECTOR    **Vector
-  );
-
-EFI_STATUS
-EFIAPI
-BoraxAllocateVectorUninitialized (
-  IN BORAX_ALLOCATOR  *Alloc,
-  IN BOOLEAN          ContainsObjects,
-  IN UINTN            Length,
-  OUT BORAX_VECTOR    **Vector
-  );
-
-/*
- * Records
- * =======
- *
- * Records are sequences of slots, the interpretation of which are left up to
- * higher levels of the runtime. The length is packed into a halfword; a record
- * with more than 65535 slots is unlikely to be necessary ;-)
- */
-
-typedef union {
-  BORAX_OBJECT_HEADER    Header;
-  struct {
-    BORAX_HALFWORD    HalfWord0;
-    BORAX_HALFWORD    Length;
-    BORAX_OBJECT      Class;
-    BORAX_OBJECT      Slots[];
-  };
-} BORAX_RECORD;
-
 EFI_STATUS
 EFIAPI
 BoraxAllocateRecord (
   IN BORAX_ALLOCATOR  *Alloc,
+  IN UINTN            WideTag,  // WORD_RECORD or OBJECT_RECORD
   IN BORAX_OBJECT     Class,
   IN UINTN            Length,
+  IN BORAX_HALFWORD   LengthAux,
+  IN UINTN            InitialElement,
+  OUT BORAX_RECORD    **Record
+  );
+
+EFI_STATUS
+EFIAPI
+BoraxAllocateRecordUninitialized (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN UINTN            WideTag,  // WORD_RECORD or OBJECT_RECORD
+  IN BORAX_OBJECT     Class,
+  IN UINTN            Length,
+  IN BORAX_HALFWORD   LengthAux,
   OUT BORAX_RECORD    **Record
   );
 
