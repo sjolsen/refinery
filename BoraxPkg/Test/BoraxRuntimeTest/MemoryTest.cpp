@@ -247,7 +247,7 @@ struct PinDeleter {
 
 using AutoPin = std::unique_ptr<BORAX_PIN, PinDeleter>;
 
-class MemoryLeakTests : public ::testing::Test {
+class MemoryTests : public ::testing::Test {
 public:
   TracingAllocator Tracer;
   BORAX_ALLOCATOR Alloc;
@@ -457,76 +457,76 @@ public:
 
 constexpr const BORAX_OBJECT  gSomeVal = 8675309 << 1; // fixnum
 
-TEST_F (MemoryLeakTests, CleanupNothing) {
+TEST_F (MemoryTests, CleanupNothing) {
 }
 
-TEST_F (MemoryLeakTests, CleanupCons) {
+TEST_F (MemoryTests, CleanupCons) {
   (VOID)MakeConses (4000);
 }
 
-TEST_F (MemoryLeakTests, CleanupObject) {
+TEST_F (MemoryTests, CleanupObject) {
   (VOID)MakeObjects (100);
 }
 
-TEST_F (MemoryLeakTests, CleanupPin) {
+TEST_F (MemoryTests, CleanupPin) {
   auto  Conses = MakeConses (10);
 
   (VOID)MakePins (Conses);
 }
 
-TEST_F (MemoryLeakTests, CleanupWeakPointer) {
+TEST_F (MemoryTests, CleanupWeakPointer) {
   auto  Conses = MakeConses (1000);
 
   (VOID)MakeWeakPointers (Conses);
 }
 
-TEST_F (MemoryLeakTests, CleanupWordRecord) {
+TEST_F (MemoryTests, CleanupWordRecord) {
   (VOID)MakeWordRecord (1000, BORAX_LOWTAG_POINTER);
 }
 
-TEST_F (MemoryLeakTests, CleanupObjectRecord) {
+TEST_F (MemoryTests, CleanupObjectRecord) {
   (VOID)MakeObjectRecord (gSomeVal, 20);
 }
 
-TEST_F (MemoryLeakTests, CollectNothing) {
+TEST_F (MemoryTests, CollectNothing) {
   Collect ();
 }
 
-TEST_F (MemoryLeakTests, CollectRootlessCons) {
+TEST_F (MemoryTests, CollectRootlessCons) {
   (VOID)MakeConses (4000);
   Collect ();
 }
 
-TEST_F (MemoryLeakTests, CollectRootlessObject) {
+TEST_F (MemoryTests, CollectRootlessObject) {
   (VOID)MakeObjects (100);
   Collect ();
 }
 
-TEST_F (MemoryLeakTests, CollectRootlessPin) {
+TEST_F (MemoryTests, CollectRootlessPin) {
   auto  Conses = MakeConses (10);
 
   (VOID)MakePins (Conses);
   Collect ();
 }
 
-TEST_F (MemoryLeakTests, CollectRootlessWeakPointer) {
+TEST_F (MemoryTests, CollectRootlessWeakPointer) {
   auto  Conses = MakeConses (1000);
 
   (VOID)MakeWeakPointers (Conses);
   Collect ();
 }
 
-TEST_F (MemoryLeakTests, CollectRootlessWordRecord) {
+TEST_F (MemoryTests, CollectRootlessWordRecord) {
   (VOID)MakeWordRecord (1000, BORAX_LOWTAG_POINTER);
   Collect ();
 }
 
-TEST_F (MemoryLeakTests, CleanupRootlessObjectRecord) {
+TEST_F (MemoryTests, CleanupRootlessObjectRecord) {
   (VOID)MakeObjectRecord (gSomeVal, 20);
   Collect ();
 }
 
-TEST_F (MemoryLeakTests, IsValidSanityCheck) {
+TEST_F (MemoryTests, IsValidSanityCheck) {
   auto  Conses1 = MakeConses (1000);
 
   EXPECT_THAT (Conses1, Each (IsValidAddress (Tracer)));
@@ -537,7 +537,7 @@ TEST_F (MemoryLeakTests, IsValidSanityCheck) {
   EXPECT_THAT (Conses2, Each (IsValidAddress (Tracer)));
 }
 
-TEST_F (MemoryLeakTests, RootedCons) {
+TEST_F (MemoryTests, RootedCons) {
   BORAX_CONS  *Cons = MakeCons ();
   AutoPin     Pin   = MakePin (Cons);
 
@@ -558,7 +558,7 @@ TEST_F (MemoryLeakTests, RootedCons) {
   EXPECT_EQ ((UINTN)(77 << 1), P->Cdr);
 }
 
-TEST_F (MemoryLeakTests, RootedList) {
+TEST_F (MemoryTests, RootedList) {
   std::vector<BORAX_CONS *>  Conses = MakeConses (1000);
   AutoPin                    Pin    = MakePin (Conses[0]);
 
@@ -594,7 +594,7 @@ TEST_F (MemoryLeakTests, RootedList) {
   }
 }
 
-TEST_F (MemoryLeakTests, WeakPointerIsWeak) {
+TEST_F (MemoryTests, WeakPointerIsWeak) {
   BORAX_CONS          *Cons = MakeCons ();
   BORAX_WEAK_POINTER  *Wp   = MakeWeakPointer (Cons);
   AutoPin             Pin   = MakePin (Wp);
@@ -612,7 +612,7 @@ TEST_F (MemoryLeakTests, WeakPointerIsWeak) {
   EXPECT_EQ (BORAX_IMMEDIATE_UNBOUND, Wp->Value);
 }
 
-TEST_F (MemoryLeakTests, WeakPointerCanAccessAfterCollection) {
+TEST_F (MemoryTests, WeakPointerCanAccessAfterCollection) {
   BORAX_CONS          *Cons = MakeCons ();
   BORAX_WEAK_POINTER  *Wp   = MakeWeakPointer (Cons);
   AutoPin             Pin1  = MakePin (Wp);
@@ -641,7 +641,7 @@ TEST_F (MemoryLeakTests, WeakPointerCanAccessAfterCollection) {
   EXPECT_EQ ((UINTN)(2401 << 1), P->Cdr);
 }
 
-TEST_F (MemoryLeakTests, RootedWordRecord) {
+TEST_F (MemoryTests, RootedWordRecord) {
   BORAX_RECORD  *Record = MakeWordRecord (20, BORAX_LOWTAG_POINTER);
   AutoPin       Pin     = MakePin (Record);
 
@@ -659,7 +659,7 @@ TEST_F (MemoryLeakTests, RootedWordRecord) {
   EXPECT_EQ (BORAX_LOWTAG_POINTER, Record->Data[19]);
 }
 
-TEST_F (MemoryLeakTests, RootedObjectRecord) {
+TEST_F (MemoryTests, RootedObjectRecord) {
   BORAX_RECORD  *Record = MakeObjectRecord (gSomeVal, 10);
   AutoPin       Pin     = MakePin (Record);
 
