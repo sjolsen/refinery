@@ -303,18 +303,18 @@
  *         |                    |
  *         +--------------------+
  *         |  Closure pointer   |
- *         +--------------------|
- *         |    Default exit    |
  *         +--------------------+
  *         |    Code pointer    |
+ *         +--------------------|
+ *         |      Saved PC      |
  *         +--------------------+
  *         |      Saved BP      |
  *   BP -> +--------------------+ <- Previous frame's SP
  *         | ////////////////// |
  *
- * On function entry, the caller's BP is saved and the callee's code pointer is
- * pushed onto the stack. The interpreter populates the default exit and closure
- * pointer, if applicable. Space is allocated for the shared and local bindings,
+ * On function entry, the caller's BP and PC are saved and the callee's code
+ * pointer is pushed onto the stack. The interpreter populates the closure
+ * pointer if applicable. Space is allocated for the shared and local bindings,
  * and the BP and SP are updated to point to the start and end of the frame,
  * respectively. Formal parameters are parsed and stored in the VR before the PC
  * is set to the beginning of the function's code buffer. All of this is done by
@@ -325,15 +325,13 @@
  * of the stack as the corresponding bindings are established and
  * disestablished. If a non-local exit is taken, it is first checked for
  * validity (exits are invalidated when their dynamic extent ends), then the
- * stack is unwound until the target exit or a cleanup is reached. If a cleanup
- * is reached, it is popped and called normally with a default exit
- * corresponding to the in-flight target exit.
+ * stack is unwound until the target exit or a cleanup is reached. Whichever is
+ * reached first is popped and executed.
  *
- * Function return is implemented by taking the default exit. Tail calls, which
- * require that there be no dynamic extents in the current activation record,
- * are implemented by overwriting the frame, retaining the saved BP and default
- * exit. To avoid allocating an exit descriptor for every call, return exits are
- * encoded as fixnum indices.
+ * Function return is implemented by restoring the saved PC and popping the
+ * current activation record. Tail calls, which require that there be no dynamic
+ * extents in the current activation record, are implemented by overwriting the
+ * frame, retaining the saved BP and PC.
  *
  * Shared variable bindings
  * ------------------------
@@ -517,8 +515,35 @@
  *
  *   instruction = RETURN [ condition ] values;
  *
- * The RETURN instruction performs a non-local exit using the saved exit slot in
+ * The RETURN instruction performs a non-local exit using the saved PC slot in
  * the current activation record.
+ *
+ * Dynamic extent operations
+ * -------------------------
+ *
+ *   instruction = PUSH-SPECIAL location location;
+ *
+ * The PUSH-SPECIAL instruction establishes a new dynamic binding for the symbol
+ * specified in the first location and initializes that binding with the value
+ * loaded from the second location.
+ *
+ *   instruction = PUSH-EXIT location index;
+ *
+ * The PUSH-EXIT instruction establishes an exit to the code location specified
+ * by index and stores the resulting exit object into the specified location.
+ *
+ *   instruction = PUSH-CATCH location index;
+ *
+ * The PUSH-EXIT instruction establishes an exit to the code location specified
+ * by index and binds the resulting exit object to the tag specified in the
+ * location.
+ *
+ *   instruction = PUSH-CLEANUP index;
+ *
+ * The PUSH-CLEANUP instruction establishes a cleanup at the code location
+ * specified by index. When a cleanup is taken, there may be an in-flight exit;
+ * if so, the exit and MULTIPLE-VALUES object containing the previous VR
+ * contents are provided in the VR. Otherwise, these values are NIL.
  *
  * Data operations
  * ---------------
