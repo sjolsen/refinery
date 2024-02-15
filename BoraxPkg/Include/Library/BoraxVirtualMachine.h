@@ -283,10 +283,11 @@
  * -----------------------
  *
  * Each task has a stack and a handful of registers, namely the base pointer
- * (BP), stack pointer (SP), and program counter (PC). The stack is a simple
- * vector of object references that are dynamically partitioned into activation
- * records. Each activation record corresponds to a function call. An activation
- * record is laid out as follows (with addresses increasing upward):
+ * (BP), stack pointer (SP), values register (VR), and program counter (PC). The
+ * stack is a simple vector of object references that are dynamically
+ * partitioned into activation records. Each activation record corresponds to a
+ * function call. An activation record is laid out as follows (with addresses
+ * increasing upward):
  *
  *   SP -> +--------------------+
  *         |                    |
@@ -315,9 +316,10 @@
  * pushed onto the stack. The interpreter populates the default exit and closure
  * pointer, if applicable. Space is allocated for the shared and local bindings,
  * and the BP and SP are updated to point to the start and end of the frame,
- * respectively. Formal parameters are then stored to local or shared
- * bindings. All of this is done by the interpreter based on the static data
- * described in the code object and the parameters passed by the caller.
+ * respectively. Formal parameters are parsed and stored in the VR before the PC
+ * is set to the beginning of the function's code buffer. All of this is done by
+ * the interpreter based on the static data described in the code object and the
+ * parameters passed by the caller.
  *
  * During function execution, dynamic extents are pushed and popped at the top
  * of the stack as the corresponding bindings are established and
@@ -333,28 +335,45 @@
  * exit. To avoid allocating an exit descriptor for every call, return exits are
  * encoded as fixnum indices.
  *
- * Instruction encoding
- * --------------------
+ * Shared variable bindings
+ * ------------------------
  *
- * Every instruction begins with an opcode byte. Most instructions take a fixed
- * number of arguments, which are encoded following the opcode. Some operations,
- * like function calls, support a variable number of arguments. In these cases,
- * the arguments are prefixed with a length, either alone or part of the opcode
- * itself.
+ * Closures require the implementation of shared bindings. A given function
+ * invocation will either receive shared bindings from another activation record
+ * or produce shared bindings that will be closed over by other functions (or
+ * both). The closure pointer implements the former, the shared bindings section
+ * the latter.
  *
- * Rather than having a fixed set of registers or maintaining a value stack, the
- * virtual machine implements addressing modes allowing instructions to
- * reference local bindings, closure bindings, shared bindings, etc. Actual
- * arguments to function calls are specified with location references in the
- * call instruction. Formal parameters and results from function calls are
- * stored according to location references specified with each basic block.
+ * Consider the following functions:
  *
- * Under normal circumstances, the multiple-values mechanism is implemented
- * using the aforementioned location references, and the intermediate
- * representation of values is not visible to the program. There are situations
- * like cleanups and the implementation of MULTIPLE-VALUE-LIST that require
- * access to arbitrary values sequences, and there is a distinct addressing mode
- * for this.
+ *   (defun nested (x)
+ *     (lambda ()
+ *       (let (y)
+ *         ...
+ *         (lambda () (list x y)))))
+ *
+ *   (defun convoluted ()
+ *     (let (x y z)
+ *       ...
+ *       (list (lambda () (list x y))
+ *             (lambda () (list x z)))))
+ *
+ * In NESTED, the inner lambda needs to capture bindings from multiple
+ * activation records. In CONVOLUTED, the closures of the two inner lambdas
+ * overlap but are not identical.
+ *
+ * To support functions like NESTED, closure objects contain pointers to
+ * multiple shared binding blocks. Instructions that access shared bindings
+ * through the closure pointer will need to specify two indices: the block index
+ * and the binding index.
+ *
+ * Supporting functions like CONVOLUTED does not require splitting up
+ * locally-created shared bindings; CONVOLUTED could allocated one shared
+ * binding block containing X, Y, and Z, and pass it to both nested
+ * functions. The compiler is free to do this, for instance to improve locality,
+ * but to avoid hanging on to dead locals the virtual machine supports splitting
+ * shared locals up into multiple blocks. These bindings are addressed with two
+ * indices as well.
  *
  * Code objects
  * ------------
@@ -384,6 +403,139 @@
  * bytecode array the code object holds a C function pointer. The PC, instead of
  * being a bytecode index, is a state machine index that gets passed in and out
  * of the C function.
+ *
+ * The Borax instruction set
+ * =========================
+ *
+ * The Borax instruction set is designed around manipulating the virtual machine
+ * described above. The breadth of data processing instructions like add, shift,
+ * etc. typical of traditional architectures is left to functions.
+ *
+ * Note that the virtual machine has no value stack or general-purpose
+ * registers. Instead, the virtual machine supports a number of addressing modes
+ * that allow instructions to access stack bindings, constant data, and certain
+ * kinds of heap data directly. The VR communicates data into and out of
+ * functions and exits.
+ *
+ * Instruction syntax
+ * ------------------
+ *
+ * The instruction syntax is specified in a variant of EBNF where:
+ *
+ * - Terminals that correspond to lisp symbols are written in upper-case without
+ *   quotation marks;
+ *
+ * - Non-terminals are written in lower-case;
+ *
+ * - Concatenation is expressed by juxtaposition;
+ *
+ * - Multiple definitions of the same non-terminal indicate alternatives.
+ *
+ * Addressing modes
+ * ----------------
+ *
+ *   index = natural-number;
+ *   immediate = integer;
+ *
+ * Indices are non-negative values used by the following addressing modes to
+ * index into various data structures. Immediates encode small numbers directly
+ * into the instruction stream.
+ *
+ *   constant = "(" :CONSTANT index ")";
+ *
+ * Constants index into the constant data vector stored with each code object.
+ *
+ *   local = "(" :LOCAL index ")";
+ *
+ * Locals index into the local bindings section of the activation record.
+ *
+ *   shared = "(" :SHARED index index ")";
+ *
+ * The first index of a shared location is used to obtain a shared binding
+ * object from the shared bindings section of the activation record. The second
+ * index indexes into the shared binding object.
+ *
+ *   closure = "(" :CLOSURE index index ")";
+ *
+ * Closure locations work like shared locations, except that the shared binding
+ * object is retrieved from the closure object instead of directly from the
+ * activation record.
+ *
+ *   location = constant | local | shared | closure;
+ *
+ * For simplicity, only one syntactic category of location is defined. Not all
+ * locations are semantically valid in all instructions.
+ *
+ * Control-flow instructions
+ * -------------------------
+ *
+ *   values = :VALUES location | { location };
+ *
+ * The values clause appears where an instruction reads or writes the values
+ * register (VR). The first variant saves or loads the entire register into or
+ * from a MULTIPLE-VALUES object. The second variant scatters or gathers values
+ * into or from multiple locations.
+ *
+ *   condition = :IF location;
+ *
+ * The condition clause allows for conditional execution of an
+ * instruction. Before any other operands are processed, the condition location
+ * is loaded and evaluated as a generalized boolean. If the resulting value is
+ * NIL, the instruction is retired; otherwise, it is processed as normal.
+ *
+ *   instruction = BIND natural-number values;
+ *
+ * The BIND instruction resets the dynamic extent depth and moves data from the
+ * VR into one or more addressable locations. The :VALUES variant binds a VALUES
+ * object instead of scattering the contents.
+ *
+ * The BIND instruction is intended to be the target of a transfer of control
+ * and is suitable for storing formal parameters and retrieving return and exit
+ * values.
+ *
+ *   instruction = JUMP [ condition ] index;
+ *
+ * The JUMP instruction transfers control to another instruction within the same
+ * code object.
+ *
+ *   instruction = CALL [ :TAIL ] [ :FAST ] [ condition ] location values;
+ *
+ * The CALL instruction calls an arbitrary callable object. If the :TAIL flag is
+ * specified, a tail call is performed. If the :FAST flag is specified, the
+ * values are bound directly by the target function; otherwise, they are parsed
+ * according to the target function's lambda list.
+ *
+ *   instruction = EXIT [ condition ] location values;
+ *
+ * The EXIT instruction performs a non-local exit using the exit object stored
+ * in the specified location.
+ *
+ *   instruction = THROW [ condition ] location values;
+ *
+ * The THROW instruction performs a non-local exit using the catch tag stored in
+ * the specified location.
+ *
+ *   instruction = RETURN [ condition ] values;
+ *
+ * The RETURN instruction performs a non-local exit using the saved exit slot in
+ * the current activation record.
+ *
+ * Data operations
+ * ---------------
+ *
+ *   shared-block = "(" :SHARED index ")";
+ *   closure-block = "(" :CLOSURE index ")";
+ *   instruction = CAPTURE location location { shared-block | closure-block };
+ *
+ * The CAPTURE instruction loads a raw code object from the second location,
+ * constructs a new closure object referencing that code object and the
+ * specified binding blocks, and stores the resulting closure in the first
+ * location.
+ *
+ *   instruction = MOVE [ condition ] location location;
+ *
+ * The MOVE instruction loads a value from the second location and stores it
+ * into the first location.
  */
 
 enum {
@@ -411,8 +563,6 @@ enum {
   BORAX_MODE_LOCAL,
   BORAX_MODE_SHARED,
   BORAX_MODE_CLOSURE,
-  BORAX_MODE_SYMBOL,
-  BORAX_MODE_FUNCTION,
 };
 
 #endif // BORAX_VIRTUAL_MACHINE_H
