@@ -244,6 +244,14 @@
  * if we exit the form that created the binding via a non-local exit (for
  * instance, if PRINC had called THROW).
  *
+ * Lexical variable bindings
+ * -------------------------
+ *
+ * Many lexical variables will only last until the end of their containing
+ * scope. Some lexical variables, however, must have indefinite extent --
+ * namely, those captured by closures. This prevents them from being allocated
+ * on the stack. Their bindings must be heap-allocated instead.
+ *
  * Multitasking
  * ------------
  *
@@ -289,6 +297,10 @@
  *         |   Local bindings   |
  *         |                    |
  *         +--------------------+
+ *         |                    |
+ *         |  Shared bindings   | -> Pointers to heap-allocated bindings
+ *         |                    |
+ *         +--------------------+
  *         |  Closure pointer   |
  *         +--------------------|
  *         |    Default exit    |
@@ -301,11 +313,11 @@
  *
  * On function entry, the caller's BP is saved and the callee's code pointer is
  * pushed onto the stack. The interpreter populates the default exit and closure
- * pointer, if applicable. Space is allocated for the local bindings (including
- * formal parameters), and the BP and SP are updated to point to the start and
- * end of the frame, respectively. All of this is done by the interpreter based
- * on the static data described in the code object and the parameters passed by
- * the caller.
+ * pointer, if applicable. Space is allocated for the shared and local bindings,
+ * and the BP and SP are updated to point to the start and end of the frame,
+ * respectively. Formal parameters are then stored to local or shared
+ * bindings. All of this is done by the interpreter based on the static data
+ * described in the code object and the parameters passed by the caller.
  *
  * During function execution, dynamic extents are pushed and popped at the top
  * of the stack as the corresponding bindings are established and
@@ -332,7 +344,7 @@
  *
  * Rather than having a fixed set of registers or maintaining a value stack, the
  * virtual machine implements addressing modes allowing instructions to
- * reference local bindings, closure bindings, dynamic bindings, etc. Actual
+ * reference local bindings, closure bindings, shared bindings, etc. Actual
  * arguments to function calls are specified with location references in the
  * call instruction. Formal parameters and results from function calls are
  * stored according to location references specified with each basic block.
@@ -352,7 +364,7 @@
  * objects need to describe:
  *
  * - How formal parameters are to be handled
- * - How many local bindings are required
+ * - How many shared and local bindings are required
  * - How dynamic extents should be reset and how result values should be bound
  *   upon entry to each basic block
  * - The instructions that make up each basic block
@@ -361,11 +373,46 @@
  * Clearly, bytecode needs to be stored in a vector specialized for byte
  * storage, and constants need to be stored in an object vector. Keeping the
  * formal parameter list as a lambda list is useful for diagnosing call errors,
- * so that is an object reference as well. The local binding count affects how
- * frames are parsed and needs to be processed before any of the bindings for
- * the entry basic block anyway, so that is also a separate field. The bindings
- * themselves as well as extent resets are encoded in a special instruction that
- * can only occur at the beginning of a basic block.
+ * so that is an object reference as well. The shared and local binding counts
+ * affect how frames are parsed and need to be processed before any of the
+ * bindings for the entry basic block anyway, so those are also separate
+ * fields. The bindings themselves as well as extent resets are encoded in a
+ * special instruction that can only occur at the beginning of a basic block.
+ *
+ * We also need objects corresponding to built-in functions implemented in
+ * C. This works the same way as a regular code object, except that instead of a
+ * bytecode array the code object holds a C function pointer. The PC, instead of
+ * being a bytecode index, is a state machine index that gets passed in and out
+ * of the C function.
  */
+
+enum {
+  // Control-flow operations
+  BORAX_OPCODE_BIND,
+  BORAX_OPCODE_JUMP,
+  BORAX_OPCODE_CALL,
+  BORAX_OPCODE_EXIT,
+  BORAX_OPCODE_THROW,
+  BORAX_OPCODE_RETURN,
+  // Dynamic extent operations
+  BORAX_OPCODE_PUSH_SPECIAL,
+  BORAX_OPCODE_PUSH_EXIT,
+  BORAX_OPCODE_PUSH_CATCH,
+  BORAX_OPCODE_PUSH_CLEANUP,
+  // Data operations
+  BORAX_OPCODE_CAPTURE,
+  BORAX_OPCODE_MOVE,
+};
+
+enum {
+  // Addressing modes
+  BORAX_MODE_IMMEDIATE,
+  BORAX_MODE_CONSTANT,
+  BORAX_MODE_LOCAL,
+  BORAX_MODE_SHARED,
+  BORAX_MODE_CLOSURE,
+  BORAX_MODE_SYMBOL,
+  BORAX_MODE_FUNCTION,
+};
 
 #endif // BORAX_VIRTUAL_MACHINE_H
