@@ -480,24 +480,22 @@
  * is loaded and evaluated as a generalized boolean. If the resulting value is
  * NIL, the instruction is retired; otherwise, it is processed as normal.
  *
- *   instruction = BIND natural-number values;
- *
- * The BIND instruction resets the dynamic extent depth and moves data from the
- * VR into one or more addressable locations. The BIND instruction is intended
- * to be the target of a transfer of control and is suitable for storing formal
- * parameters and retrieving return and exit values.
- *
- *   instruction = JUMP [ condition ] index;
- *
- * The JUMP instruction transfers control to another instruction within the same
- * code object.
- *
  *   instruction = CALL [ :TAIL ] [ :FAST ] [ condition ] location [ values ];
  *
  * The CALL instruction calls an arbitrary callable object. If the :TAIL flag is
  * specified, a tail call is performed. If the :FAST flag is specified, the
  * values are bound directly by the target function; otherwise, they are parsed
  * according to the target function's lambda list.
+ *
+ *   instruction = JUMP [ condition ] index;
+ *
+ * The JUMP instruction transfers control to another instruction within the same
+ * code object.
+ *
+ *   instruction = RETURN [ condition ] [ values ];
+ *
+ * The RETURN instruction performs a non-local exit using the saved PC slot in
+ * the current activation record.
  *
  *   instruction = EXIT [ condition ] location [ values ];
  *
@@ -508,11 +506,6 @@
  *
  * The THROW instruction performs a non-local exit using the catch tag stored in
  * the specified location.
- *
- *   instruction = RETURN [ condition ] [ values ];
- *
- * The RETURN instruction performs a non-local exit using the saved PC slot in
- * the current activation record.
  *
  * Dynamic extent operations
  * -------------------------
@@ -544,8 +537,16 @@
  * Data operations
  * ---------------
  *
+ *   instruction = BIND natural-number values;
+ *
+ * The BIND instruction resets the dynamic extent depth and moves data from the
+ * VR into one or more addressable locations. The BIND instruction is intended
+ * to be the target of a transfer of control and is suitable for storing formal
+ * parameters and retrieving return and exit values.
+ *
  *   shared-block = "(" :SHARED index ")";
  *   closure-block = "(" :CLOSURE index ")";
+ *
  *   instruction = CAPTURE location location { shared-block | closure-block };
  *
  * The CAPTURE instruction loads a raw code object from the second location,
@@ -557,22 +558,147 @@
  *
  * The MOVE instruction loads a value from the second location and stores it
  * into the first location.
+ *
+ * Instruction encoding
+ * ====================
+ *
+ * The instruction encoding is byte-oriented and variable-width. Earlier bytes
+ * in the instruction stream can affect how later bytes are interpreted. The
+ * encoding is designed to be compact for common code sequences without
+ * unnecessarily limiting programs.
+ *
+ * Variable-length integers
+ * ------------------------
+ *
+ * Some fields are only three or four bits, which is not enough to store the
+ * full range of values we'd like to support for things like argument count and
+ * shared binding indices. The scheme used in such cases, called "field
+ * encoding," follows:
+ *
+ * An N-bit field is interpreted as an unsigned integer. If the field value is
+ * less than 2^(N-1), the encoded value is the field value. If the field value
+ * is equal to 2^(N-1), the encoded value is the value of a continuation
+ * byte.
+ *
+ * For simplicity, the value encoded by the continuation bytes is not biased, so
+ * there are duplicate encodings of low values. Field-encoded values are thus
+ * limited to the range 0-255.
+ *
+ * Future directions:
+ *
+ * - If needed, this encoding scheme could be extended by using 2^(N-2) to
+ *   indicate one continuation byte and 2^(N-1) to indicate two. This would be a
+ *   breaking change.
+ *
+ * Opcodes
+ * -------
+ *
+ * Every instruction begins with a one-byte opcode. The top four bits of the
+ * opcode identify the operation and, for CALL, the flags:
+ *
+ *   Code  Operation
+ *   ====  =========
+ *   0000  CALL
+ *   0001  CALL :FAST
+ *   0010  CALL :TAIL
+ *   0011  CALL :FAST :TAIL
+ *
+ *   0100  JUMP
+ *   0101  RETURN
+ *   0110  EXIT
+ *   0111  THROW
+ *
+ *   1000  PUSH-SPECIAL
+ *   1001  PUSH-EXIT
+ *   1010  PUSH-CATCH
+ *   1011  PUSH-CLEANUP
+ *
+ *   1100  BIND
+ *   1101  CAPTURE
+ *   1110  MOVE
+ *   1111  (unused)
+ *
+ * The high bit of the low nibble encodes the condition flag for operations that
+ * support it. The remaining three or four bits encode the operand count for
+ * variable-length instructions. If the operand count is too large to fit in
+ * this field, it is field-encoded as described above and the continuation byte
+ * follows immediately.
+ *
+ * For the CAPTURE instruction, the operand count is the number of blocks listed
+ * minus one. For all other instructions, the operand count encodes the values
+ * operand(s) as follows:
+ *
+ * - 0: no values operand -- i.e., the VR should be used unmodified;
+ *
+ * - 1: a single MULTIPLE-VALUES operand;
+ *
+ * - 2 + N: gather from N value operands.
+ *
+ * Operands
+ * --------
+ *
+ * If the condition flag is set, the instruction will contain a location
+ * operand specifying the value to test. This operand immediately follows the
+ * opcode and any continuation bytes used to encode the operand count.
+ *
+ * After this are any fixed-function operands dictated by the operation,
+ * followed by the remaining operands. Operands are encoded in three ways,
+ * depending on the instruction: as index operands, as location operands, or as
+ * binding block operands.
+ *
+ * Index operands are encoded without an addressing mode tag as two-byte
+ * little-endian unsigned integers. These two-byte integers are not necessarily
+ * aligned.
+ *
+ * Location operands are encoded with an addressing mode tag in the top two
+ * bits:
+ *
+ *   Tag  Addressing mode
+ *   ===  ===============
+ *    00  Constant data
+ *    01  Local binding
+ *    10  Shared binding
+ *    11  Closure binding
+ *
+ * For constant and local addressing modes, the remaining six bits are a
+ * field-encoded index. For shared and closure bindings, the low six bits are
+ * split into two three-bit fields: the higher three bits are the field-encoded
+ * major index, identifying a binding block, and the lower three bits are the
+ * field-encoded minor index, identifying a binding within the block. If both
+ * fields require continuation bytes, the major index continuation byte comes
+ * first.
+ *
+ * Binding block operands are encoded with a tag in the top bit:
+ *
+ *   Tag  Block type
+ *   ===  ===============
+ *     0  Shared binding
+ *     1  Closure binding
+ *
+ * The remaining seven bits are a field-encoded index.
+ *
+ * Future directions:
+ *
+ * - Currently, code targets are always represented with two bytes. This could
+ *   be compacted with a signed PC-relative variable-width encoding, but that's
+ *   more complicated and somewhat difficult to take advantage of in the
+ *   compiler, for relatively minimal gains.
  */
 
 enum {
   // Control-flow operations
-  BORAX_OPCODE_BIND,
-  BORAX_OPCODE_JUMP,
   BORAX_OPCODE_CALL,
+  BORAX_OPCODE_JUMP,
+  BORAX_OPCODE_RETURN,
   BORAX_OPCODE_EXIT,
   BORAX_OPCODE_THROW,
-  BORAX_OPCODE_RETURN,
   // Dynamic extent operations
   BORAX_OPCODE_PUSH_SPECIAL,
   BORAX_OPCODE_PUSH_EXIT,
   BORAX_OPCODE_PUSH_CATCH,
   BORAX_OPCODE_PUSH_CLEANUP,
   // Data operations
+  BORAX_OPCODE_BIND,
   BORAX_OPCODE_CAPTURE,
   BORAX_OPCODE_MOVE,
 };
