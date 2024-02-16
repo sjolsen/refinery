@@ -541,15 +541,21 @@
  * if so, the exit and MULTIPLE-VALUES object containing the previous VR
  * contents are provided in the VR. Otherwise, these values are NIL.
  *
+ *   instruction = POP-DYNAMIC natural-number;
+ *
+ * The POP-DYNAMIC instruction resets the dynamic extent depth to the specified
+ * number. The POP-DYNAMIC instruction is intended to be used in the target
+ * sequence a transfer of control that disestablish dynamic bindings.
+ *
  * Data operations
  * ---------------
  *
  *   instruction = BIND natural-number values;
  *
- * The BIND instruction resets the dynamic extent depth and moves data from the
- * VR into one or more addressable locations. The BIND instruction is intended
- * to be the target of a transfer of control and is suitable for storing formal
- * parameters and retrieving return and exit values.
+ * The BIND instruction moves data from the VR into one or more addressable
+ * locations. The BIND instruction is intended to be used in the target sequence
+ * of a transfer of control and is suitable for storing formal parameters and
+ * retrieving return and exit values.
  *
  *   shared-block = "(" :SHARED index ")";
  *   closure-block = "(" :CLOSURE index ")";
@@ -565,13 +571,6 @@
  *
  * The MOVE instruction loads a value from the second location and stores it
  * into the first location.
- *
- * Future directions:
- *
- * - Right now, the only way to retrieve return values is with BIND, which
- *   always takes a whole byte to set the dynamic extent depth. There should
- *   probably be a variant without that byte -- or the two operations should be
- *   separate.
  *
  * Instruction encoding
  * ====================
@@ -626,11 +625,11 @@
  *   1001  PUSH-EXIT
  *   1010  PUSH-CATCH
  *   1011  PUSH-CLEANUP
+ *   1100  POP-DYNAMIC
  *
- *   1100  BIND
- *   1101  CAPTURE
- *   1110  MOVE
- *   1111  (unused)
+ *   1101  BIND
+ *   1110  CAPTURE
+ *   1111  MOVE
  *
  * The high bit of the low nibble encodes the condition flag for operations that
  * support it. The remaining three or four bits encode the operand count for
@@ -639,8 +638,9 @@
  * follows immediately.
  *
  * For the CAPTURE instruction, the operand count is the number of blocks listed
- * minus one. For all other instructions, the operand count encodes the values
- * operand(s) as follows:
+ * minus one. For the POP-DYNAMIC instruction, the operand count is the intended
+ * dynamic stack depth. For all other instructions, the operand count encodes
+ * the values operand(s) as follows:
  *
  * - 0: no values operand -- i.e., the VR should be used unmodified;
  *
@@ -720,8 +720,8 @@
  *   Entry:     0
  *   Code:      #(...)
  *
- *     C4 00 80 40   BIND 0 :VALUES (:SHARED 0 0) (:LOCAL 0)
- *     D0 41 00 00   CAPTURE (:LOCAL 1) (:CONSTANT 0) (:SHARED 0)
+ *     D4 80 40      BIND :VALUES (:SHARED 0 0) (:LOCAL 0)
+ *     E0 41 00 00   CAPTURE (:LOCAL 1) (:CONSTANT 0) (:SHARED 0)
  *     14 41 40 01   CALL :FAST (:LOCAL 1) :VALUES (:LOCAL 0) (:CONSTANT 1)
  *     20 02         CALL :TAIL (:CONSTANT 2)
  *
@@ -730,17 +730,17 @@
  *   Local:     4
  *   Shared:    NIL
  *   Constants: #(#<UNBOUND-LAMBDA 0x12341234> BORAX-VM:CAR-CDR FUNCALL CONS)
- *   Entry:     14
+ *   Entry:     13
  *   Code:      #(...)
  *
- *     C4 00 40 41   BIND 0 :VALUES (:LOCAL 0) (:LOCAL 1)
- *     48 40 2F 00   JUMP :IF (:LOCAL 0) 47
+ *     D4 40 41      BIND :VALUES (:LOCAL 0) (:LOCAL 1)
+ *     48 40 2A 00   JUMP :IF (:LOCAL 0) 42
  *     03 01 40      CALL (:CONSTANT 1) :VALUES (:LOCAL 0)
- *     C4 00 42 43   BIND 0 :VALUES (:LOCAL 2) (:LOCAL 3)
+ *     D4 42 43      BIND :VALUES (:LOCAL 2) (:LOCAL 3)
  *     04 02 80 42   CALL (:CONSTANT 2) :VALUES (:SHARED 0 0) (:LOCAL 2)
- *     C3 00 42      BIND 0 :VALUES (:LOCAL 2)
+ *     D3 42         BIND :VALUES (:LOCAL 2)
  *     04 03 42 41   CALL (:CONSTANT 3) :VALUES (:LOCAL 2) (:LOCAL 1)
- *     C3 00 41      BIND 0 :VALUES (:LOCAL 1)
+ *     D3 41         BIND :VALUES (:LOCAL 1)
  *     34 00 43 41   CALL :FAST :TAIL (:CONSTANT 0)
  *                        :VALUES (:LOCAL 3) (:LOCAL 1)
  *     53 41         RETURN :VALUES (:LOCAL 1)
@@ -759,24 +759,24 @@
  *   JUMP above could be a conditional return.
  *
  * - The code for the two functions is stored in the same vector, taking up just
- *   49 bytes in total.
+ *   44 bytes in total.
  *
  * It's also fairly hard to read. A better disassembly might look something
  * like:
  *
- *   ENTRY0   BIND 0 (F L)
+ *   ENTRY0   BIND (F L)
  *            CAPTURE IMPL #(#<UNBOUND-LAMBDA 0x12341234>) #(F)
  *            CALL :FAST IMPL (L NIL)
  *            CALL :TAIL NREVERSE
  *
- *   ENTRY1   BIND 0 (L ACC)
+ *   ENTRY1   BIND (L ACC)
  *            JUMP :IF L LABEL0
  *            CALL BORAX-VM:CAR-CDR (L)
- *            BIND 0 (L-CAR L-CDR)
+ *            BIND (L-CAR L-CDR)
  *            CALL FUNCALL (F L-CAR)
- *            BIND 0 (L-CAR)
+ *            BIND (L-CAR)
  *            CALL CONS (L-CAR ACC)
- *            BIND 0 (ACC)
+ *            BIND (ACC)
  *            CALL :FAST :TAIL #<UNBOUND-LAMBDA 0x12341234> (L-CDR ACC)
  *   LABEL0   RETURN (ACC)
  *
@@ -796,6 +796,7 @@ enum {
   BORAX_OPCODE_PUSH_EXIT,
   BORAX_OPCODE_PUSH_CATCH,
   BORAX_OPCODE_PUSH_CLEANUP,
+  BORAX_OPCODE_POP_DYNAMIC,
   // Data operations
   BORAX_OPCODE_BIND,
   BORAX_OPCODE_CAPTURE,
