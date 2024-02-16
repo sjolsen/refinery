@@ -477,12 +477,15 @@
  * into or from multiple locations. When neither variant is used, the VR is
  * unmodified.
  *
- *   condition = :IF location;
+ *   condition = :IF [ :NOT ] location;
  *
  * The condition clause allows for conditional execution of an
- * instruction. Before any other operands are processed, the condition location
- * is loaded and evaluated as a generalized boolean. If the resulting value is
- * NIL, the instruction is retired; otherwise, it is processed as normal.
+ * instruction. Before any other operands are processed, the condition
+ * location(s) are loaded and evaluated as a generalized boolean. If the
+ * resulting value is NIL, the instruction is retired; otherwise, it is
+ * processed as normal.
+ *
+ * Note that not all condition clauses are legal for all condition operations.
  *
  *   instruction = CALL [ :TAIL ] [ :FAST ] [ condition ] location [ values ];
  *
@@ -550,7 +553,7 @@
  * Data operations
  * ---------------
  *
- *   instruction = BIND natural-number values;
+ *   instruction = BIND values;
  *
  * The BIND instruction moves data from the VR into one or more addressable
  * locations. The BIND instruction is intended to be used in the target sequence
@@ -607,52 +610,71 @@
  * -------
  *
  * Every instruction begins with a one-byte opcode. The top four bits of the
- * opcode identify the operation and, for CALL, the flags:
+ * opcode identify the operation and, for CALL, the flags; the lower four bits
+ * contain auxilliary encoding information.
  *
- *   Code  Operation
- *   ====  =========
- *   0000  CALL
- *   0001  CALL :FAST
- *   0010  CALL :TAIL
- *   0011  CALL :FAST :TAIL
+ *   Code  Operation         Aux       Aux  Interpretation
+ *   ====  ================  ====      ===  ==============
+ *   0000  CALL              CNNN       C   Condition flag
+ *   0001  CALL :FAST        CNNN       N   Operand count
+ *   0010  CALL :TAIL        CNNN       D   Depth
+ *   0011  CALL :FAST :TAIL  CNNN
  *
- *   0100  JUMP
- *   0101  RETURN
- *   0110  EXIT
- *   0111  THROW
+ *   0100  JUMP              CCCC
+ *   0101  RETURN            CNNN
+ *   0110  EXIT              CNNN
+ *   0111  THROW             CNNN
  *
- *   1000  PUSH-SPECIAL
- *   1001  PUSH-EXIT
- *   1010  PUSH-CATCH
- *   1011  PUSH-CLEANUP
- *   1100  POP-DYNAMIC
+ *   1000  PUSH-SPECIAL      ----
+ *   1001  PUSH-EXIT         ----
+ *   1010  PUSH-CATCH        ----
+ *   1011  PUSH-CLEANUP      ----
+ *   1100  POP-DYNAMIC       DDDD
  *
- *   1101  BIND
- *   1110  CAPTURE
- *   1111  MOVE
+ *   1101  BIND              NNNN
+ *   1110  CAPTURE           NNNN
+ *   1111  MOVE              CCCC
  *
- * The high bit of the low nibble encodes the condition flag for operations that
- * support it. The remaining three or four bits encode the operand count for
- * variable-length instructions. If the operand count is too large to fit in
- * this field, it is field-encoded as described above and the continuation byte
- * follows immediately.
+ *   <-- MSB              LSB -->
  *
- * For the CAPTURE instruction, the operand count is the number of blocks listed
- * minus one. For the POP-DYNAMIC instruction, the operand count is the intended
- * dynamic stack depth. For all other instructions, the operand count encodes
- * the values operand(s) as follows:
+ * The condition flag is one or four bits, depending on the operation. The
+ * condition flag field is interpreted as an unsigned integer as follows:
  *
- * - 0: no values operand -- i.e., the VR should be used unmodified;
+ *   Flag  Interpretation   Operands
+ *   ====  ===============  ========
+ *      0  Unconditional           0
+ *      1  Boolean                 1
+ *      2  Negated boolean         1
+ *      3  ...
  *
- * - 1: a single MULTIPLE-VALUES operand;
+ * Note that for instructions with a one-bit field, the only available tests are
+ * unconditional (i.e. no test) and boolean. The condition flag is not
+ * field-encoded. Non-zero values of the condition flag result in additional
+ * operands being read for the test.
  *
- * - 2 + N: gather from N value operands.
+ * The depth field is field-encoded and is specific to the POP-DYNAMIC
+ * instruction. It indicates the depth to which the interpreter should reset the
+ * dynamic extent stack.
+ *
+ * The operand count is field-encoded and is interpreted in two ways. For the
+ * CAPTURE instruction, the operand count is the number of block operands minus
+ * one (there is no legal encoding for zero). For all other instructions, the
+ * operand count encodes the values operand(s) as follows:
+ *
+ *   Count  Interpretation
+ *   =====  =======================
+ *       0  (no values)
+ *       1  :MULTIPLE-VALUES l
+ *   2 + N  :VALUES l_0 ... l_(N-1)
+ *
+ * Note that an operand count of 0 leaves the VR unmodified while an operand
+ * count of 2 makes it empty.
  *
  * Operands
  * --------
  *
- * If the condition flag is set, the instruction will contain a location
- * operand specifying the value to test. This operand immediately follows the
+ * If the condition flag is present and non-zero, its value will dictate the
+ * number of condition operands to load. These operands immediately follows the
  * opcode and any continuation bytes used to encode the operand count.
  *
  * After this are any fixed-function operands dictated by the operation,
@@ -734,7 +756,7 @@
  *   Code:      #(...)
  *
  *     D4 40 41      BIND :VALUES (:LOCAL 0) (:LOCAL 1)
- *     48 40 2A 00   JUMP :IF (:LOCAL 0) 42
+ *     42 40 2A 00   JUMP :IF :NOT (:LOCAL 0) 42
  *     03 01 40      CALL (:CONSTANT 1) :VALUES (:LOCAL 0)
  *     D4 42 43      BIND :VALUES (:LOCAL 2) (:LOCAL 3)
  *     04 02 80 42   CALL (:CONSTANT 2) :VALUES (:SHARED 0 0) (:LOCAL 2)
@@ -770,7 +792,7 @@
  *            CALL :TAIL NREVERSE
  *
  *   ENTRY1   BIND (L ACC)
- *            JUMP :IF L LABEL0
+ *            JUMP :IF (NOT L) LABEL0
  *            CALL BORAX-VM:CAR-CDR (L)
  *            BIND (L-CAR L-CDR)
  *            CALL FUNCALL (F L-CAR)
