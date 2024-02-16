@@ -433,11 +433,9 @@
  * ----------------
  *
  *   index = natural-number;
- *   immediate = integer;
  *
  * Indices are non-negative values used by the following addressing modes to
- * index into various data structures. Immediates encode small numbers directly
- * into the instruction stream.
+ * index into various data structures.
  *
  *   constant = "(" :CONSTANT index ")";
  *
@@ -467,12 +465,13 @@
  * Control-flow instructions
  * -------------------------
  *
- *   values = :VALUES location | { location };
+ *   values = :MULTIPLE-VALUES location | :VALUES { location };
  *
  * The values clause appears where an instruction reads or writes the values
  * register (VR). The first variant saves or loads the entire register into or
  * from a MULTIPLE-VALUES object. The second variant scatters or gathers values
- * into or from multiple locations.
+ * into or from multiple locations. When neither variant is used, the VR is
+ * unmodified.
  *
  *   condition = :IF location;
  *
@@ -484,36 +483,33 @@
  *   instruction = BIND natural-number values;
  *
  * The BIND instruction resets the dynamic extent depth and moves data from the
- * VR into one or more addressable locations. The :VALUES variant binds a VALUES
- * object instead of scattering the contents.
- *
- * The BIND instruction is intended to be the target of a transfer of control
- * and is suitable for storing formal parameters and retrieving return and exit
- * values.
+ * VR into one or more addressable locations. The BIND instruction is intended
+ * to be the target of a transfer of control and is suitable for storing formal
+ * parameters and retrieving return and exit values.
  *
  *   instruction = JUMP [ condition ] index;
  *
  * The JUMP instruction transfers control to another instruction within the same
  * code object.
  *
- *   instruction = CALL [ :TAIL ] [ :FAST ] [ condition ] location values;
+ *   instruction = CALL [ :TAIL ] [ :FAST ] [ condition ] location [ values ];
  *
  * The CALL instruction calls an arbitrary callable object. If the :TAIL flag is
  * specified, a tail call is performed. If the :FAST flag is specified, the
  * values are bound directly by the target function; otherwise, they are parsed
  * according to the target function's lambda list.
  *
- *   instruction = EXIT [ condition ] location values;
+ *   instruction = EXIT [ condition ] location [ values ];
  *
  * The EXIT instruction performs a non-local exit using the exit object stored
  * in the specified location.
  *
- *   instruction = THROW [ condition ] location values;
+ *   instruction = THROW [ condition ] location [ values ];
  *
  * The THROW instruction performs a non-local exit using the catch tag stored in
  * the specified location.
  *
- *   instruction = RETURN [ condition ] values;
+ *   instruction = RETURN [ condition ] [ values ];
  *
  * The RETURN instruction performs a non-local exit using the saved PC slot in
  * the current activation record.
@@ -583,7 +579,6 @@ enum {
 
 enum {
   // Addressing modes
-  BORAX_MODE_IMMEDIATE,
   BORAX_MODE_CONSTANT,
   BORAX_MODE_LOCAL,
   BORAX_MODE_SHARED,
