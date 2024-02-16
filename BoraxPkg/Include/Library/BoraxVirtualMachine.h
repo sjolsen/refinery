@@ -614,17 +614,17 @@
  * contain auxiliary encoding information.
  *
  *          OPCODE BYTE
- *                                            AUXILIARY FIELD
+ *                                             AUXILIARY FIELD
  *   Code  Operation         Aux
- *   ====  ================  ====           Aux  Interpretation
- *   0000  CALL              CNNN           ===  ===============
- *   0001  CALL :FAST        CNNN           0/1  Extended opcode
- *   0010  CALL :TAIL        CNNN            C   Condition flag
- *   0011  CALL :FAST :TAIL  CNNN            N   Operand count
- *                                           D   Depth
+ *   ====  ================  ====            Aux  Interpretation
+ *   0000  CALL              CNNN            ===  ===============
+ *   0001  CALL :FAST        CNNN            0/1  Extended opcode
+ *   0010  CALL :TAIL        CNNN             C   Condition flag
+ *   0011  CALL :FAST :TAIL  CNNN             N   Operand count
+ *                                            D   Depth
  *   0100  JUMP              CCCC
  *   0101  RETURN            CNNN
- *   0110  EXIT              CNNN            CONDITION FLAG (C)
+ *   0110  EXIT              CNNN             CONDITION FLAG (C)
  *   0111  THROW             CNNN
  *                                     Flag  Interpretation   Operands
  *   1000  PUSH-SPECIAL      0000      ====  ===============  ========
@@ -634,13 +634,13 @@
  *                                        3  ...
  *   1000  (unused)          0100
  *   ...   ...               ...
- *   1011  (unused)          1111             OPERAND COUNT (N)
+ *   1011  (unused)          1111              OPERAND COUNT (N)
  *
- *   1100  POP-DYNAMIC       DDDD      Count  Interpretation
- *   1101  BIND              NNNN      =====  =======================
- *   1110  CAPTURE           NNNN          0  (no values)
- *   1111  MOVE              CCCC          1  :MULTIPLE-VALUES l
- *                                     2 + N  :VALUES l_0 ... l_(N-1)
+ *   1100  POP-DYNAMIC       DDDD       Count  Interpretation
+ *   1101  BIND              NNNN       =====  =======================
+ *   1110  CAPTURE           NNNN           0  (no values)
+ *   1111  MOVE              CCCC           1  :MULTIPLE-VALUES l
+ *                                      2 + N  :VALUES l_0 ... l_(N-1)
  *   <-- MSB              LSB -->
  *
  * The condition flag is one or four bits, depending on the operation. The
