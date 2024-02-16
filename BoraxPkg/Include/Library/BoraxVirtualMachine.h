@@ -317,9 +317,9 @@
  * pointer if applicable. Space is allocated for the shared and local bindings,
  * and the BP and SP are updated to point to the start and end of the frame,
  * respectively. Formal parameters are parsed and stored in the VR before the PC
- * is set to the beginning of the function's code buffer. All of this is done by
- * the interpreter based on the static data described in the code object and the
- * parameters passed by the caller.
+ * is set to the function's entry point. All of this is done by the interpreter
+ * based on the static data described in the code object and the parameters
+ * passed by the caller.
  *
  * During function execution, dynamic extents are pushed and popped at the top
  * of the stack as the corresponding bindings are established and
@@ -386,6 +386,7 @@
  *   upon entry to each basic block
  * - The instructions that make up each basic block
  * - Any constants referenced by the instructions
+ * - Where execution should begin
  *
  * Clearly, bytecode needs to be stored in a vector specialized for byte
  * storage, and constants need to be stored in an object vector. Keeping the
@@ -401,6 +402,9 @@
  * bytecode array the code object holds a C function pointer. The PC, instead of
  * being a bytecode index, is a state machine index that gets passed in and out
  * of the C function.
+ *
+ * Including the entry point in the code object allows functions to share code
+ * arrays. This is mainly useful for closure instruction locality.
  *
  * The Borax instruction set
  * =========================
@@ -487,6 +491,9 @@
  * values are bound directly by the target function; otherwise, they are parsed
  * according to the target function's lambda list.
  *
+ * The callable object may be a symbol, in which case its SYMBOL-FUNCTION slot
+ * is used.
+ *
  *   instruction = JUMP [ condition ] index;
  *
  * The JUMP instruction transfers control to another instruction within the same
@@ -558,6 +565,13 @@
  *
  * The MOVE instruction loads a value from the second location and stores it
  * into the first location.
+ *
+ * Future directions:
+ *
+ * - Right now, the only way to retrieve return values is with BIND, which
+ *   always takes a whole byte to set the dynamic extent depth. There should
+ *   probably be a variant without that byte -- or the two operations should be
+ *   separate.
  *
  * Instruction encoding
  * ====================
@@ -683,6 +697,91 @@
  *   be compacted with a signed PC-relative variable-width encoding, but that's
  *   more complicated and somewhat difficult to take advantage of in the
  *   compiler, for relatively minimal gains.
+ *
+ * Example
+ * -------
+ *
+ * As a worked example, here's what MAPCAR might look like specialized to one
+ * input list:
+ *
+ *   (defun mapcar-1 (f l)
+ *     (flet ((impl (l acc)
+ *              (if l
+ *                  (impl (cdr l) (cons (funcall f (car l)) acc))
+ *                acc)))
+ *       (nreverse (impl l nil))))
+ *   =>
+ *
+ *   Name:      MAPCAR-1
+ *   Arglist:   (f l)  ;; real MAPCAR would be (f &rest l)
+ *   Local:     2
+ *   Shared:    #(1)
+ *   Constants: #(#<UNBOUND-LAMBDA 0x12341234> NIL NREVERSE)
+ *   Entry:     0
+ *   Code:      #(...)
+ *
+ *     C4 00 80 40   BIND 0 :VALUES (:SHARED 0 0) (:LOCAL 0)
+ *     D0 41 00 00   CAPTURE (:LOCAL 1) (:CONSTANT 0) (:SHARED 0)
+ *     14 41 40 01   CALL :FAST (:LOCAL 1) :VALUES (:LOCAL 0) (:CONSTANT 1)
+ *     20 02         CALL :TAIL (:CONSTANT 2)
+ *
+ *   Name:      #<UNBOUND-LAMBDA 0x12341234>
+ *   Arglist:   (l acc)
+ *   Local:     4
+ *   Shared:    NIL
+ *   Constants: #(#<UNBOUND-LAMBDA 0x12341234> BORAX-VM:CAR-CDR FUNCALL CONS)
+ *   Entry:     14
+ *   Code:      #(...)
+ *
+ *     C4 00 40 41   BIND 0 :VALUES (:LOCAL 0) (:LOCAL 1)
+ *     48 40 2F 00   JUMP :IF (:LOCAL 0) 47
+ *     03 01 40      CALL (:CONSTANT 1) :VALUES (:LOCAL 0)
+ *     C4 00 42 43   BIND 0 :VALUES (:LOCAL 2) (:LOCAL 3)
+ *     04 02 80 42   CALL (:CONSTANT 2) :VALUES (:SHARED 0 0) (:LOCAL 2)
+ *     C3 00 42      BIND 0 :VALUES (:LOCAL 2)
+ *     04 03 42 41   CALL (:CONSTANT 3) :VALUES (:LOCAL 2) (:LOCAL 1)
+ *     C3 00 41      BIND 0 :VALUES (:LOCAL 1)
+ *     34 00 43 41   CALL :FAST :TAIL (:CONSTANT 0)
+ *                        :VALUES (:LOCAL 3) (:LOCAL 1)
+ *     53 41         RETURN :VALUES (:LOCAL 1)
+ *
+ * A few things to note:
+ *
+ * - Fast calls are used where the target function is known statically, or where
+ *   it is desirable to rely on the VM to handle argument parsing.
+ *
+ * - Functions can be referenced by name or by value.
+ *
+ * - The tail recursion in the local closure could (and arguably should) be a
+ *   jump.
+ *
+ * - Conditional execution can't be negated. A call to NOT can fix this, or the
+ *   JUMP above could be a conditional return.
+ *
+ * - The code for the two functions is stored in the same vector, taking up just
+ *   49 bytes in total.
+ *
+ * It's also fairly hard to read. A better disassembly might look something
+ * like:
+ *
+ *   ENTRY0   BIND 0 (F L)
+ *            CAPTURE IMPL #(#<UNBOUND-LAMBDA 0x12341234>) #(F)
+ *            CALL :FAST IMPL (L NIL)
+ *            CALL :TAIL NREVERSE
+ *
+ *   ENTRY1   BIND 0 (L ACC)
+ *            JUMP :IF L LABEL0
+ *            CALL BORAX-VM:CAR-CDR (L)
+ *            BIND 0 (L-CAR L-CDR)
+ *            CALL FUNCALL (F L-CAR)
+ *            BIND 0 (L-CAR)
+ *            CALL CONS (L-CAR ACC)
+ *            BIND 0 (ACC)
+ *            CALL :FAST :TAIL #<UNBOUND-LAMBDA 0x12341234> (L-CDR ACC)
+ *   LABEL0   RETURN (ACC)
+ *
+ * This is a non-trivial endeavour, especially when it comes to naming
+ * temporaries and re-used locals.
  */
 
 enum {
