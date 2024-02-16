@@ -611,46 +611,44 @@
  *
  * Every instruction begins with a one-byte opcode. The top four bits of the
  * opcode identify the operation and, for CALL, the flags; the lower four bits
- * contain auxilliary encoding information.
+ * contain auxiliary encoding information.
  *
- *   Code  Operation         Aux       Aux  Interpretation
- *   ====  ================  ====      ===  ==============
- *   0000  CALL              CNNN       C   Condition flag
- *   0001  CALL :FAST        CNNN       N   Operand count
- *   0010  CALL :TAIL        CNNN       D   Depth
- *   0011  CALL :FAST :TAIL  CNNN
- *
+ *          OPCODE BYTE
+ *                                            AUXILIARY FIELD
+ *   Code  Operation         Aux
+ *   ====  ================  ====           Aux  Interpretation
+ *   0000  CALL              CNNN           ===  ===============
+ *   0001  CALL :FAST        CNNN           0/1  Extended opcode
+ *   0010  CALL :TAIL        CNNN            C   Condition flag
+ *   0011  CALL :FAST :TAIL  CNNN            N   Operand count
+ *                                           D   Depth
  *   0100  JUMP              CCCC
  *   0101  RETURN            CNNN
- *   0110  EXIT              CNNN
+ *   0110  EXIT              CNNN            CONDITION FLAG (C)
  *   0111  THROW             CNNN
+ *                                     Flag  Interpretation   Operands
+ *   1000  PUSH-SPECIAL      0000      ====  ===============  ========
+ *   1000  PUSH-EXIT         0001         0  Unconditional           0
+ *   1000  PUSH-CATCH        0010         1  Boolean                 1
+ *   1000  PUSH-CLEANUP      0011         2  Negated boolean         1
+ *                                        3  ...
+ *   1000  (unused)          0100
+ *   ...   ...               ...
+ *   1011  (unused)          1111             OPERAND COUNT (N)
  *
- *   1000  PUSH-SPECIAL      ----
- *   1001  PUSH-EXIT         ----
- *   1010  PUSH-CATCH        ----
- *   1011  PUSH-CLEANUP      ----
- *   1100  POP-DYNAMIC       DDDD
- *
- *   1101  BIND              NNNN
- *   1110  CAPTURE           NNNN
- *   1111  MOVE              CCCC
- *
+ *   1100  POP-DYNAMIC       DDDD      Count  Interpretation
+ *   1101  BIND              NNNN      =====  =======================
+ *   1110  CAPTURE           NNNN          0  (no values)
+ *   1111  MOVE              CCCC          1  :MULTIPLE-VALUES l
+ *                                     2 + N  :VALUES l_0 ... l_(N-1)
  *   <-- MSB              LSB -->
  *
  * The condition flag is one or four bits, depending on the operation. The
- * condition flag field is interpreted as an unsigned integer as follows:
- *
- *   Flag  Interpretation   Operands
- *   ====  ===============  ========
- *      0  Unconditional           0
- *      1  Boolean                 1
- *      2  Negated boolean         1
- *      3  ...
- *
- * Note that for instructions with a one-bit field, the only available tests are
- * unconditional (i.e. no test) and boolean. The condition flag is not
- * field-encoded. Non-zero values of the condition flag result in additional
- * operands being read for the test.
+ * condition flag field is interpreted as an unsigned integer. Note that for
+ * instructions with a one-bit field, the only available tests are unconditional
+ * (i.e. no test) and boolean. The condition flag is not field-encoded. Non-zero
+ * values of the condition flag result in additional operands being read for the
+ * test.
  *
  * The depth field is field-encoded and is specific to the POP-DYNAMIC
  * instruction. It indicates the depth to which the interpreter should reset the
@@ -659,16 +657,9 @@
  * The operand count is field-encoded and is interpreted in two ways. For the
  * CAPTURE instruction, the operand count is the number of block operands minus
  * one (there is no legal encoding for zero). For all other instructions, the
- * operand count encodes the values operand(s) as follows:
- *
- *   Count  Interpretation
- *   =====  =======================
- *       0  (no values)
- *       1  :MULTIPLE-VALUES l
- *   2 + N  :VALUES l_0 ... l_(N-1)
- *
- * Note that an operand count of 0 leaves the VR unmodified while an operand
- * count of 2 makes it empty.
+ * operand count encodes the kind and number of values operand(s). Note that an
+ * operand count of 0 leaves the VR unmodified while an operand count of 2 makes
+ * it empty.
  *
  * Operands
  * --------
