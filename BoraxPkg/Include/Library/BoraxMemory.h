@@ -117,6 +117,9 @@ enum {
 #define BORAX_IS_FIXNUM(_obj) \
 (((_obj) & BORAX_LOWTAG_MASK_FIXNUM) == BORAX_LOWTAG_FIXNUM)
 
+#define BORAX_MAKE_FIXNUM(_n) \
+((_n) << 1)
+
 #define BORAX_IS_CHARACTER(_obj) \
 (((_obj) & BORAX_IMMEDIATE_MASK_CHARACTER) == BORAX_IMMEDIATE_CHARACTER_BEGIN)
 
@@ -472,6 +475,9 @@ typedef union {
     UINTN             Data[];
   };
 } BORAX_RECORD;
+
+#define BORAX_RECORD_LENGTH(_type) \
+((sizeof (_type) - sizeof (BORAX_RECORD)) / sizeof (BORAX_OBJECT))
 
 /*
  * Triggering garbage collection
