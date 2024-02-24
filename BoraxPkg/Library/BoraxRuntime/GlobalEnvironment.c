@@ -11,7 +11,6 @@ EarlyAllocateStandardClass (
 {
   EFI_STATUS    Status;
   BORAX_RECORD  *Record;
-    BORAX_OBJECT  String;
 
   Status = BoraxAllocateRecord (
              Alloc,
@@ -103,6 +102,7 @@ BoraxBootstrapGlobalEnvironment (
   EFI_STATUS                Status;
   BORAX_GLOBAL_ENVIRONMENT  *Env;
   BORAX_ENVIRONMENT_CACHE   *Cache;
+  BORAX_OBJECT              String;
 
   #define TRY(_expr)  do {    \
     Status = (_expr);         \
@@ -137,9 +137,10 @@ BoraxBootstrapGlobalEnvironment (
   Env->Cache = BORAX_MAKE_POINTER (Cache);
 
   // Allocate the class objects
-  TRY (EarlyAllocateStandardClass (Alloc, Cache, &Cache->StandardClass)) {
-    BORAX_STANDARD_CLASS  *StandardClass = (BORAX_STANDARD_CLASS *)
-                                           BORAX_GET_POINTER (Cache->StandardClass);
+  TRY (EarlyAllocateStandardClass (Alloc, Cache, &Cache->StandardClass));
+  {
+    BORAX_STANDARD_CLASS  *StandardClass =
+      (BORAX_STANDARD_CLASS *)BORAX_GET_POINTER (Cache->StandardClass);
 
     StandardClass->Record.Class = Cache->StandardClass;  // was unbound
   }
