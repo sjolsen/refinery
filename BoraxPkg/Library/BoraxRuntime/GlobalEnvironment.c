@@ -6,11 +6,12 @@ EFIAPI
 EarlyAllocateStandardClass (
   IN BORAX_ALLOCATOR          *Alloc,
   IN BORAX_ENVIRONMENT_CACHE  *Cache,
-  OUT BORAX_STANDARD_CLASS    **Class,
   OUT BORAX_OBJECT            *Object
   )
 {
-  EFI_STATUS  Status;
+  EFI_STATUS    Status;
+  BORAX_RECORD  *Record;
+    BORAX_OBJECT  String;
 
   Status = BoraxAllocateRecord (
              Alloc,
@@ -19,13 +20,13 @@ EarlyAllocateStandardClass (
              BORAX_RECORD_LENGTH (BORAX_STANDARD_CLASS),
              0,
              BORAX_IMMEDIATE_UNBOUND,
-             (BORAX_RECORD **)Class
+             &Record
              );
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
-  *Object = BORAX_MAKE_POINTER (*Class);
+  *Object = BORAX_MAKE_POINTER (Record);
   return EFI_SUCCESS;
 }
 
@@ -35,11 +36,11 @@ EFIAPI
 EarlyAllocateBuiltInClass (
   IN BORAX_ALLOCATOR          *Alloc,
   IN BORAX_ENVIRONMENT_CACHE  *Cache,
-  OUT BORAX_BUILT_IN_CLASS    **Class,
   OUT BORAX_OBJECT            *Object
   )
 {
-  EFI_STATUS  Status;
+  EFI_STATUS    Status;
+  BORAX_RECORD  *Record;
 
   Status = BoraxAllocateRecord (
              Alloc,
@@ -48,13 +49,13 @@ EarlyAllocateBuiltInClass (
              RECORD_LENGTH (BORAX_BUILT_IN_CLASS),
              0,
              BORAX_IMMEDIATE_UNBOUND,
-             (BORAX_RECORD **)Class
+             &Record
              );
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
-  *Object = BORAX_MAKE_POINTER (*Class);
+  *Object = BORAX_MAKE_POINTER (Record);
   return EFI_SUCCESS;
 }
 
@@ -62,16 +63,15 @@ STATIC INLINE
 EFI_STATUS
 EFIAPI
 EarlyAllocateWordRecordClass (
-  IN BORAX_ALLOCATOR           *Alloc,
-  IN BORAX_ENVIRONMENT_CACHE   *Cache,
-  IN BORAX_OBJECT              ElementClass,
-  IN UINTN                     ElementBits,
-  OUT BORAX_WORD_RECORD_CLASS  **Class,
-  OUT BORAX_OBJECT             *Object
+  IN BORAX_ALLOCATOR          *Alloc,
+  IN BORAX_ENVIRONMENT_CACHE  *Cache,
+  IN BORAX_OBJECT             ElementClass,
+  IN UINTN                    ElementBits,
+  OUT BORAX_OBJECT            *Object
   )
 {
   EFI_STATUS               Status;
-  BORAX_WORD_RECORD_CLASS  *NewClass;
+  BORAX_WORD_RECORD_CLASS  *Class;
 
   Status = BoraxAllocateRecord (
              Alloc,
@@ -80,17 +80,16 @@ EarlyAllocateWordRecordClass (
              RECORD_LENGTH (BORAX_WORD_RECORD_CLASS),
              0,
              BORAX_IMMEDIATE_UNBOUND,
-             (BORAX_RECORD **)&NewClass
+             (BORAX_RECORD **)&Class
              );
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
-  NewClass->ElementClass = ElementClass;
-  NewClass->ElementBits  = BORAX_MAKE_FIXNUM (ElementBits);
+  Class->ElementClass = ElementClass;
+  Class->ElementBits  = BORAX_MAKE_FIXNUM (ElementBits);
 
-  *Class  = NewClass;
-  *Object = BORAX_MAKE_POINTER (NewClass);
+  *Object = BORAX_MAKE_POINTER (Class);
   return EFI_SUCCESS;
 }
 
@@ -104,29 +103,6 @@ BoraxBootstrapGlobalEnvironment (
   EFI_STATUS                Status;
   BORAX_GLOBAL_ENVIRONMENT  *Env;
   BORAX_ENVIRONMENT_CACHE   *Cache;
-  BORAX_STANDARD_CLASS      *StandardClass;
-  BORAX_STANDARD_CLASS      *ClassT;
-  BORAX_STANDARD_CLASS      *Class;
-  BORAX_STANDARD_CLASS      *BuiltInClass;
-  BORAX_STANDARD_CLASS      *StandardObject;
-  BORAX_STANDARD_CLASS      *SlotDefinition;
-  BORAX_BUILT_IN_CLASS      *Fixnum;
-  BORAX_BUILT_IN_CLASS      *Character;
-  BORAX_BUILT_IN_CLASS      *Cons;
-  BORAX_BUILT_IN_CLASS      *WeakPointer;
-  BORAX_BUILT_IN_CLASS      *Pin;
-  BORAX_STANDARD_CLASS      *WordRecordClass;
-  BORAX_BUILT_IN_CLASS      *SimpleVector;
-  BORAX_WORD_RECORD_CLASS   *SimpleVectorUnsignedByte8;
-  BORAX_WORD_RECORD_CLASS   *SimpleString;
-  BORAX_STANDARD_CLASS      *HashTable;
-  BORAX_STANDARD_CLASS      *Symbol;
-  BORAX_STANDARD_CLASS      *Package;
-  BORAX_PACKAGE             *CommonLisp;
-  BORAX_PACKAGE             *BoraxRuntime;
-  BORAX_SYMBOL              *Nil;
-  BORAX_SYMBOL              *T;
-  BORAX_SYMBOL              *Equal;
 
   #define TRY(_expr)  do {    \
     Status = (_expr);         \
@@ -146,7 +122,6 @@ BoraxBootstrapGlobalEnvironment (
       (BORAX_RECORD **)&Env
       )
     );
-  TRY (BoraxAllocatePin (Alloc, BORAX_MAKE_POINTER (Env), GlobalEnvironment));
 
   // Allocate the environment cache
   TRY (
@@ -161,53 +136,64 @@ BoraxBootstrapGlobalEnvironment (
     );
   Env->Cache = BORAX_MAKE_POINTER (Cache);
 
-  // Allocate the standard classes
-  #define MAKE_STANDARD_CLASS(_ident) \
-  TRY (EarlyAllocateStandardClass (Alloc, Cache, &_ident, &Cache->_ident))
+  // Allocate the class objects
+  TRY (EarlyAllocateStandardClass (Alloc, Cache, &Cache->StandardClass)) {
+    BORAX_STANDARD_CLASS  *StandardClass = (BORAX_STANDARD_CLASS *)
+                                           BORAX_GET_POINTER (Cache->StandardClass);
 
-  MAKE_STANDARD_CLASS (StandardClass);
-  StandardClass->Record.Class = Cache->StandardClass;  // was unbound
-  MAKE_STANDARD_CLASS (ClassT);
-  MAKE_STANDARD_CLASS (Class);
-  MAKE_STANDARD_CLASS (BuiltInClass);
-  MAKE_STANDARD_CLASS (StandardObject);
-  MAKE_STANDARD_CLASS (SlotDefinition);
-  MAKE_STANDARD_CLASS (WordRecordClass);
-  MAKE_STANDARD_CLASS (HashTable);
-  MAKE_STANDARD_CLASS (Symbol);
-  MAKE_STANDARD_CLASS (Package);
+    StandardClass->Record.Class = Cache->StandardClass;  // was unbound
+  }
 
-  // Allocate the built-in classes
-  #define MAKE_BUILT_IN_CLASS(_ident) \
-  TRY (EarlyAllocateBuiltInClass (Alloc, Cache, &_ident, &Cache->_ident))
+  TRY (EarlyAllocateStandardClass (Alloc, Cache, &Cache->ClassT));
+  TRY (EarlyAllocateStandardClass (Alloc, Cache, &Cache->Class));
+  TRY (EarlyAllocateStandardClass (Alloc, Cache, &Cache->BuiltInClass));
+  TRY (EarlyAllocateStandardClass (Alloc, Cache, &Cache->StandardObject));
+  TRY (EarlyAllocateStandardClass (Alloc, Cache, &Cache->SlotDefinition));
+  TRY (EarlyAllocateBuiltInClass (Alloc, Cache, &Cache->Fixnum));
+  TRY (EarlyAllocateBuiltInClass (Alloc, Cache, &Cache->Character));
+  TRY (EarlyAllocateBuiltInClass (Alloc, Cache, &Cache->Cons));
+  TRY (EarlyAllocateBuiltInClass (Alloc, Cache, &Cache->WeakPointer));
+  TRY (EarlyAllocateBuiltInClass (Alloc, Cache, &Cache->Pin));
+  TRY (EarlyAllocateStandardClass (Alloc, Cache, &Cache->WordRecordClass));
+  TRY (EarlyAllocateBuiltInClass (Alloc, Cache, &Cache->SimpleVector));
+  TRY (
+    EarlyAllocateWordRecordClass (
+      Alloc,
+      Cache,
+      Cache->Fixnum,
+      8,
+      &Cache->SimpleVectorUnsignedByte8
+      )
+    );
+  TRY (
+    EarlyAllocateWordRecordClass (
+      Alloc,
+      Cache,
+      Cache->Character,
+      16,
+      &Cache->SimpleString
+      )
+    );
+  TRY (EarlyAllocateStandardClass (Alloc, Cache, &Cache->HashTable));
+  TRY (EarlyAllocateStandardClass (Alloc, Cache, &Cache->Symbol));
+  TRY (EarlyAllocateStandardClass (Alloc, Cache, &Cache->Package));
 
-  MAKE_BUILT_IN_CLASS (Fixnum);
-  MAKE_BUILT_IN_CLASS (Character);
-  MAKE_BUILT_IN_CLASS (Cons);
-  MAKE_BUILT_IN_CLASS (WeakPointer);
-  MAKE_BUILT_IN_CLASS (Pin);
-  MAKE_BUILT_IN_CLASS (SimpleVector);
+  // With the identities of the class objects established we can now start
+  // calling out to normal runtime libraries, but we still need to be mindful of
+  // unbound slots.
+  TRY (EarlyAllocateSymbol (Alloc, Env, &Cache->Nil));
+  TRY (EarlyAllocateSymbol (Alloc, Env, &Cache->T));
+  TRY (EarlyAllocateSymbol (Alloc, Env, &Cache->Equal));
 
-  // Allocate the word record classes
-  #define MAKE_WORD_RECORD_CLASS(_ident, _class, _bits) \
-  TRY (EarlyAllocateWordRecordClass (Alloc, Cache, _class, _bits, &_ident, &Cache->_ident))
+  TRY (BoraxMakeHashTable (Alloc, Env, Cache->Equal, &Env->PackageRegistry));
+  TRY (BoraxMakeHashTable (Alloc, Env, Cache->Equal, &Env->ClassRegistry));
 
-  MAKE_WORD_RECORD_CLASS (SimpleVectorUnsignedByte8, Cache->Fixnum, 8);
-  MAKE_WORD_RECORD_CLASS (SimpleString, Cache->Character, 16);
-
-  // Allocate the basic symbols
-  #define MAKE_SYMBOL(_ident, _name) \
-  TRY (EarlyAllocateSymbol (Alloc, Cache, _name, &_ident, &Cache->_ident))
-
-  MAKE_SYMBOL (Nil, L"NIL");
-  MAKE_SYMBOL (T, L"T");
-  MAKE_SYMBOL (Equal, L"NIL");
-
-  // The packages and global registries are still unallocated and most slots of
-  // most objects remain unbound. We have now bootstrapped enough of the global
-  // environment to start calling out to normal runtime libraries to fix this.
+  TRY (BoraxMakeString (Alloc, Env, L"COMMON-LISP", &String));
+  TRY (BoraxMakePackage (Alloc, Env, String, &Cache->CommonLisp));
+  TRY (BoraxMakeString (Alloc, Env, L"BORAX-RUNTIME", &String));
+  TRY (BoraxMakePackage (Alloc, Env, String, &Cache->BoraxRuntime));
 
   #undef TRY
 
-  return EFI_SUCCESS;
+  return BoraxAllocatePin (Alloc, BORAX_MAKE_POINTER (Env), GlobalEnvironment);
 }
