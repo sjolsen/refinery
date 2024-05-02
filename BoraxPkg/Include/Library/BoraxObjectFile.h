@@ -198,8 +198,8 @@ typedef struct {
  * Disk I/O is performed only in steps 1-2. Steps 4-5 must be performed
  * atomically with respect to garbage collection. To prevent disk I/O from
  * stalling the interpreter while loading object files, the process is split
- * into two phases: in the staging phase, steps 1-3 are performed
- * asynchronously; in the injection phase, steps 4-6 are performed
+ * into two phases: in the staging phase, steps 1-2 are performed
+ * asynchronously; in the injection phase, steps 3-6 are performed
  * synchronously.
  *
  * The staging phase is initiated with BoraxStageObjectFile and ends when the
