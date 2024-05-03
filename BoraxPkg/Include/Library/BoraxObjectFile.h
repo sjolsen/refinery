@@ -85,12 +85,12 @@ typedef struct {
  *
  *   File address  Page index          Interpretation
  *   ------------  ----------  -----------------------------
- *     0x000004a0           0  Section 0, page 0, byte 0x4a0
- *     0x00002800           2  Section 0, page 2, byte 0x800
- *     0x00004000           4  Section 1, page 1, byte 0x000
- *     0x00008000           8  Section 2, page 0, byte 0x000
- *     0x0000eff0          14  Section 2, page 6, byte 0xff0
- *     0x0000f000          15  Out of bounds
+ *     0x00004a00           0  Section 0, page 0, byte 0x4a0
+ *     0x00028000           2  Section 0, page 2, byte 0x800
+ *     0x00040000           4  Section 1, page 1, byte 0x000
+ *     0x00080000           8  Section 2, page 0, byte 0x000
+ *     0x000eff00          14  Section 2, page 6, byte 0xff0
+ *     0x000f0000          15  Out of bounds
  *
  * Not every byte offset within a page is a valid object address; byte offsets
  * are validated by the object file loader. This validation is dependent on the

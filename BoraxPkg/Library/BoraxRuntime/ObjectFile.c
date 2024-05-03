@@ -509,3 +509,53 @@ BoraxStageObjectFile3 (
            ChunkSize
            );
 }
+
+VOID
+EFIAPI
+BoraxCancelObjectFile (
+  IN BORAX_STAGED_OBJECT_FILE  *Staged
+  )
+{
+  Staged->Impl->Cancelled = TRUE;
+}
+
+VOID
+EFIAPI
+BoraxUnStageObjectFile (
+  IN BORAX_STAGED_OBJECT_FILE  *Staged
+  )
+{
+  BoraxStageObjectFileCleanup (Staged);
+}
+
+STATIC EFI_STATUS
+EFIAPI
+DecomposeAddress (
+  IN BORAX_STAGED_OBJECT_FILE  *Staged,
+  IN UINTN                     FileAddress,
+  OUT UINTN                    *ChunkIndex,
+  OUT UINTN                    *ChunkPageIndex,
+  OUT UINTN                    *ByteIndex
+  )
+{
+  BORAX_STAGED_OBJECT_FILE_IMPL  *Impl     = Staged->Impl;
+  UINTN                          PageIndex = FileAddress >> 16;
+  UINTN                          I;
+
+  // Linear search for now
+  for (I = 0; I < Impl->ChunkCount; ++I) {
+    CHUNK_DATA  *ChunkData = &Impl->ChunkData[I];
+    UINTN       Begin      = ChunkData->FirstPageIndex;
+    UINTN       End        = Begin + ChunkData->PageCount;
+
+    if ((Begin <= PageIndex) && (PageIndex < End)) {
+      *ChunkIndex     = I;
+      *ChunkPageIndex = PageIndex - Begin;
+      *ByteIndex      = 0xfff & (FileAddress >> 4);
+      return EFI_SUCCESS;
+    }
+  }
+
+  // Generic overflow code
+  return EFI_BUFFER_TOO_SMALL;
+}
