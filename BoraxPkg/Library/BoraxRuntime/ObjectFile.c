@@ -390,9 +390,79 @@ BoraxUnStageObjectFile (
   BoraxStageObjectFileCleanup (Staged);
 }
 
+STATIC EFI_STATUS
+EFIAPI
+BoraxInjectObjectFileScanObjects (
+  IN BORAX_STAGED_OBJECT_FILE  *Staged
+  )
+{
+  EFI_STATUS                     Status;
+  BORAX_STAGED_OBJECT_FILE_IMPL  *Impl = Staged->Impl;
+  UINTN                          Index = BORAX_OBJECT_FIRST_INDEX;
+
+  while (Index < Impl->Header.Object.Size) {
+    BORAX_OBJECT_HEADER  *Header = (BORAX_OBJECT_HEADER *)
+                                   ((CHAR8 *)Impl->Object + Index);
+    UINTN  Word = Index / BORAX_WORD_BITS;
+    UINTN  Bit  = Index % BORAX_WORD_BITS;
+
+    switch (BORAX_DISCRIMINATE_POINTER (Header)) {
+      case BORAX_DISCRIM_WORD_RECORD:
+      case BORAX_DISCRIM_OBJECT_RECORD:
+      {
+        BORAX_RECORD  *Record = (BORAX_RECORD *)Header;
+        UINTN         Size;
+
+        // Bounds check the record object header
+        if ((Impl->Header.Object.Size - Index) < sizeof (BORAX_RECORD)) {
+          return EFI_BUFFER_TOO_SMALL;
+        }
+
+        // Find the end of the record object
+        Status = SafeUintnMult (sizeof (UINTN), Record->Length, &Size);
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        Status = SafeUintnAdd (Size, sizeof (BORAX_RECORD), &Size);
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        Status = SafeUintnAdd (Index, Size, &Index);
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        Impl->ObjectBitmap[Word] |= 1 << Bit;
+        Index                     = BORAX_ALIGN (Index);
+        break;
+      }
+      case BORAX_DISCRIM_UNINITIALIZED:
+        // We're done early
+        return EFI_SUCCESS;
+      default:
+        // Bad object
+        return EFI_LOAD_ERROR;
+    }
+  }
+
+  return EFI_SUCCESS;
+}
+
 EFI_STATUS
 EFIAPI
 BoraxInjectObjectFile (
   IN BORAX_STAGED_OBJECT_FILE  *Staged,
   OUT BORAX_PIN                **Pin
-  );
+  )
+{
+  EFI_STATUS                     Status;
+  BORAX_STAGED_OBJECT_FILE_IMPL  *Impl = Staged->Impl;
+
+  // Scan the object chunk for valid objects
+  Status = BoraxInjectObjectFileScanObjects (Staged);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+}

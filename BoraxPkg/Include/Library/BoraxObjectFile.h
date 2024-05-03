@@ -118,7 +118,7 @@ typedef struct {
  * does this for cons offsets with a simple alignment check. The object section
  * is scanned for valid offsets as follows: the first object is located at an
  * offset of BORAX_OBJECT_FIRST_INDEX from the beginning of the section; each
- * subsequent object is stored at the first eight-byte-aligned offset following
+ * subsequent object is stored at the first double-word-aligned offset following
  * its preceding object.
  *
  * String section
