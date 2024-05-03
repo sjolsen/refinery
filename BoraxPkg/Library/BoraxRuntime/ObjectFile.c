@@ -25,7 +25,7 @@ SafePageCountRoundingUp (
 
 typedef EFI_STATUS (*EFIAPI IO_CALLBACK)(IN BORAX_STAGED_OBJECT_FILE  *Staged);
 
-#define OBJECTS_PER_PAGE              (BORAX_PAGE_SIZE / 8)
+#define OBJECTS_PER_PAGE              (BORAX_PAGE_SIZE / BORAX_ALIGNMENT)
 #define OBJECT_BITMAP_WORDS_PER_PAGE  (OBJECTS_PER_PAGE / BORAX_WORD_BITS)
 
 struct _BORAX_STAGED_OBJECT_FILE_IMPL {
@@ -57,25 +57,21 @@ BoraxStageObjectFileCleanup (
     if (Impl->Object != NULL) {
       // The page-count calculation must not have overflowed for us to make it
       // here
-      Impl->Alloc->SysAlloc->FreePages (
-                               Impl->Alloc->SysAlloc,
-                               Impl->Object,
-                               UNSAFE_PAGE_COUNT_ROUNDING_UP (
-                                 Impl->Header.Object.Size
-                                 )
-                               );
+      BoraxFreeExternalPages (
+        Impl->Alloc,
+        Impl->Object,
+        UNSAFE_PAGE_COUNT_ROUNDING_UP (Impl->Header.Object.Size)
+        );
     }
 
     if (Impl->Cons != NULL) {
       // The page-count calculation must not have overflowed for us to make it
       // here
-      Impl->Alloc->SysAlloc->FreePages (
-                               Impl->Alloc->SysAlloc,
-                               Impl->Cons,
-                               UNSAFE_PAGE_COUNT_ROUNDING_UP (
-                                 Impl->Header.Cons.Size
-                                 )
-                               );
+      BoraxFreeExternalPages (
+        Impl->Alloc,
+        Impl->Cons,
+        UNSAFE_PAGE_COUNT_ROUNDING_UP (Impl->Header.Cons.Size)
+        );
     }
 
     if (Impl->IO.Event != NULL) {
@@ -125,15 +121,11 @@ BoraxStageObjectFileAllocateChunk (
     return Status;
   }
 
-  *Chunk = Staged->Impl->Alloc->SysAlloc->AllocatePages (
-                                            Staged->Impl->Alloc->SysAlloc,
-                                            PageCount
-                                            );
+  *Chunk = BoraxAllocateExternalPages (Staged->Impl->Alloc, PageCount);
   if (*Chunk == NULL) {
     return EFI_OUT_OF_RESOURCES;
   }
 
-  SetMem (*Chunk, BORAX_PAGE_SIZE * PageCount, -1);
   return EFI_SUCCESS;
 }
 
@@ -392,7 +384,7 @@ BoraxUnStageObjectFile (
 
 STATIC EFI_STATUS
 EFIAPI
-BoraxInjectObjectFileScanObjects (
+ScanObjects (
   IN BORAX_STAGED_OBJECT_FILE  *Staged
   )
 {
@@ -450,6 +442,176 @@ BoraxInjectObjectFileScanObjects (
   return EFI_SUCCESS;
 }
 
+#define TAG_SHIFT  (BORAX_WORD_BITS - 3)
+#define TAG_MASK   0x7
+
+#define OFFSET_SHIFT  3
+#define OFFSET_MASK   ((1 << (BORAX_WORD_BITS - 6)) - 1)
+
+STATIC EFI_STATUS
+EFIAPI
+TranslateObject (
+  IN BORAX_STAGED_OBJECT_FILE  *Staged,
+  IN OUT BORAX_OBJECT          *Object
+  )
+{
+  BORAX_STAGED_OBJECT_FILE_IMPL  *Impl = Staged->Impl;
+
+  if (BORAX_IS_POINTER (*Object)) {
+    UINTN  Address = (UINTN)BORAX_GET_POINTER (*Object);
+    UINTN  Tag     = TAG_MASK & (Address >> TAG_SHIFT);
+    UINTN  Offset  = OFFSET_MASK & (Address >> OFFSET_SHIFT);
+
+    switch (Tag) {
+      case BXO_SECTION_CONS:
+        Offset <<= 3;
+        // Must point to valid memory
+        if (Offset >= Impl->Header.Cons.Size) {
+          return EFI_BUFFER_TOO_SMALL;
+        }
+
+        // Must not point into a page header
+        if ((Offset % BORAX_PAGE_SIZE) < BORAX_CONS_FIRST_INDEX) {
+          return EFI_LOAD_ERROR;
+        }
+
+        // Must be aligned
+        if ((Offset % BORAX_ALIGNMENT) != 0) {
+          return EFI_LOAD_ERROR;
+        }
+
+        *Object = BORAX_MAKE_POINTER ((CHAR8 *)Impl->Cons + Offset);
+        return EFI_SUCCESS;
+
+      case BXO_SECTION_OBJECT:
+        Offset <<= 3;
+        // Must point to valid memory
+        if (Offset >= Impl->Header.Object.Size) {
+          return EFI_BUFFER_TOO_SMALL;
+        }
+
+        // Must be aligned
+        if ((Offset % BORAX_ALIGNMENT) != 0) {
+          return EFI_LOAD_ERROR;
+        }
+
+        // Must point to a valid object
+        {
+          UINTN  Index = Offset / BORAX_ALIGNMENT;
+          UINTN  Word  = Index / BORAX_WORD_BITS;
+          UINTN  Bit   = Index % BORAX_WORD_BITS;
+
+          if (!(Impl->ObjectBitmap[Word] & (1 << Bit))) {
+            return EFI_LOAD_ERROR;
+          }
+        }
+
+        *Object = BORAX_MAKE_POINTER ((CHAR8 *)Impl->Object + Offset);
+        return EFI_SUCCESS;
+
+      case BXO_SECTION_STRING:
+      case BXO_SECTION_REL_PACKAGE:
+      case BXO_SECTION_REL_SYMBOL:
+      case BXO_SECTION_REL_CLASS:
+      // Relocations not supported yet
+      default:
+        return EFI_LOAD_ERROR;
+    }
+  } else {
+    return EFI_SUCCESS;
+  }
+}
+
+STATIC EFI_STATUS
+EFIAPI
+TranslateConsSection (
+  IN BORAX_STAGED_OBJECT_FILE  *Staged
+  )
+{
+  EFI_STATUS                     Status;
+  BORAX_STAGED_OBJECT_FILE_IMPL  *Impl = Staged->Impl;
+
+  UINTN  PageCount = UNSAFE_PAGE_COUNT_ROUNDING_UP (Impl->Header.Cons.Size);
+  UINTN  Page;
+
+  for (Page = 0; Page < PageCount; ++Page) {
+    UINTN  PageOffset;
+    for (PageOffset = BORAX_CONS_FIRST_INDEX;
+         PageOffset < BORAX_PAGE_SIZE;
+         PageOffset += sizeof (BORAX_CONS))
+    {
+      UINTN       Offset = Page * BORAX_PAGE_SIZE + PageOffset;
+      BORAX_CONS  *Cons  = (BORAX_CONS *)((CHAR8 *)Impl->Cons + Offset);
+      if (Offset >= Impl->Header.Cons.Size) {
+        // The rest of the page is uninitialized
+        return EFI_SUCCESS;
+      }
+
+      Status = TranslateObject (Staged, &Cons->Car);
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      Status = TranslateObject (Staged, &Cons->Cdr);
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+    }
+  }
+
+  return EFI_SUCCESS;
+}
+
+STATIC EFI_STATUS
+EFIAPI
+TranslateObjectSection (
+  IN BORAX_STAGED_OBJECT_FILE  *Staged
+  )
+{
+  EFI_STATUS                     Status;
+  BORAX_STAGED_OBJECT_FILE_IMPL  *Impl = Staged->Impl;
+  UINTN                          Index = BORAX_OBJECT_FIRST_INDEX;
+
+  while (Index < Impl->Header.Object.Size) {
+    BORAX_OBJECT_HEADER  *Header = (BORAX_OBJECT_HEADER *)
+                                   ((CHAR8 *)Impl->Object + Index);
+
+    switch (BORAX_DISCRIMINATE_POINTER (Header)) {
+      case BORAX_DISCRIM_WORD_RECORD:
+      case BORAX_DISCRIM_OBJECT_RECORD:
+      {
+        // We already bounds-checked everything in ScanObjects
+        BORAX_RECORD  *Record = (BORAX_RECORD *)Header;
+
+        Status = TranslateObject (Staged, &Record->Class);
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        if (Header->WideTag == BORAX_WIDETAG_OBJECT_RECORD) {
+          UINTN  I;
+          for (I = 0; I < Record->Length; ++I) {
+            Status = TranslateObject (Staged, &Record->Data[I]);
+            if (EFI_ERROR (Status)) {
+              return Status;
+            }
+          }
+        }
+
+        break;
+      }
+      case BORAX_DISCRIM_UNINITIALIZED:
+        // We're done early
+        return EFI_SUCCESS;
+      default:
+        // Bad object
+        return EFI_LOAD_ERROR;
+    }
+  }
+
+  return EFI_SUCCESS;
+}
+
 EFI_STATUS
 EFIAPI
 BoraxInjectObjectFile (
@@ -461,8 +623,98 @@ BoraxInjectObjectFile (
   BORAX_STAGED_OBJECT_FILE_IMPL  *Impl = Staged->Impl;
 
   // Scan the object chunk for valid objects
-  Status = BoraxInjectObjectFileScanObjects (Staged);
+  Status = ScanObjects (Staged);
   if (EFI_ERROR (Status)) {
-    return Status;
+    goto end;
   }
+
+  // Fix up pointers
+  Status = TranslateObject (Staged, &Impl->Header.RootObject);
+  if (EFI_ERROR (Status)) {
+    goto end;
+  }
+
+  Status = TranslateConsSection (Staged);
+  if (EFI_ERROR (Status)) {
+    goto end;
+  }
+
+  Status = TranslateObjectSection (Staged);
+  if (EFI_ERROR (Status)) {
+    goto end;
+  }
+
+  // Inject the pages
+  Status = BoraxInjectExternalPages (
+             Impl->Alloc,
+             Impl->Cons,
+             UNSAFE_PAGE_COUNT_ROUNDING_UP (Impl->Header.Cons.Size)
+             );
+  if (EFI_ERROR (Status)) {
+    goto end;
+  }
+
+  Impl->Cons = NULL;
+
+  Status = BoraxInjectExternalPages (
+             Impl->Alloc,
+             Impl->Object,
+             UNSAFE_PAGE_COUNT_ROUNDING_UP (Impl->Header.Object.Size)
+             );
+  if (EFI_ERROR (Status)) {
+    goto end;
+  }
+
+  Impl->Object = NULL;
+
+  // Pin the root object
+  Status = BoraxAllocatePin (Impl->Alloc, Impl->Header.RootObject, Pin);
+
+end:
+  BoraxStageObjectFileCleanup (Staged);
+  return Status;
+}
+
+EFI_STATUS
+EFIAPI
+BoraxLoadObjectFile (
+  IN BORAX_ALLOCATOR    *Alloc,
+  IN EFI_FILE_PROTOCOL  *File,
+  OUT BORAX_PIN         **Pin
+  )
+{
+  EFI_STATUS                Status;
+  BORAX_STAGED_OBJECT_FILE  Staged;
+  UINTN                     Index;
+
+  SetMem (&Staged, sizeof (Staged), 0);
+
+  Status = gBS->CreateEvent (0, 0, NULL, NULL, &Staged.Complete);
+  if (EFI_ERROR (Status)) {
+    goto end;
+  }
+
+  Status = BoraxStageObjectFile (Alloc, File, &Staged);
+  if (EFI_ERROR (Status)) {
+    goto end;
+  }
+
+  Status = gBS->WaitForEvent (1, &Staged.Complete, &Index);
+  if (EFI_ERROR (Status)) {
+    goto end;
+  }
+
+  Status = Staged.Status;
+  if (EFI_ERROR (Status)) {
+    goto end;
+  }
+
+  Status = BoraxInjectObjectFile (&Staged, Pin);
+
+end:
+  if (Staged.Complete != NULL) {
+    gBS->CloseEvent (Staged.Complete);
+  }
+
+  return Status;
 }

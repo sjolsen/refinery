@@ -173,8 +173,7 @@ enum {
 #define BORAX_DISCRIMINATE_POINTER(_ptr) \
 (BORAX_IS_CONS(_ptr) ? BORAX_DISCRIM_CONS : (_ptr)->WideTag)
 
-#define BORAX_STORAGE_UNIT  (2 * sizeof(UINTN))
-#define BORAX_ALIGNMENT     (2 * sizeof(UINTN))
+#define BORAX_ALIGNMENT  (2 * sizeof(UINTN))
 #define BORAX_ALIGN(_n)  ALIGN_VALUE(_n, BORAX_ALIGNMENT)
 
 STATIC_ASSERT (
@@ -188,7 +187,7 @@ typedef struct {
 } BORAX_CONS;
 
 STATIC_ASSERT (
-  sizeof (BORAX_CONS) == BORAX_STORAGE_UNIT,
+  sizeof (BORAX_CONS) == BORAX_ALIGNMENT,
   "Cons cell must be two words"
   );
 
