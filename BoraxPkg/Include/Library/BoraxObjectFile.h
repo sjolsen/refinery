@@ -25,16 +25,18 @@
  * data directly without an intermediate copy, but it also makes object files
  * architecture-specific.
  *
- * The object file format is similar to ELF, but it is not compatible with ELF
- * and is heavily simplified. The Borax object file format is designated "BXO"
- * for brevity.
+ * The object file format is inspired by ELF, but it is not compatible with ELF
+ * and it is heavily simplified. The Borax object file format is designated
+ * "BXO" for brevity.
  *
  * The object file header
  * ======================
  *
- * The object file header is similar to an ELF file header: it marks the file
- * with a magic constant, it declares the target data model, and it points to
- * the section headers.
+ * The file header is the root structure of the object file. It marks the file
+ * as an object file, declares the target data model, and contains the pointers
+ * needed to interpret the rest of the file's structure. In contrast to ELF,
+ * which supports an arbitrary mix of named sections, the sections of a BXO file
+ * are fixed.
  */
 
 enum {
@@ -55,13 +57,24 @@ enum {
 };
 
 typedef struct {
-  UINT8    Magic[4]; // \x7F B X O
-  UINT8    WordSize;
-  UINT8    Endianness;
-  UINT8    Version;
-  UINT8    Pad; // 0x00
-  UINTN    SectionHeaderOffset;
-  UINTN    SectionHeaderCount;
+  UINTN    Offset;
+  UINTN    Size;
+  UINTN    RelCount; // Relocation sections only
+} BXO_SECTION;
+
+typedef struct {
+  UINT8          Magic[4]; // \x7F B X O
+  UINT8          WordSize;
+  UINT8          Endianness;
+  UINT8          Version;
+  UINT8          Pad; // 0x00
+  UINTN          RootObject;
+  BXO_SECTION    Cons;
+  BXO_SECTION    Object;
+  BXO_SECTION    String;
+  BXO_SECTION    Package;
+  BXO_SECTION    Symbol;
+  BXO_SECTION    Class;
 } BXO_HEADER;
 
 /*
@@ -70,93 +83,90 @@ typedef struct {
  *
  * Because the memory address(es) the object file will be loaded into are not
  * known in advance, object pointers are represented as file addresses. The low
- * 4 bits of a file address are ignored to accommodate lowtags. The next 12 bits
- * represent a byte offset within a page. The remaining high-order bits encode a
- * page index allocated according to the following scheme:
+ * three bits of a file address are allocated for lowtags. The high three bits
+ * indicate which section the address points to. The interpretation of the
+ * remaining 26 or 58 "offset" bits is determined by the section tag.
  *
- * The sections of an object file are loaded in the order in which their headers
- * appear in the section header array. A running index, starting at zero,
- * numbers pages as they are allocated. Indices 0 through N_0 - 1 are assigned
- * to the N_0 pages of section 0; indices N_0 through N_0 + N_1 - 1 are assigned
- * to the N_1 pages of section 1; and so on.
- *
- * For example: suppose an object file is loaded with three sections containing
- * 3, 5, and 7 pages respectively. These file addresses would decode as follows:
- *
- *   File address  Page index          Interpretation
- *   ------------  ----------  -----------------------------
- *     0x00004a00           0  Section 0, page 0, byte 0x4a0
- *     0x00028000           2  Section 0, page 2, byte 0x800
- *     0x00040000           4  Section 1, page 1, byte 0x000
- *     0x00080000           8  Section 2, page 0, byte 0x000
- *     0x000eff00          14  Section 2, page 6, byte 0xff0
- *     0x000f0000          15  Out of bounds
- *
- * Not every byte offset within a page is a valid object address; byte offsets
- * are validated by the object file loader. This validation is dependent on the
- * kind of section pointed to.
+ *   32        29       3        0
+ *   +---------+--------+--------+
+ *   | Section | Offset | Lowtag |
+ *   +---------+--------+--------+
  *
  * Sections
  * ========
  *
  * Sections are regions of page data in the object file. There are three types
- * of sections: cons sections, object sections, and relocation sections.  The
- * section headers declare the type and location of section data within an
- * object file. Cons, string, and relocation sections are handled uniformly, but
- * object sections are grouped by chunk size to simplify loading.
+ * of sections: cons sections, object sections, and relocation sections. The
+ * file header declares the type and location of section data within an object
+ * file.
  *
  * Cons and object sections
  * ------------------------
  *
- * Cons and object sections contain page data that will be loaded into the
- * garbage collector. For simplicity, the file data contains space for garbage
- * collector metadata, but this data should be zeroed in the object file.
+ * The cons and object sections contain page data that will be loaded into the
+ * garbage collector. Each section contains one allocator chunk, including
+ * garbage collector metadata. This metadata should be zeroed in the object
+ * file.
  *
- * Cons page byte offsets are validated with a simple alignment calculation. For
- * object pages, the first object is located at an offset of
- * BORAX_OBJECT_FIRST_INDEX from the beginning of the containing chunk, and each
- * subsequent object is stored at the first double-word-aligned offset following
+ * File addresses pointing to cons and object sections are interpreted by
+ * extending the offset bits with three zero-valued low-order bits, or
+ * equivalently by masking out the lowtag as the runtime would do when
+ * calculating an object address. The resulting eight-byte aligned offset is
+ * treated as a byte offset into the relevant section.
+ *
+ * The loader validates that cons and object offsets point to valid objects. It
+ * does this for cons offsets with a simple alignment check. The object section
+ * is scanned for valid offsets as follows: the first object is located at an
+ * offset of BORAX_OBJECT_FIRST_INDEX from the beginning of the section; each
+ * subsequent object is stored at the first eight-byte-aligned offset following
  * its preceding object.
  *
- * String sections
- * ---------------
+ * String section
+ * --------------
  *
- * String sections exist to resolve package and symbol relocations. Cons and
- * object sections may not reference strings.
+ * The string section exists to resolve package and symbol relocations. The cons
+ * and object sections may not reference strings.
  *
  * Strings are represented as NUL-terminated UCS-2 strings in native
  * endianness. The first string in a section starts at offset zero, and each
- * subsequent string immediately follows the preceding string's NUL terminator.
+ * subsequent string immediately follows the preceding string's NUL
+ * terminator. The final code unit of a string section must be NUL.
  *
- * The final code unit of a string section must be NUL.
+ * When the string section is loaded, the strings are assigned indices starting
+ * from zero. The offset of a file address pointing to the string section is
+ * interpreted as such an index.
  *
  * Package relocations
  * -------------------
  *
- * Package sections exist to resolve symbol relocations and references to
- * package objects. Cons and object sections may reference package relocations.
+ * The package section exists to resolve symbol relocations and references to
+ * package objects. The cons and object sections may reference package
+ * relocations.
  *
- * Packages are represented as file addresses pointing to string data. To permit
- * references from tagged pointers, packages are aligned to 8-byte boundaries.
+ * The package section contains a sequence of package references, each
+ * consisting of one file address pointing to a string naming the
+ * package. Packages are assigned indices starting from zero, and the offset of
+ * a file address pointing to the package section refers to such an index.
  *
  * Symbol relocations
  * ------------------
  *
- * Symbol sections exist to resolve both interned and uninterned symbols. Cons
- * and object sections may reference symbol relocations.
+ * The symbol section exists to resolve both interned and uninterned
+ * symbols. The cons and object sections may reference symbol relocations.
  *
- * Symbols are represented as a pair of words, the first being a file address
- * pointing to package data, and the second being a file address pointing to
- * string data. Uninterned symbols are represented by setting the package word
- * to the all-ones value.
+ * The symbol section contains a seuqence of symbol references, each consisting
+ * of two file addresses. The first file address points to the symbol's home
+ * package, and the second points to a string naming the symbol. Uninterned
+ * symbols are represented by setting the package word to the all-ones value.
  *
  * Class relocations
  * -----------------
  *
- * Class sections exist to resolve the Class field of record objects. Cons and
- * object sections may reference class relocations.
+ * The class section exists to resolve the Class field of record objects. Cons
+ * and object sections may reference class relocations.
  *
- * Classes are represented as file addresses pointing to symbol data.
+ * The class section is organized the same way as the package section, except
+ * that the referenced string data names a class instead of a package.
  */
 
 typedef enum {
@@ -167,13 +177,6 @@ typedef enum {
   BXO_SECTION_REL_SYMBOL  = 5,
   BXO_SECTION_REL_CLASS   = 6,
 } BXO_SECTION_TAG;
-
-typedef struct {
-  UINTN    Tag;
-  UINTN    Address;
-  UINTN    Size;
-  UINTN    PagesPerChunk;  // Object pages only
-} BXO_SECTION_HEADER;
 
 /*
  * Loading object files
@@ -186,16 +189,16 @@ typedef struct {
  *
  * 2. Sections are loaded into the memory allocated in step 1.
  *
- * 3. Pointers within the loaded sections are updated from file addresses to
- *    memory addresses.
+ * 3. Relocations are resolved to existing objects.
  *
- * 4. Relocations are resolved to existing objects.
+ * 4. Pointers within the loaded sections are updated from file addresses to
+ *    memory addresses.
  *
  * 5. The cons and object sections are injected into the garbage collector.
  *
  * 6. Temporary memory is freed.
  *
- * Disk I/O is performed only in steps 1-2. Steps 4-5 must be performed
+ * Disk I/O is performed only in steps 1-2. Steps 3-5 must be performed
  * atomically with respect to garbage collection. To prevent disk I/O from
  * stalling the interpreter while loading object files, the process is split
  * into two phases: in the staging phase, steps 1-2 are performed

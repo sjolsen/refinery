@@ -2,18 +2,30 @@
 
 #include <Library/SafeIntLib.h>
 
+STATIC EFI_STATUS
+EFIAPI
+SafePageCountRoundingUp (
+  IN UINTN   Bytes,
+  OUT UINTN  *PageCount
+  )
+{
+  EFI_STATUS  Status;
+
+  Status = SafeUintnAdd (Bytes, BORAX_PAGE_SIZE - 1, PageCount);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  *PageCount /= BORAX_PAGE_SIZE;
+  return EFI_SUCCESS;
+}
+
+#define UNSAFE_PAGE_COUNT_ROUNDING_UP(_bytes) \
+(((_bytes) + (BORAX_PAGE_SIZE - 1)) / BORAX_PAGE_SIZE)
+
 typedef EFI_STATUS (*EFIAPI IO_CALLBACK)(IN BORAX_STAGED_OBJECT_FILE  *Staged);
 
-typedef struct {
-  UINTN    SectionIndex;
-  UINTN    SectionChunkIndex;
-  UINTN    FirstPageIndex;
-  UINTN    PageCount;
-  VOID     *Pages;
-  UINTN    *ObjectBitmap;
-} CHUNK_DATA;
-
-#define OBJECTS_PER_PAGE              (BORAX_PAGE_SIZE / (2 * sizeof (UINTN)))
+#define OBJECTS_PER_PAGE              (BORAX_PAGE_SIZE / 8)
 #define OBJECT_BITMAP_WORDS_PER_PAGE  (OBJECTS_PER_PAGE / BORAX_WORD_BITS)
 
 struct _BORAX_STAGED_OBJECT_FILE_IMPL {
@@ -24,10 +36,9 @@ struct _BORAX_STAGED_OBJECT_FILE_IMPL {
   EFI_FILE_IO_TOKEN     IO;
   IO_CALLBACK           IOCallback;
   BXO_HEADER            Header;
-  BXO_SECTION_HEADER    *SectionHeaders;
-  CHUNK_DATA            *ChunkData;
-  UINTN                 ChunkCount;
-  UINTN                 LoadChunkIndex;
+  BORAX_CONS_CHUNK      *Cons;
+  BORAX_OBJECT_CHUNK    *Object;
+  UINTN                 *ObjectBitmap;
 };
 
 STATIC VOID
@@ -39,38 +50,32 @@ BoraxStageObjectFileCleanup (
   BORAX_STAGED_OBJECT_FILE_IMPL  *Impl = Staged->Impl;
 
   if (Impl != NULL) {
-    if (Impl->ChunkData != NULL) {
-      UINTN  I;
-      for (I = 0; I < Impl->ChunkCount; ++I) {
-        if (Impl->ChunkData[I].Pages != NULL) {
-          UINTN  SectionIndex = Impl->ChunkData[I].SectionIndex;
-          UINTN  PageCount    = Impl->ChunkData[I].PageCount;
-
-          switch (Impl->SectionHeaders[SectionIndex].Tag) {
-            case BXO_SECTION_CONS:
-            case BXO_SECTION_OBJECT:
-              Impl->Alloc->SysAlloc->FreePages (
-                                       Impl->Alloc->SysAlloc,
-                                       Impl->ChunkData[I].Pages,
-                                       PageCount
-                                       );
-              break;
-            default:
-              FreePages (Impl->ChunkData[I].Pages, PageCount);
-              break;
-          }
-        }
-
-        if (Impl->ChunkData[I].ObjectBitmap != NULL) {
-          FreePool (Impl->ChunkData[I].ObjectBitmap);
-        }
-      }
-
-      FreePool (Impl->ChunkData);
+    if (Impl->ObjectBitmap != NULL) {
+      FreePool (Impl->ObjectBitmap);
     }
 
-    if (Impl->SectionHeaders != NULL) {
-      FreePool (Impl->SectionHeaders);
+    if (Impl->Object != NULL) {
+      // The page-count calculation must not have overflowed for us to make it
+      // here
+      Impl->Alloc->SysAlloc->FreePages (
+                               Impl->Alloc->SysAlloc,
+                               Impl->Object,
+                               UNSAFE_PAGE_COUNT_ROUNDING_UP (
+                                 Impl->Header.Object.Size
+                                 )
+                               );
+    }
+
+    if (Impl->Cons != NULL) {
+      // The page-count calculation must not have overflowed for us to make it
+      // here
+      Impl->Alloc->SysAlloc->FreePages (
+                               Impl->Alloc->SysAlloc,
+                               Impl->Cons,
+                               UNSAFE_PAGE_COUNT_ROUNDING_UP (
+                                 Impl->Header.Cons.Size
+                                 )
+                               );
     }
 
     if (Impl->IO.Event != NULL) {
@@ -102,6 +107,34 @@ BoraxStageObjectFileSuccess (
   // Cleanup will be performed by UnStage/Inject
   Staged->Status = EFI_SUCCESS;
   gBS->SignalEvent (Staged->Complete);
+}
+
+STATIC EFI_STATUS
+EFIAPI
+BoraxStageObjectFileAllocateChunk (
+  IN BORAX_STAGED_OBJECT_FILE  *Staged,
+  IN UINTN                     Bytes,
+  OUT VOID                     **Chunk
+  )
+{
+  EFI_STATUS  Status;
+  UINTN       PageCount;
+
+  Status = SafePageCountRoundingUp (Bytes, &PageCount);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  *Chunk = Staged->Impl->Alloc->SysAlloc->AllocatePages (
+                                            Staged->Impl->Alloc->SysAlloc,
+                                            PageCount
+                                            );
+  if (*Chunk == NULL) {
+    return EFI_OUT_OF_RESOURCES;
+  }
+
+  SetMem (*Chunk, BORAX_PAGE_SIZE * PageCount, -1);
+  return EFI_SUCCESS;
 }
 
 STATIC EFI_STATUS
@@ -168,6 +201,7 @@ BoraxStageObjectFileIOCallback (
 STATIC IO_CALLBACK  BoraxStageObjectFile1;
 STATIC IO_CALLBACK  BoraxStageObjectFile2;
 STATIC IO_CALLBACK  BoraxStageObjectFile3;
+STATIC IO_CALLBACK  BoraxStageObjectFile4;
 
 VOID
 EFIAPI
@@ -251,187 +285,64 @@ BoraxStageObjectFile1 (
 {
   EFI_STATUS                     Status;
   BORAX_STAGED_OBJECT_FILE_IMPL  *Impl = Staged->Impl;
-  UINTN                          SectionHeaderBytes;
 
   // Parse the file header (assume 64-bit little-endian for now)
   if (CompareMem (&Impl->Header, BXO_64BIT_LE, 8) != 0) {
     return EFI_LOAD_ERROR;
   }
 
-  // Load the section headers
-  Status = SafeUintnMult (
-             sizeof (BXO_SECTION_HEADER),
-             Impl->Header.SectionHeaderCount,
-             &SectionHeaderBytes
+  // No support for relocations yet
+  if (Impl->Header.String.Size != 0) {
+    return EFI_LOAD_ERROR;
+  }
+
+  if (Impl->Header.Package.Size != 0) {
+    return EFI_LOAD_ERROR;
+  }
+
+  if (Impl->Header.Symbol.Size != 0) {
+    return EFI_LOAD_ERROR;
+  }
+
+  if (Impl->Header.Class.Size != 0) {
+    return EFI_LOAD_ERROR;
+  }
+
+  // Allocate the cons and object chunks
+  Status = BoraxStageObjectFileAllocateChunk (
+             Staged,
+             Impl->Header.Cons.Size,
+             (VOID **)&Impl->Cons
              );
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
-  Impl->SectionHeaders = AllocatePool (SectionHeaderBytes);
-  if (Impl->Sections == NULL) {
-    return OUT_OF_RESOURCES;
+  Status = BoraxStageObjectFileAllocateChunk (
+             Staged,
+             Impl->Header.Object.Size,
+             (VOID **)&Impl->Object
+             );
+  if (EFI_ERROR (Status)) {
+    return Status;
   }
 
-  Impl->IOCallback = BoraxStageObjectFile2;
+  Impl->ObjectBitmap = AllocateZeroPool (
+                         OBJECT_BITMAP_WORDS_PER_PAGE *
+                         UNSAFE_PAGE_COUNT_ROUNDING_UP (Impl->Header.Object.Size)
+                         );
+  if (Impl->ObjectBitmap == NULL) {
+    return EFI_OUT_OF_RESOURCES;
+  }
+
+  // Read the cons chunk
+  Impl->IOCallback = BoraxStageObjectFile3;
   return BoraxStageObjectFileRead (
            Staged,
-           Impl->SectionHeaders,
-           Impl->Header.SectionHeaderOffset,
-           SectionHeaderBytes
+           Impl->Cons,
+           Impl->Cons.Offset,
+           Impl->Cons.Size
            );
-}
-
-#define DIVIDE_ROUND_UP(_a, _b)  (((_a) + (_b) - 1) / (_b))
-
-STATIC EFI_STATUS
-BoraxStageObjectFile2 (
-  IN BORAX_STAGED_OBJECT_FILE  *Staged
-  )
-{
-  EFI_STATUS                     Status;
-  BORAX_STAGED_OBJECT_FILE_IMPL  *Impl = Staged->Impl;
-
-  // Allocate the chunk data array
-  {
-    UINTN  SectionIndex;
-    UINTN  ChunkCount;
-    UINTN  ChunkDataSize;
-
-    ChunkCount = 0;
-    for (SectionIndex = 0;
-         SectionIndex < Impl->Header.SectionHeaderCount;
-         ++SectionIndex)
-    {
-      UINTN  PageCount = DIVIDE_ROUND_UP (
-                           Impl->SectionHeaders[SectionIndex].Size,
-                           BORAX_PAGE_SIZE
-                           );
-
-      switch (Impl->SectionHeaders[SectionIndex].Tag) {
-        case BXO_SECTION_CONS:
-          ChunkCount += PageCount;
-          break;
-        case BXO_SECTION_OBJECT:
-          ChunkCount += DIVIDE_ROUND_UP (
-                          PageCount,
-                          Impl->SectionHeaders[SectionIndex].PagesPerChunk
-                          );
-          break;
-        default:
-          ChunkCount += 1;
-          break;
-      }
-    }
-
-    Status = SafeUintnMult (ChunkCount, sizeof (CHUNK_DATA), &ChunkDataSize);
-    if (EFI_ERROR (Status)) {
-      return Status;
-    }
-
-    Impl->ChunkData = AllocateZeroPool (ChunkDataSize);
-    if (Impl->ChunkData == NULL) {
-      return EFI_OUT_OF_RESOURCES;
-    }
-
-    Impl->ChunkCount = ChunkCount;
-  }
-
-  // Populate the chunk data array
-  {
-    UINTN  SectionIndex;
-    UINTN  ChunkIndex    = 0;
-    UINTN  NextPageIndex = 0;
-
-    for (SectionIndex = 0;
-         SectionIndex < Impl->Header.SectionHeaderCount;
-         ++SectionIndex)
-    {
-      UINTN  PageCount = DIVIDE_ROUND_UP (
-                           Impl->SectionHeaders[SectionIndex].Size,
-                           BORAX_PAGE_SIZE
-                           );
-      UINTN  SectionChunkPages;
-      UINTN  SectionChunkCount;
-      UINTN  SectionChunkIndex;
-
-      switch (Impl->SectionHeaders[SectionIndex].Tag) {
-        case BXO_SECTION_CONS:
-          SectionChunkPages = 1;
-          SectionChunkCount = PageCount;
-          break;
-        case BXO_SECTION_OBJECT:
-          SectionChunkPages = Impl->SectionHeaders[SectionIndex].PagesPerChunk;
-          SectionChunkCount = DIVIDE_ROUND_UP (PageCount, SectionChunkPages);
-          break;
-        default:
-          SectionChunkPages = PageCount;
-          SectionChunkCount = 1;
-          break;
-      }
-
-      for (SectionChunkIndex = 0;
-           SectionChunkIndex < SectionChunkCount;
-           ++SectionChunkIndex)
-      {
-        CHUNK_DATA  *ChunkData = &Impl->ChunkData[ChunkIndex];
-
-        ChunkData->SectionIndex      = SectionIndex;
-        ChunkData->SectionChunkIndex = SectionChunkIndex;
-        ChunkData->FirstPageIndex    = NextPageIndex;
-        ChunkData->PageCount         = SectionChunkPages;
-
-        switch (Impl->SectionHeaders[SectionIndex].Tag) {
-          case BXO_SECTION_CONS:
-          case BXO_SECTION_OBJECT:
-            ChunkData->Pages = Impl->Alloc->SysAlloc->AllocatePages (
-                                                        Impl->Alloc->SysAlloc,
-                                                        SectionChunkPages
-                                                        );
-            break;
-          default:
-            ChunkData->Pages = AllocatePages (
-                                 Impl->Alloc->SysAlloc,
-                                 SectionChunkPages
-                                 );
-            break;
-        }
-
-        if (ChunkData->Pages == NULL) {
-          return EFI_OUT_OF_RESOURCES;
-        }
-
-        SetMem (ChunkData->Pages, BORAX_PAGE_SIZE * SectionChunkPages, -1);
-
-        if (Impl->SectionHeaders[SectionIndex].Tag == BXO_SECTION_OBJECT) {
-          UINTN  ObjectBitmapWords;
-
-          Status = SafeUintnMult (
-                     OBJECT_BITMAP_WORDS_PER_PAGE,
-                     SectionChunkPages,
-                     &ObjectBitmapWords
-                     );
-          if (EFI_ERROR (Status)) {
-            return Status;
-          }
-
-          ChunkData->ObjectBitmap = AllocateZeroPool (ObjectBitmapWords);
-          if (ChunkData->ObjectBitmap == NULL) {
-            return EFI_OUT_OF_RESOURCES;
-          }
-        }
-
-        NextPageIndex += SectionChunkPages;
-        ++ChunkIndex;
-      }
-    }
-  }
-
-  // Chain to the section data I/O callback
-  Impl->IOCallback = BoraxStageObjectFile3;
-  Impl->IO.Status  = EFI_SUCCESS;
-  gBS->SignalEvent (Impl->IO.Event);
-  return EFI_SUCCESS;
 }
 
 STATIC EFI_STATUS
@@ -439,75 +350,26 @@ BoraxStageObjectFile3 (
   IN BORAX_STAGED_OBJECT_FILE  *Staged
   )
 {
-  EFI_STATUS                     Status;
   BORAX_STAGED_OBJECT_FILE_IMPL  *Impl = Staged->Impl;
-  CHUNK_DATA                     *ChunkData;
-  BXO_SECTION_HEADER             *SectionHeader;
-  UINTN                          SectionChunkPages;
-  UINTN                          SectionChunkBytes;
-  UINTN                          ChunkOffset;
-  UINTN                          ChunkEnd;
-  UINTN                          ChunkSize;
 
-  // Check for completion
-  if (Impl->LoadChunkIndex >= Impl->ChunkCount) {
-    BoraxStageObjectFileSuccess (Staged);
-    return EFI_SUCCESS;
-  }
-
-  // Load next chunk
-  ChunkData     = &Impl->ChunkData[Impl->LoadChunkIndex];
-  SectionHeader = &Impl->SectionHeaders[ChunkData->SectionIndex];
-
-  switch (Impl->SectionHeaders[SectionIndex].Tag) {
-    case BXO_SECTION_CONS:
-      SectionChunkPages = 1;
-      break;
-    case BXO_SECTION_OBJECT:
-      SectionChunkPages = SectionHeader->PagesPerChunk;
-      break;
-    default:
-      SectionChunkPages = PageCount;
-      break;
-  }
-
-  Status = SafeUintnMult (
-             BORAX_PAGE_SIZE,
-             SectionChunkPages,
-             &SectionChunkBytes
-             );
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  Status = SafeUintnMult (
-             SectionChunkBytes,
-             ChunkData->SectionChunkIndex,
-             &ChunkOffset
-             );
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  Status = SafeUintnAdd (ChunkOffset, SectionChunkBytes, &ChunkEnd);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  ChunkEnd = MIN (ChunkEnd, SectionHeader->Size);
-  Status   = SafeUintnSub (ChunkEnd, ChunkOffset, &ChunkSize);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  ++Impl->LoadChunkIndex;
-  Impl->IOCallback = BoraxStageObjectFile3;
+  // Read the object chunk
+  Impl->IOCallback = BoraxStageObjectFile4;
   return BoraxStageObjectFileRead (
            Staged,
-           ChunkData->Pages,
-           SectionHeader->Address + ChunkOffset,
-           ChunkSize
+           Impl->Object,
+           Impl->Object.Offset,
+           Impl->Object.Size
            );
+}
+
+STATIC EFI_STATUS
+BoraxStageObjectFile4 (
+  IN BORAX_STAGED_OBJECT_FILE  *Staged
+  )
+{
+  // Done with I/O
+  BoraxStageObjectFileSuccess (Staged);
+  return EFI_SUCCESS;
 }
 
 VOID
@@ -528,34 +390,9 @@ BoraxUnStageObjectFile (
   BoraxStageObjectFileCleanup (Staged);
 }
 
-STATIC EFI_STATUS
+EFI_STATUS
 EFIAPI
-DecomposeAddress (
+BoraxInjectObjectFile (
   IN BORAX_STAGED_OBJECT_FILE  *Staged,
-  IN UINTN                     FileAddress,
-  OUT UINTN                    *ChunkIndex,
-  OUT UINTN                    *ChunkPageIndex,
-  OUT UINTN                    *ByteIndex
-  )
-{
-  BORAX_STAGED_OBJECT_FILE_IMPL  *Impl     = Staged->Impl;
-  UINTN                          PageIndex = FileAddress >> 16;
-  UINTN                          I;
-
-  // Linear search for now
-  for (I = 0; I < Impl->ChunkCount; ++I) {
-    CHUNK_DATA  *ChunkData = &Impl->ChunkData[I];
-    UINTN       Begin      = ChunkData->FirstPageIndex;
-    UINTN       End        = Begin + ChunkData->PageCount;
-
-    if ((Begin <= PageIndex) && (PageIndex < End)) {
-      *ChunkIndex     = I;
-      *ChunkPageIndex = PageIndex - Begin;
-      *ByteIndex      = 0xfff & (FileAddress >> 4);
-      return EFI_SUCCESS;
-    }
-  }
-
-  // Generic overflow code
-  return EFI_BUFFER_TOO_SMALL;
-}
+  OUT BORAX_PIN                **Pin
+  );
