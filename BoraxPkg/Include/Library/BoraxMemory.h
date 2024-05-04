@@ -204,7 +204,7 @@ typedef union {
 } BORAX_OBJECT_HEADER;
 
 STATIC_ASSERT (
-  sizeof (BORAX_OBJECT_HEADER) == BORAX_STORAGE_UNIT,
+  sizeof (BORAX_OBJECT_HEADER) == BORAX_ALIGNMENT,
   "Object header must be two words"
   );
 
@@ -222,6 +222,9 @@ STATIC_ASSERT (
  * collection for cons cells, it is not neccessary to maintain a free list;
  * instead, a "next free cell" pointer records the page and offset of the memory
  * location available for cons cell storage.
+ *
+ * Cons cell pages are normally allocated one at a time, but the allocator
+ * implements support for contiguous pages to support importing external data.
  *
  * The garbage collector uses the tri-color abstraction to implement a
  * mark-and-copy cycle. When a cons cell is marked, its address is truncated to
@@ -267,11 +270,9 @@ STATIC_ASSERT (
 typedef struct _BORAX_CONS_PAGE BORAX_CONS_PAGE;
 
 struct _BORAX_CONS_PAGE {
-  // There is unused space at the beginning of the bitmap where we could stuff
-  // the space parity bit, but we need another word for alignment padding
-  // anyway.
   BORAX_CONS_PAGE    *Next;
-  UINTN              SpaceParity;
+  BORAX_HALFWORD     Pages;
+  BORAX_HALFWORD     SpaceParity;
   UINTN              GreyBitmap[BORAX_CONS_BITMAP_WORDS];
 };
 
@@ -354,8 +355,8 @@ typedef struct _BORAX_OBJECT_CHUNK BORAX_OBJECT_CHUNK;
 
 struct _BORAX_OBJECT_CHUNK {
   BORAX_OBJECT_CHUNK    *Next;
-  UINT16                FillIndex;
-  UINT16                Pages;
+  BORAX_HALFWORD        FillIndex;
+  BORAX_HALFWORD        Pages;
 };
 
 #define BORAX_OBJECT_FIRST_INDEX  (BORAX_ALIGN(sizeof(BORAX_OBJECT_CHUNK)))

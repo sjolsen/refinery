@@ -90,7 +90,7 @@ ClearSpace (
   ConsPage = Space->Cons.Pages;
   while (ConsPage != NULL) {
     BORAX_CONS_PAGE  *Next = ConsPage->Next;
-    InternalFreePages (Alloc, ConsPage, 1);
+    InternalFreePages (Alloc, ConsPage, ConsPage->Pages);
     ConsPage = Next;
   }
 
@@ -671,6 +671,8 @@ cleanup:
   return Status;
 }
 
+#define PAGE_END(_page)  (BORAX_PAGE_SIZE * (_page)->Pages)
+
 EFI_STATUS
 EFIAPI
 BoraxAllocateCons (
@@ -681,8 +683,9 @@ BoraxAllocateCons (
   )
 {
   BORAX_CONS_PAGE  *Page = Alloc->ToSpace.Cons.Pages;
+  UINTN            FillIndex;
 
-  if ((Page == NULL) || (Alloc->ToSpace.Cons.FillIndex == BORAX_PAGE_SIZE)) {
+  if ((Page == NULL) || (Alloc->ToSpace.Cons.FillIndex == PAGE_END (Page))) {
     // No page or page is full; allocate one
     Page = InternalAllocatePages (Alloc, 1);
     if (Page == NULL) {
@@ -692,6 +695,7 @@ BoraxAllocateCons (
 
     // Prepare page
     Page->Next        = Alloc->ToSpace.Cons.Pages;
+    Page->Pages       = 1;
     Page->SpaceParity = Alloc->ToSpaceParity;
     SetMem (Page->GreyBitmap, sizeof (Page->GreyBitmap), 0);
 
@@ -701,10 +705,16 @@ BoraxAllocateCons (
   }
 
   // Bump allocate
-  *Cons                          = (BORAX_CONS *)((CHAR8 *)Page + Alloc->ToSpace.Cons.FillIndex);
-  (*Cons)->Car                   = Car;
-  (*Cons)->Cdr                   = Cdr;
-  Alloc->ToSpace.Cons.FillIndex += sizeof (BORAX_CONS);
+  *Cons        = (BORAX_CONS *)((CHAR8 *)Page + Alloc->ToSpace.Cons.FillIndex);
+  (*Cons)->Car = Car;
+  (*Cons)->Cdr = Cdr;
+
+  FillIndex = Alloc->ToSpace.Cons.FillIndex + sizeof (BORAX_CONS);
+  if ((FillIndex < PAGE_END (Page)) && ((FillIndex % BORAX_PAGE_SIZE) == 0)) {
+    FillIndex += BORAX_CONS_FIRST_INDEX;
+  }
+
+  Alloc->ToSpace.Cons.FillIndex = FillIndex;
   return EFI_SUCCESS;
 }
 

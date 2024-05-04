@@ -36,7 +36,7 @@ struct _BORAX_STAGED_OBJECT_FILE_IMPL {
   EFI_FILE_IO_TOKEN     IO;
   IO_CALLBACK           IOCallback;
   BXO_HEADER            Header;
-  BORAX_CONS_CHUNK      *Cons;
+  BORAX_CONS_PAGE       *Cons;
   BORAX_OBJECT_CHUNK    *Object;
   UINTN                 *ObjectBitmap;
 };
