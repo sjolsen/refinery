@@ -1,6 +1,9 @@
 #include <Library/BoraxObjectFile.h>
 
+#include <Library/BaseMemoryLib.h>
+#include <Library/MemoryAllocationLib.h>
 #include <Library/SafeIntLib.h>
+#include <Library/UefiBootServicesTableLib.h>
 
 STATIC EFI_STATUS
 EFIAPI
@@ -23,7 +26,7 @@ SafePageCountRoundingUp (
 #define UNSAFE_PAGE_COUNT_ROUNDING_UP(_bytes) \
 (((_bytes) + (BORAX_PAGE_SIZE - 1)) / BORAX_PAGE_SIZE)
 
-typedef EFI_STATUS (*EFIAPI IO_CALLBACK)(IN BORAX_STAGED_OBJECT_FILE  *Staged);
+typedef EFI_STATUS EFIAPI IO_CALLBACK(IN BORAX_STAGED_OBJECT_FILE  *Staged);
 
 #define OBJECTS_PER_PAGE              (BORAX_PAGE_SIZE / BORAX_ALIGNMENT)
 #define OBJECT_BITMAP_WORDS_PER_PAGE  (OBJECTS_PER_PAGE / BORAX_WORD_BITS)
@@ -34,7 +37,7 @@ struct _BORAX_STAGED_OBJECT_FILE_IMPL {
   BOOLEAN               Cancelled;
   UINT64                FileSize;
   EFI_FILE_IO_TOKEN     IO;
-  IO_CALLBACK           IOCallback;
+  IO_CALLBACK           *IOCallback;
   BXO_HEADER            Header;
   BORAX_CONS_PAGE       *Cons;
   BORAX_OBJECT_CHUNK    *Object;
@@ -157,7 +160,7 @@ BoraxStageObjectFileRead (
     return File->ReadEx (File, IO);
   } else {
     // Blocking read if ReadEx is not available
-    IO->Status = File->Read (File, Size, Buffer);
+    IO->Status = File->Read (File, &Size, Buffer);
     gBS->SignalEvent (IO->Event);
     return EFI_SUCCESS;
   }
@@ -175,11 +178,13 @@ BoraxStageObjectFileIOCallback (
 
   // Check for failure or cancellation
   if (EFI_ERROR (Staged->Impl->IO.Status)) {
-    return Staged->Impl->IO.Status;
+    BoraxStageObjectFileFailure (Staged, Staged->Impl->IO.Status);
+    return;
   }
 
   if (Staged->Impl->Cancelled) {
-    return EFI_ABORTED;
+    BoraxStageObjectFileFailure (Staged, EFI_ABORTED);
+    return;
   }
 
   // Execute the callback
@@ -193,7 +198,6 @@ BoraxStageObjectFileIOCallback (
 STATIC IO_CALLBACK  BoraxStageObjectFile1;
 STATIC IO_CALLBACK  BoraxStageObjectFile2;
 STATIC IO_CALLBACK  BoraxStageObjectFile3;
-STATIC IO_CALLBACK  BoraxStageObjectFile4;
 
 VOID
 EFIAPI
@@ -215,9 +219,9 @@ BoraxStageObjectFile (
     return;
   }
 
-  Staged->Alloc = Alloc;
-  Staged->File  = File;
-  Staged->Impl  = Impl;
+  Staged->Impl = Impl;
+  Impl->Alloc  = Alloc;
+  Impl->File   = File;
 
   // Set up I/O events to complete in callback mode
   Status = gBS->CreateEvent (
@@ -271,6 +275,7 @@ STATIC CONST UINT8  BXO_64BIT_LE[8] = {
 };
 
 STATIC EFI_STATUS
+EFIAPI
 BoraxStageObjectFile1 (
   IN BORAX_STAGED_OBJECT_FILE  *Staged
   )
@@ -328,34 +333,36 @@ BoraxStageObjectFile1 (
   }
 
   // Read the cons chunk
-  Impl->IOCallback = BoraxStageObjectFile3;
+  Impl->IOCallback = BoraxStageObjectFile2;
   return BoraxStageObjectFileRead (
            Staged,
            Impl->Cons,
-           Impl->Cons.Offset,
-           Impl->Cons.Size
+           Impl->Header.Cons.Offset,
+           Impl->Header.Cons.Size
            );
 }
 
 STATIC EFI_STATUS
-BoraxStageObjectFile3 (
+EFIAPI
+BoraxStageObjectFile2 (
   IN BORAX_STAGED_OBJECT_FILE  *Staged
   )
 {
   BORAX_STAGED_OBJECT_FILE_IMPL  *Impl = Staged->Impl;
 
   // Read the object chunk
-  Impl->IOCallback = BoraxStageObjectFile4;
+  Impl->IOCallback = BoraxStageObjectFile3;
   return BoraxStageObjectFileRead (
            Staged,
            Impl->Object,
-           Impl->Object.Offset,
-           Impl->Object.Size
+           Impl->Header.Object.Offset,
+           Impl->Header.Object.Size
            );
 }
 
 STATIC EFI_STATUS
-BoraxStageObjectFile4 (
+EFIAPI
+BoraxStageObjectFile3 (
   IN BORAX_STAGED_OBJECT_FILE  *Staged
   )
 {
@@ -446,7 +453,7 @@ ScanObjects (
 #define TAG_MASK   0x7
 
 #define OFFSET_SHIFT  3
-#define OFFSET_MASK   ((1 << (BORAX_WORD_BITS - 6)) - 1)
+#define OFFSET_MASK   ((1UL << (BORAX_WORD_BITS - 6)) - 1)
 
 STATIC EFI_STATUS
 EFIAPI
@@ -694,11 +701,7 @@ BoraxLoadObjectFile (
     goto end;
   }
 
-  Status = BoraxStageObjectFile (Alloc, File, &Staged);
-  if (EFI_ERROR (Status)) {
-    goto end;
-  }
-
+  BoraxStageObjectFile (Alloc, File, &Staged);
   Status = gBS->WaitForEvent (1, &Staged.Complete, &Index);
   if (EFI_ERROR (Status)) {
     goto end;

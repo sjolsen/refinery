@@ -554,6 +554,29 @@ BoraxAllocatorCollect (
   IN BORAX_ALLOCATOR  *Alloc
   );
 
+VOID *
+EFIAPI
+BoraxAllocateExternalPages (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN UINTN            Pages
+  );
+
+VOID
+EFIAPI
+BoraxFreeExternalPages (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN VOID             *Buffer,
+  IN UINTN            Pages
+  );
+
+EFI_STATUS
+EFIAPI
+BoraxInjectExternalPages (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN VOID             *Buffer,
+  IN UINTN            Pages
+  );
+
 EFI_STATUS
 EFIAPI
 BoraxAllocateCons (

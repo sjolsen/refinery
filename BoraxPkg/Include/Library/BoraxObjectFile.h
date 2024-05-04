@@ -1,6 +1,8 @@
 #ifndef BORAX_OBJECT_FILE_H
 #define BORAX_OBJECT_FILE_H
 
+#include <Protocol/SimpleFileSystem.h>
+
 #include <Library/BoraxMemory.h>
 
 /*
