@@ -16,3 +16,4 @@
 
 [Sources]
   MemoryTest.cpp
+  TracingAllocator.hpp
