@@ -35,5 +35,38 @@
           for object across (objects a)
           do (assert-equal i (index object)))))
 
-(defun test ()
-  (run-suite 'collect-suite))
+(defun make-circular (n)
+  (let* ((last (cons 0 nil))
+         (first last))
+    (dotimes (i n)
+      (setf first (cons (1+ i) first)))
+    (setf (cdr last) first)))
+
+(deftest test-circular-discard (collect-suite)
+  (with-allocator a
+    (make-circular 5)
+    (collect nil)
+    (assert-equal 0 (length (objects a)))))
+
+(deftest test-circular-keep (collect-suite)
+  (with-allocator a
+    (collect (list (make-circular 5)))
+    (assert-equal 6 (length (objects a)))))
+
+(defun make-funny-record ()
+  (let ((class (make-record nil #())))
+    (setf (record-class class) class)
+    (let* ((nested (make-record class #(1 2 3)))
+           (data (make-array 3 :initial-contents (list nested nested nil))))
+      (make-record class data))))
+
+(deftest test-record-discard (collect-suite)
+  (with-allocator a
+    (make-funny-record)
+    (collect nil)
+    (assert-equal 0 (length (objects a)))))
+
+(deftest test-record-keep (collect-suite)
+  (with-allocator a
+    (collect (list (make-funny-record)))
+    (assert-equal 3 (length (objects a)))))

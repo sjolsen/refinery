@@ -86,8 +86,9 @@
   (let ((grey-list nil))
     (flet ((mark-grey (objects)
              (dolist (object objects)
-               (setf (color object) 'grey)
-               (push object grey-list)))
+               (when (eq (color object) 'white)
+                 (setf (color object) 'grey)
+                 (push object grey-list))))
            (mark-black (object)
              (setf (color object) 'black)))
       ;; Mark roots grey
