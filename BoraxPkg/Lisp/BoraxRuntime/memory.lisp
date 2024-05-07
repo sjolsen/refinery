@@ -108,5 +108,6 @@
             (white)
             (black
              (setf (aref objects destination) object)
+             (setf (index object) destination)
              (setf (color object) 'white)
              (incf destination))))))))
