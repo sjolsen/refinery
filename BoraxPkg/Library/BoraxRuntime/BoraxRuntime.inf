@@ -16,5 +16,6 @@
 
 [Sources]
   Memory.c
+  ObjectFile.c
   Stack.c
   Stack.h
