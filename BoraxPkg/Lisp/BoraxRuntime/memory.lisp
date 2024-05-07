@@ -1,6 +1,8 @@
 (uiop:define-package :borax-runtime/memory
   (:use :uiop/common-lisp)
-  (:export #:memory-model
+  (:export #:+page-bytes+ #:memory-model #:make-memory-model
+           #:word-bits #:endianness #:alignment #:cons-first-index
+           #:word-type #:align-up
            #:allocator #:make-allocator #:*allocator* #:objects
            #:collect
            #:bx-cons #:bx-car #:bx-cdr
@@ -9,16 +11,42 @@
 
 (in-package :borax-runtime/memory)
 
+(defconstant +page-bytes+ 4096)
+
+(defun align-up-bytes (bytes alignment)
+  (* alignment (ceiling bytes alignment)))
+
 (defclass memory-model ()
-  ((word-size :type (member 32 64)
-              :reader word-size
-              :initarg :word-size)
+  ((word-bits :type (member 32 64)
+              :reader word-bits
+              :initarg :word-bits)
    (endianness :type (member :little-endian :big-endian)
                :reader endianness
-               :initarg :endianness)))
+               :initarg :endianness)
+   (alignment :type fixnum
+              :reader alignment
+              :initarg :alignment)
+   (cons-first-index :type fixnum
+                     :reader cons-first-index
+                     :initarg :cons-first-index)))
 
-(defun memory-model (word-size endianness)
-  (make-instance 'memory-model :word-size word-size :endianness endianness))
+(defun make-memory-model (word-bits endianness)
+  (let* ((word-bytes (floor word-bits 8))
+         (cons-bytes (* 2 word-bytes))
+         (cons-per-page (floor +page-bytes+ cons-bytes))
+         (cons-bitmap-words (floor cons-per-page word-bits))
+         (cons-header-words (+ 2 cons-bitmap-words))
+         (cons-header-bytes (* word-bytes cons-header-words)))
+    (make-instance 'memory-model
+     :word-bits word-bits :endianness endianness
+     :alignment cons-bytes
+     :cons-first-index (align-up-bytes cons-header-bytes cons-bytes))))
+
+(defun word-type (memory-model)
+  `(unsigned-byte ,(word-bits memory-model)))
+
+(defun align-up (bytes memory-model)
+  (align-up-bytes bytes (alignment memory-model)))
 
 (defconstant +initial-space-size+ 100)
 

@@ -3,6 +3,32 @@
 
 (in-package :borax-runtime/memory-test)
 
+(defsuite memory-model-suite ())
+
+(deftest test-32bit-le (memory-model-suite)
+  (let ((memory-model (make-memory-model 32 :little-endian)))
+    (assert-equal 32 (word-bits memory-model))
+    (assert-equal :little-endian (endianness memory-model))
+    (assert-equal 72 (cons-first-index memory-model))))
+
+(deftest test-32bit-be (memory-model-suite)
+  (let ((memory-model (make-memory-model 32 :big-endian)))
+    (assert-equal 32 (word-bits memory-model))
+    (assert-equal :big-endian (endianness memory-model))
+    (assert-equal 72 (cons-first-index memory-model))))
+
+(deftest test-64bit-le (memory-model-suite)
+  (let ((memory-model (make-memory-model 64 :little-endian)))
+    (assert-equal 64 (word-bits memory-model))
+    (assert-equal :little-endian (endianness memory-model))
+    (assert-equal 48 (cons-first-index memory-model))))
+
+(deftest test-64bit-be (memory-model-suite)
+  (let ((memory-model (make-memory-model 64 :big-endian)))
+    (assert-equal 64 (word-bits memory-model))
+    (assert-equal :big-endian (endianness memory-model))
+    (assert-equal 48 (cons-first-index memory-model))))
+
 (defsuite collect-suite ())
 
 (defmacro with-allocator (name &body body)
