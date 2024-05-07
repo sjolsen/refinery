@@ -1,16 +1,11 @@
 (uiop:define-package :borax-runtime/memory
   (:use :uiop/common-lisp)
-  (:shadow #:cons #:car #:cdr)
   (:export #:memory-model
            #:allocator #:make-allocator #:*allocator* #:objects
            #:collect
-           #:cons #:car #:cdr
+           #:bx-cons #:bx-car #:bx-cdr
            #:object #:index
            #:record #:make-record #:record-class #:record-data))
-
-(uiop:define-package :borax-runtime/memory-interface
-  (:mix :uiop/common-lisp :borax-runtime/memory)
-  (:reexport :borax-runtime/memory))
 
 (in-package :borax-runtime/memory)
 
@@ -52,20 +47,17 @@
   (setf (index instance) (vector-push-extend instance (objects *allocator*))))
 
 (defgeneric sub-objects (object)
-  (:method :around (object)
-    (remove-if #'(lambda (sub-object) (not (typep sub-object 'object)))
-               (call-next-method)))
   (:method ((object integer)) nil))
 
-(defclass cons (object)
-  ((car :accessor car :initarg :car)
-   (cdr :accessor cdr :initarg :cdr)))
+(defclass bx-cons (object)
+  ((bx-car :accessor bx-car :initarg :car)
+   (bx-cdr :accessor bx-cdr :initarg :cdr)))
 
-(defun cons (car cdr)
-  (make-instance 'cons :car car :cdr cdr))
+(defun bx-cons (car cdr)
+  (make-instance 'bx-cons :car car :cdr cdr))
 
-(defmethod sub-objects ((object cons))
-  (list (car object) (cdr object)))
+(defmethod sub-objects ((object bx-cons))
+  (list (bx-car object) (bx-cdr object)))
 
 (defclass record (object)
   ((class :type record
@@ -86,9 +78,10 @@
   (let ((grey-list nil))
     (flet ((mark-grey (objects)
              (dolist (object objects)
-               (when (eq (color object) 'white)
-                 (setf (color object) 'grey)
-                 (push object grey-list))))
+               (when (typep object 'object)
+                 (when (eq (color object) 'white)
+                   (setf (color object) 'grey)
+                   (push object grey-list)))))
            (mark-black (object)
              (setf (color object) 'black)))
       ;; Mark roots grey
