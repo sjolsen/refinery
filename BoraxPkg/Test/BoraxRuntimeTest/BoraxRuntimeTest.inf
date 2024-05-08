@@ -15,5 +15,5 @@
   UnitTestFrameworkPkg/UnitTestFrameworkPkg.dec
 
 [Sources]
-  MemoryTest.cpp
+  BoraxRuntimeTest.cpp
   TracingAllocator.hpp
