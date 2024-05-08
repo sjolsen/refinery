@@ -1,6 +1,6 @@
 (uiop:define-package :borax-runtime/object-file
   (:use :uiop/common-lisp :borax-runtime/memory)
-  (:export #:file-allocate #:write-file))
+  (:export #:write-object-file))
 
 (in-package :borax-runtime/object-file)
 
@@ -167,3 +167,7 @@
                      (loop for datum across (record-data object)
                            do (write-translation datum))))
         (advance-to (+ object-offset object-size))))))
+
+(defun write-object-file (allocator memory-model root stream)
+  (let ((file-allocator (make-file-allocator allocator memory-model)))
+    (write-file file-allocator root stream)))
