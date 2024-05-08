@@ -1,8 +1,9 @@
 (uiop:define-package :borax-runtime/memory
   (:use :uiop/common-lisp)
   (:export #:+page-bytes+ #:memory-model #:make-memory-model
-           #:word-bits #:endianness #:alignment #:cons-first-index
-           #:word-type #:align-up
+           #:word-bits #:endianness #:cons-first-word #:object-first-word
+           #:word-type #:word-bytes
+           #:most-positive-bx-fixnum #:most-negative-bx-fixnum
            #:allocator #:make-allocator #:*allocator* #:objects
            #:collect
            #:bx-cons #:bx-car #:bx-cdr
@@ -13,9 +14,6 @@
 
 (defconstant +page-bytes+ 4096)
 
-(defun align-up-bytes (bytes alignment)
-  (* alignment (ceiling bytes alignment)))
-
 (defclass memory-model ()
   ((word-bits :type (member 32 64)
               :reader word-bits
@@ -23,30 +21,35 @@
    (endianness :type (member :little-endian :big-endian)
                :reader endianness
                :initarg :endianness)
-   (alignment :type fixnum
-              :reader alignment
-              :initarg :alignment)
-   (cons-first-index :type fixnum
-                     :reader cons-first-index
-                     :initarg :cons-first-index)))
+   (cons-first-word :type fixnum
+                    :reader cons-first-word
+                    :initarg :cons-first-word)
+   (object-first-word :type fixnum
+                      :reader object-first-word
+                      :initarg :object-first-word)))
 
 (defun make-memory-model (word-bits endianness)
   (let* ((word-bytes (floor word-bits 8))
          (cons-bytes (* 2 word-bytes))
          (cons-per-page (floor +page-bytes+ cons-bytes))
          (cons-bitmap-words (floor cons-per-page word-bits))
-         (cons-header-words (+ 2 cons-bitmap-words))
-         (cons-header-bytes (* word-bytes cons-header-words)))
+         (cons-header-words (+ 2 cons-bitmap-words)))
     (make-instance 'memory-model
      :word-bits word-bits :endianness endianness
-     :alignment cons-bytes
-     :cons-first-index (align-up-bytes cons-header-bytes cons-bytes))))
+     :cons-first-word cons-header-words
+     :object-first-word 2)))
 
 (defun word-type (memory-model)
   `(unsigned-byte ,(word-bits memory-model)))
 
-(defun align-up (bytes memory-model)
-  (align-up-bytes bytes (alignment memory-model)))
+(defun word-bytes (memory-model)
+  (floor (word-bits memory-model) 8))
+
+(defun most-positive-bx-fixnum (memory-model)
+  (- (ash 1 (- (word-bits memory-model) 2)) 1))
+
+(defun most-negative-bx-fixnum (memory-model)
+  (- (ash 1 (- (word-bits memory-model) 2))))
 
 (defconstant +initial-space-size+ 100)
 
