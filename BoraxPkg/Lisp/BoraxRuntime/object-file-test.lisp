@@ -71,14 +71,14 @@
          (data (object-file-bytes *allocator* memory-model 0)))
     (validate-object-file data memory-model)))
 
-(deftest smoke-test-32bit-le (object-file-suite)
+(deftest smoke-test-32bit-le (smoke-test-suite)
   (smoke-test 32 :little-endian))
 
-(deftest smoke-test-32bit-be (object-file-suite)
+(deftest smoke-test-32bit-be (smoke-test-suite)
   (smoke-test 32 :big-endian))
 
-(deftest smoke-test-64bit-le (object-file-suite)
+(deftest smoke-test-64bit-le (smoke-test-suite)
   (smoke-test 64 :little-endian))
 
-(deftest smoke-test-64bit-be (object-file-suite)
+(deftest smoke-test-64bit-be (smoke-test-suite)
   (smoke-test 64 :big-endian))
