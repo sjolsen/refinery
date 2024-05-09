@@ -1,9 +1,13 @@
 #include <Library/BoraxObjectFile.h>
 
 #include <Library/BaseMemoryLib.h>
+#include <Library/DebugLib.h>
 #include <Library/MemoryAllocationLib.h>
 #include <Library/SafeIntLib.h>
 #include <Library/UefiBootServicesTableLib.h>
+
+#define BXO_DEBUG_ERROR(_fmt, ...) \
+DEBUG ((DEBUG_ERROR, "%a:%d: " _fmt "\n", __func__, __LINE__, ##__VA_ARGS__))
 
 STATIC EFI_STATUS
 EFIAPI
@@ -16,6 +20,7 @@ SafePageCountRoundingUp (
 
   Status = SafeUintnAdd (Bytes, BORAX_PAGE_SIZE - 1, PageCount);
   if (EFI_ERROR (Status)) {
+    BXO_DEBUG_ERROR ("page count overflow");
     return Status;
   }
 
@@ -126,6 +131,7 @@ BoraxStageObjectFileAllocateChunk (
 
   *Chunk = BoraxAllocateExternalPages (Staged->Impl->Alloc, PageCount);
   if (*Chunk == NULL) {
+    BXO_DEBUG_ERROR ("allocation failed");
     return EFI_OUT_OF_RESOURCES;
   }
 
@@ -146,11 +152,13 @@ BoraxStageObjectFileRead (
   EFI_FILE_IO_TOKEN  *IO   = &Staged->Impl->IO;
 
   if (Offset + Size > Staged->Impl->FileSize) {
+    BXO_DEBUG_ERROR ("attempt to read past end of file");
     return EFI_END_OF_FILE;
   }
 
   Status = File->SetPosition (File, Offset);
   if (EFI_ERROR (Status)) {
+    BXO_DEBUG_ERROR ("SetPosition failed");
     return Status;
   }
 
@@ -178,11 +186,13 @@ BoraxStageObjectFileIOCallback (
 
   // Check for failure or cancellation
   if (EFI_ERROR (Staged->Impl->IO.Status)) {
+    BXO_DEBUG_ERROR ("I/O failure");
     BoraxStageObjectFileFailure (Staged, Staged->Impl->IO.Status);
     return;
   }
 
   if (Staged->Impl->Cancelled) {
+    BXO_DEBUG_ERROR ("cancelled");
     BoraxStageObjectFileFailure (Staged, EFI_ABORTED);
     return;
   }
@@ -215,6 +225,7 @@ BoraxStageObjectFile (
   // when their pointers are non-NULL. This simplifies the shared cleanup code.
   Impl = AllocateZeroPool (sizeof (BORAX_STAGED_OBJECT_FILE_IMPL));
   if (Impl == NULL) {
+    BXO_DEBUG_ERROR ("allocation failure");
     BoraxStageObjectFileFailure (Staged, EFI_OUT_OF_RESOURCES);
     return;
   }
@@ -232,6 +243,7 @@ BoraxStageObjectFile (
                   &Impl->IO.Event
                   );
   if (EFI_ERROR (Status)) {
+    BXO_DEBUG_ERROR ("CreateEvent failed");
     BoraxStageObjectFileFailure (Staged, Status);
     return;
   }
@@ -239,12 +251,14 @@ BoraxStageObjectFile (
   // Probe the file size
   Status = File->SetPosition (File, MAX_UINT64);
   if (EFI_ERROR (Status)) {
+    BXO_DEBUG_ERROR ("SetPosition failed");
     BoraxStageObjectFileFailure (Staged, Status);
     return;
   }
 
   Status = File->GetPosition (File, &Impl->FileSize);
   if (EFI_ERROR (Status)) {
+    BXO_DEBUG_ERROR ("GetPosition failed");
     BoraxStageObjectFileFailure (Staged, Status);
     return;
   }
@@ -285,24 +299,29 @@ BoraxStageObjectFile1 (
 
   // Parse the file header (assume 64-bit little-endian for now)
   if (CompareMem (&Impl->Header, BXO_64BIT_LE, 8) != 0) {
+    BXO_DEBUG_ERROR ("wrong file type (expected BXO 64-bit little-endian)");
     return EFI_LOAD_ERROR;
   }
 
   // No support for relocations yet
   if (Impl->Header.String.Size != 0) {
-    return EFI_LOAD_ERROR;
+    BXO_DEBUG_ERROR ("string relocations not supported");
+    return EFI_UNSUPPORTED;
   }
 
   if (Impl->Header.Package.Size != 0) {
-    return EFI_LOAD_ERROR;
+    BXO_DEBUG_ERROR ("package relocations not supported");
+    return EFI_UNSUPPORTED;
   }
 
   if (Impl->Header.Symbol.Size != 0) {
-    return EFI_LOAD_ERROR;
+    BXO_DEBUG_ERROR ("symbol relocations not supported");
+    return EFI_UNSUPPORTED;
   }
 
   if (Impl->Header.Class.Size != 0) {
-    return EFI_LOAD_ERROR;
+    BXO_DEBUG_ERROR ("class relocations not supported");
+    return EFI_UNSUPPORTED;
   }
 
   // Allocate the cons and object chunks
@@ -329,6 +348,7 @@ BoraxStageObjectFile1 (
                          UNSAFE_PAGE_COUNT_ROUNDING_UP (Impl->Header.Object.Size)
                          );
   if (Impl->ObjectBitmap == NULL) {
+    BXO_DEBUG_ERROR ("allocation failure");
     return EFI_OUT_OF_RESOURCES;
   }
 
@@ -414,22 +434,26 @@ ScanObjects (
 
         // Bounds check the record object header
         if ((Impl->Header.Object.Size - Index) < sizeof (BORAX_RECORD)) {
+          BXO_DEBUG_ERROR ("object exceeds chunk bounds");
           return EFI_BUFFER_TOO_SMALL;
         }
 
         // Find the end of the record object
         Status = SafeUintnMult (sizeof (UINTN), Record->Length, &Size);
         if (EFI_ERROR (Status)) {
+          BXO_DEBUG_ERROR ("overflow");
           return Status;
         }
 
         Status = SafeUintnAdd (Size, sizeof (BORAX_RECORD), &Size);
         if (EFI_ERROR (Status)) {
+          BXO_DEBUG_ERROR ("overflow");
           return Status;
         }
 
         Status = SafeUintnAdd (Index, Size, &Index);
         if (EFI_ERROR (Status)) {
+          BXO_DEBUG_ERROR ("overflow");
           return Status;
         }
 
@@ -442,6 +466,7 @@ ScanObjects (
         return EFI_SUCCESS;
       default:
         // Bad object
+        BXO_DEBUG_ERROR ("bad object type (%u)", Header->WideTag);
         return EFI_LOAD_ERROR;
     }
   }
@@ -474,16 +499,19 @@ TranslateObject (
         Offset <<= 3;
         // Must point to valid memory
         if (Offset >= Impl->Header.Cons.Size) {
+          BXO_DEBUG_ERROR ("cons reference exceeds chunk bounds");
           return EFI_BUFFER_TOO_SMALL;
         }
 
         // Must not point into a page header
         if ((Offset % BORAX_PAGE_SIZE) < BORAX_CONS_FIRST_INDEX) {
+          BXO_DEBUG_ERROR ("cons reference lies in page header");
           return EFI_LOAD_ERROR;
         }
 
         // Must be aligned
         if ((Offset % BORAX_ALIGNMENT) != 0) {
+          BXO_DEBUG_ERROR ("cons reference is not aligned");
           return EFI_LOAD_ERROR;
         }
 
@@ -494,11 +522,13 @@ TranslateObject (
         Offset <<= 3;
         // Must point to valid memory
         if (Offset >= Impl->Header.Object.Size) {
+          BXO_DEBUG_ERROR ("object reference exceeds chunk bounds");
           return EFI_BUFFER_TOO_SMALL;
         }
 
         // Must be aligned
         if ((Offset % BORAX_ALIGNMENT) != 0) {
+          BXO_DEBUG_ERROR ("object reference is not aligned");
           return EFI_LOAD_ERROR;
         }
 
@@ -509,6 +539,7 @@ TranslateObject (
           UINTN  Bit   = Index % BORAX_WORD_BITS;
 
           if (!(Impl->ObjectBitmap[Word] & (1 << Bit))) {
+            BXO_DEBUG_ERROR ("invalid object reference");
             return EFI_LOAD_ERROR;
           }
         }
@@ -521,7 +552,9 @@ TranslateObject (
       case BXO_SECTION_REL_SYMBOL:
       case BXO_SECTION_REL_CLASS:
       // Relocations not supported yet
+        BXO_DEBUG_ERROR ("unsupported relocation reference");
       default:
+        BXO_DEBUG_ERROR ("bad reference tag");
         return EFI_LOAD_ERROR;
     }
   } else {
@@ -614,6 +647,7 @@ TranslateObjectSection (
         return EFI_SUCCESS;
       default:
         // Bad object
+        BXO_DEBUG_ERROR ("bad object type (%u)", Header->WideTag);
         return EFI_LOAD_ERROR;
     }
   }
@@ -697,12 +731,14 @@ BoraxLoadObjectFile (
 
   Status = gBS->CreateEvent (0, 0, NULL, NULL, &Staged.Complete);
   if (EFI_ERROR (Status)) {
+    BXO_DEBUG_ERROR ("CreateEvent failed");
     goto end;
   }
 
   BoraxStageObjectFile (Alloc, File, &Staged);
   Status = gBS->WaitForEvent (1, &Staged.Complete, &Index);
   if (EFI_ERROR (Status)) {
+    BXO_DEBUG_ERROR ("WaitForEvent failed");
     goto end;
   }
 
