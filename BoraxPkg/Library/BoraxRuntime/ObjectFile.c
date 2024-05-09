@@ -605,6 +605,8 @@ TranslateObjectSection (
           }
         }
 
+        Index += sizeof (BORAX_RECORD) + sizeof (UINTN) * Record->Length;
+        Index  = BORAX_ALIGN (Index);
         break;
       }
       case BORAX_DISCRIM_UNINITIALIZED:
@@ -652,18 +654,15 @@ BoraxInjectObjectFile (
   }
 
   // Inject the pages
-  Status = BoraxInjectExternalPages (
-             Impl->Alloc,
-             Impl->Cons,
-             UNSAFE_PAGE_COUNT_ROUNDING_UP (Impl->Header.Cons.Size)
-             );
-  if (EFI_ERROR (Status)) {
-    goto end;
-  }
+  BoraxInjectExternalConsPages (
+    Impl->Alloc,
+    Impl->Cons,
+    UNSAFE_PAGE_COUNT_ROUNDING_UP (Impl->Header.Cons.Size)
+    );
 
   Impl->Cons = NULL;
 
-  Status = BoraxInjectExternalPages (
+  Status = BoraxInjectExternalObjectPages (
              Impl->Alloc,
              Impl->Object,
              UNSAFE_PAGE_COUNT_ROUNDING_UP (Impl->Header.Object.Size)

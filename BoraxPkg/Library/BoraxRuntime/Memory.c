@@ -671,6 +671,58 @@ cleanup:
   return Status;
 }
 
+VOID *
+EFIAPI
+BoraxAllocateExternalPages (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN UINTN            Pages
+  )
+{
+  return InternalAllocatePages (Alloc, Pages);
+}
+
+VOID
+EFIAPI
+BoraxFreeExternalPages (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN VOID             *Buffer,
+  IN UINTN            Pages
+  )
+{
+  return InternalFreePages (Alloc, Buffer, Pages);
+}
+
+VOID
+EFIAPI
+BoraxInjectExternalConsPages (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN VOID             *Buffer,
+  IN UINTN            Pages
+  )
+{
+  BORAX_CONS_PAGE  *FirstPage = (BORAX_CONS_PAGE *)Buffer;
+  UINTN            I;
+
+  // Initialize the first header
+  FirstPage->Next        = Alloc->ToSpace.Cons.Pages;
+  FirstPage->Pages       = Pages;
+  FirstPage->SpaceParity = Alloc->ToSpaceParity;
+  SetMem (FirstPage->GreyBitmap, sizeof (FirstPage->GreyBitmap), 0);
+
+  // Initialize the remaining headers
+  for (I = 1; I < Pages; ++I) {
+    BORAX_CONS_PAGE  *Page = (BORAX_CONS_PAGE *)
+                             ((CHAR8 *)Buffer + I * BORAX_PAGE_SIZE);
+
+    SetMem (Page, sizeof (*Page), 0);
+    Page->SpaceParity = Alloc->ToSpaceParity;
+  }
+
+  // Push the chunk onto the page list (for simplicity, assume it's full)
+  Alloc->ToSpace.Cons.Pages     = FirstPage;
+  Alloc->ToSpace.Cons.FillIndex = BORAX_PAGE_SIZE * Pages;
+}
+
 #define PAGE_END(_page)  (BORAX_PAGE_SIZE * (_page)->Pages)
 
 EFI_STATUS
@@ -729,6 +781,76 @@ STATIC CONST UINTN  gBinSizes[BORAX_ALLOC_BIN_COUNT] = {
   BORAX_ALLOC_BIN_MAX,
 };
 
+STATIC VOID
+EFIAPI
+StoreObjectChunk (
+  IN BORAX_ALLOCATOR     *Alloc,
+  IN BORAX_OBJECT_CHUNK  *Chunk
+  )
+{
+  UINTN  Remainder = (Chunk->Pages * BORAX_PAGE_SIZE) - Chunk->FillIndex;
+  UINTN  Bin;
+
+  // Store the chunk according to its remaining space
+  for (Bin = BORAX_ALLOC_BIN_COUNT - 1; TRUE; --Bin) {
+    // The "full" bin guarantees termination
+    if (Remainder >= gBinSizes[Bin]) {
+      Chunk->Next                       = Alloc->ToSpace.Object.Chunks[Bin];
+      Alloc->ToSpace.Object.Chunks[Bin] = Chunk;
+      break;
+    }
+  }
+}
+
+EFI_STATUS
+EFIAPI
+BoraxInjectExternalObjectPages (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN VOID             *Buffer,
+  IN UINTN            Pages
+  )
+{
+  BORAX_OBJECT_CHUNK  *Chunk = (BORAX_OBJECT_CHUNK *)Buffer;
+  UINTN               Index  = BORAX_OBJECT_FIRST_INDEX;
+
+  // Initialize the objects' gcdata
+  while (Index < BORAX_PAGE_SIZE * Pages) {
+    BORAX_OBJECT_HEADER  *Header = (BORAX_OBJECT_HEADER *)
+                                   ((CHAR8 *)Buffer + Index);
+
+    Header->GcData = Alloc->ToSpaceParity;
+
+    // Assume objects are in-bounds (in practice, this is enfoced by
+    // ObjectFile.c:TranslateObject)
+    switch (BORAX_DISCRIMINATE_POINTER (Header)) {
+      case BORAX_DISCRIM_WORD_RECORD:
+      case BORAX_DISCRIM_OBJECT_RECORD:
+      {
+        BORAX_RECORD  *Record = (BORAX_RECORD *)Header;
+
+        Index += sizeof (BORAX_RECORD) + sizeof (UINTN) * Record->Length;
+        Index  = BORAX_ALIGN (Index);
+        break;
+      }
+      case BORAX_DISCRIM_UNINITIALIZED:
+        // We're done early
+        goto gcdata_done;
+      default:
+        // Bad object
+        return EFI_LOAD_ERROR;
+    }
+  }
+
+gcdata_done:
+  // Initialize the header
+  Chunk->FillIndex = Index;
+  Chunk->Pages     = Pages;
+
+  // Store the chunk
+  StoreObjectChunk (Alloc, Chunk);
+  return EFI_SUCCESS;
+}
+
 EFI_STATUS
 EFIAPI
 BoraxAllocateObject (
@@ -740,7 +862,6 @@ BoraxAllocateObject (
   BORAX_OBJECT_CHUNK   *Chunk = NULL;
   BORAX_OBJECT_HEADER  *NewObject;
   UINTN                Bin;
-  UINTN                Remainder;
 
   // Search for the smallest bin with an available chunk
   for (Bin = 1; Bin < BORAX_ALLOC_BIN_COUNT; ++Bin) {
@@ -773,16 +894,8 @@ BoraxAllocateObject (
   NewObject->GcData = Alloc->ToSpaceParity;
   Chunk->FillIndex  = BORAX_ALIGN (Chunk->FillIndex + Size);
 
-  // Store the chunk according to its remaining space
-  Remainder = (Chunk->Pages * BORAX_PAGE_SIZE) - Chunk->FillIndex;
-  for (Bin = BORAX_ALLOC_BIN_COUNT - 1; TRUE; --Bin) {
-    // The "full" bin guarantees termination
-    if (Remainder >= gBinSizes[Bin]) {
-      Chunk->Next                       = Alloc->ToSpace.Object.Chunks[Bin];
-      Alloc->ToSpace.Object.Chunks[Bin] = Chunk;
-      break;
-    }
-  }
+  // Store the chunk
+  StoreObjectChunk (Alloc, Chunk);
 
   *Object = NewObject;
   return EFI_SUCCESS;

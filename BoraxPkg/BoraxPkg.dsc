@@ -11,6 +11,7 @@
 
 [LibraryClasses]
   BoraxRuntime|BoraxPkg/Library/BoraxRuntime/BoraxRuntime.inf
+  SafeIntLib|MdePkg/Library/BaseSafeIntLib/BaseSafeIntLib.inf
 
 [Components]
   BoraxPkg/Test/BoraxRuntimeTest/BoraxRuntimeTest.inf

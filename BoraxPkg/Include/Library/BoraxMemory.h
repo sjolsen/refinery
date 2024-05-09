@@ -569,9 +569,17 @@ BoraxFreeExternalPages (
   IN UINTN            Pages
   );
 
+VOID
+EFIAPI
+BoraxInjectExternalConsPages (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN VOID             *Buffer,
+  IN UINTN            Pages
+  );
+
 EFI_STATUS
 EFIAPI
-BoraxInjectExternalPages (
+BoraxInjectExternalObjectPages (
   IN BORAX_ALLOCATOR  *Alloc,
   IN VOID             *Buffer,
   IN UINTN            Pages

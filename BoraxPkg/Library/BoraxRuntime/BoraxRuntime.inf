@@ -9,6 +9,7 @@
 [LibraryClasses]
   BaseMemoryLib
   DebugLib
+  SafeIntLib
 
 [Packages]
   MdePkg/MdePkg.dec
