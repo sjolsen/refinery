@@ -1,6 +1,14 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+extern "C" {
+  #include <Uefi.h>
+  #include <Library/UefiBootServicesTableLib.h>
+  #include <Library/BoraxMemory.h>
+  #include <Library/BoraxObjectFile.h>
+}
+
+#include "MockEvent.hpp"
 #include "TracingAllocator.hpp"
 
 using ::testing::IsEmpty;
@@ -447,6 +455,41 @@ TEST_F (MemoryTests, RootedObjectRecord) {
   EXPECT_EQ (gSomeVal, Record->Class);
   EXPECT_EQ (BORAX_IMMEDIATE_UNBOUND, Record->Data[0]);
   EXPECT_EQ (BORAX_IMMEDIATE_UNBOUND, Record->Data[9]);
+}
+
+class ObjectFileTests : public MemoryTests {
+public:
+  MockEventEngine EventEngine;
+};
+
+TEST_F (ObjectFileTests, DISABLED_Hello) {
+  EFI_STATUS  Status;
+  BORAX_PIN   *RawPin;
+  auto        Unsupported = [] (auto...) [[gnu::ms_abi]]->auto {
+    return EFI_UNSUPPORTED;
+  };
+
+  EFI_FILE_PROTOCOL  File = {
+    .Revision    = EFI_FILE_PROTOCOL_REVISION2,
+    .Open        = Unsupported,
+    .Close       = Unsupported,
+    .Delete      = Unsupported,
+    .Read        = Unsupported,
+    .Write       = Unsupported,
+    .GetPosition = Unsupported,
+    .SetPosition = Unsupported,
+    .GetInfo     = Unsupported,
+    .SetInfo     = Unsupported,
+    .Flush       = Unsupported,
+    .OpenEx      = Unsupported,
+    .ReadEx      = Unsupported,
+    .WriteEx     = Unsupported,
+    .FlushEx     = Unsupported,
+  };
+
+  Status = BoraxLoadObjectFile (&Alloc, &File, &RawPin);
+  ASSERT_EQ (EFI_SUCCESS, Status);
+  AutoPin  Pin { RawPin, PinDeleter () };
 }
 
 int

@@ -8,6 +8,7 @@
 [LibraryClasses]
   BoraxRuntime
   GoogleTestLib
+  UefiBootServicesTableLib
 
 [Packages]
   BoraxPkg/BoraxPkg.dec
@@ -16,4 +17,6 @@
 
 [Sources]
   BoraxRuntimeTest.cpp
+  MockEvent.cpp
+  MockEvent.hpp
   TracingAllocator.hpp

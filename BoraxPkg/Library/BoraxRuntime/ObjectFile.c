@@ -551,7 +551,7 @@ TranslateObject (
       case BXO_SECTION_REL_PACKAGE:
       case BXO_SECTION_REL_SYMBOL:
       case BXO_SECTION_REL_CLASS:
-      // Relocations not supported yet
+        // Relocations not supported yet
         BXO_DEBUG_ERROR ("unsupported relocation reference");
       default:
         BXO_DEBUG_ERROR ("bad reference tag");
