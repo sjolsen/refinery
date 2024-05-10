@@ -77,7 +77,8 @@ BufferFile::Read (
   UINTN  ReadSize  = std::min (*BufferSize, Remaining);
 
   std::memcpy (Buffer, FileData.data () + FilePosition, ReadSize);
-  *BufferSize = ReadSize;
+  *BufferSize   = ReadSize;
+  FilePosition += ReadSize;
   return EFI_SUCCESS;
 }
 

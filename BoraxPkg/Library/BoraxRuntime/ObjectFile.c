@@ -138,6 +138,19 @@ BoraxStageObjectFileAllocateChunk (
   return EFI_SUCCESS;
 }
 
+STATIC VOID
+EFIAPI
+BoraxStageObjectFileChain (
+  IN BORAX_STAGED_OBJECT_FILE  *Staged,
+  EFI_STATUS                   Status
+  )
+{
+  EFI_FILE_IO_TOKEN  *IO = &Staged->Impl->IO;
+
+  IO->Status = Status;
+  gBS->SignalEvent (IO->Event);
+}
+
 STATIC EFI_STATUS
 EFIAPI
 BoraxStageObjectFileRead (
@@ -173,12 +186,12 @@ BoraxStageObjectFileRead (
     return Status;
   } else {
     // Blocking read if ReadEx is not available
-    IO->Status = File->Read (File, &Size, Buffer);
-    if (EFI_ERROR (IO->Status)) {
+    Status = File->Read (File, &Size, Buffer);
+    if (EFI_ERROR (Status)) {
       BXO_DEBUG_ERROR ("Read failed");
     }
 
-    gBS->SignalEvent (IO->Event);
+    BoraxStageObjectFileChain (Staged, Status);
     return EFI_SUCCESS;
   }
 }
@@ -333,42 +346,30 @@ BoraxStageObjectFile1 (
     return EFI_UNSUPPORTED;
   }
 
-  // Allocate the cons and object chunks
-  Status = BoraxStageObjectFileAllocateChunk (
-             Staged,
-             Impl->Header.Cons.Size,
-             (VOID **)&Impl->Cons
-             );
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  Status = BoraxStageObjectFileAllocateChunk (
-             Staged,
-             Impl->Header.Object.Size,
-             (VOID **)&Impl->Object
-             );
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  Impl->ObjectBitmap = AllocateZeroPool (
-                         OBJECT_BITMAP_WORDS_PER_PAGE *
-                         UNSAFE_PAGE_COUNT_ROUNDING_UP (Impl->Header.Object.Size)
-                         );
-  if (Impl->ObjectBitmap == NULL) {
-    BXO_DEBUG_ERROR ("allocation failure");
-    return EFI_OUT_OF_RESOURCES;
-  }
-
-  // Read the cons chunk
   Impl->IOCallback = BoraxStageObjectFile2;
-  return BoraxStageObjectFileRead (
-           Staged,
-           Impl->Cons,
-           Impl->Header.Cons.Offset,
-           Impl->Header.Cons.Size
-           );
+  if (Impl->Header.Cons.Size != 0) {
+    // Allocate the cons chunk
+    Status = BoraxStageObjectFileAllocateChunk (
+               Staged,
+               Impl->Header.Cons.Size,
+               (VOID **)&Impl->Cons
+               );
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+
+    // Read the cons chunk
+    return BoraxStageObjectFileRead (
+             Staged,
+             Impl->Cons,
+             Impl->Header.Cons.Offset,
+             Impl->Header.Cons.Size
+             );
+  } else {
+    // Skip the cons data
+    BoraxStageObjectFileChain (Staged, EFI_SUCCESS);
+    return EFI_SUCCESS;
+  }
 }
 
 STATIC EFI_STATUS
@@ -377,16 +378,43 @@ BoraxStageObjectFile2 (
   IN BORAX_STAGED_OBJECT_FILE  *Staged
   )
 {
+  EFI_STATUS Status;
   BORAX_STAGED_OBJECT_FILE_IMPL  *Impl = Staged->Impl;
 
-  // Read the object chunk
   Impl->IOCallback = BoraxStageObjectFile3;
-  return BoraxStageObjectFileRead (
-           Staged,
-           Impl->Object,
-           Impl->Header.Object.Offset,
-           Impl->Header.Object.Size
-           );
+  if (Impl->Header.Object.Size != 0) {
+    // Allocate the object chunk
+    Status = BoraxStageObjectFileAllocateChunk (
+               Staged,
+               Impl->Header.Object.Size,
+               (VOID **)&Impl->Object
+               );
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+
+    // Allocate the object bitmap
+    Impl->ObjectBitmap = AllocateZeroPool (
+                           OBJECT_BITMAP_WORDS_PER_PAGE *
+                           UNSAFE_PAGE_COUNT_ROUNDING_UP (Impl->Header.Object.Size)
+                           );
+    if (Impl->ObjectBitmap == NULL) {
+      BXO_DEBUG_ERROR ("allocation failure");
+      return EFI_OUT_OF_RESOURCES;
+    }
+
+    // Read the object chunk
+    return BoraxStageObjectFileRead (
+             Staged,
+             Impl->Object,
+             Impl->Header.Object.Offset,
+             Impl->Header.Object.Size
+             );
+  } else {
+    // Skip the object data
+    BoraxStageObjectFileChain (Staged, EFI_SUCCESS);
+    return EFI_SUCCESS;
+  }
 }
 
 STATIC EFI_STATUS

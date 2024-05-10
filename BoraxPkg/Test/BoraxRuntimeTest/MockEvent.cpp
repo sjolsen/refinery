@@ -78,6 +78,7 @@ MockEventEngine::ProcessOne (
     return;
   }
 
+  MockEvent->State = MockEventEngine::ST_WAITING;
   MockEvent->NotifyFunction (Event, MockEvent->NotifyContext);
 }
 

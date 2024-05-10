@@ -703,6 +703,11 @@ BoraxInjectExternalConsPages (
   BORAX_CONS_PAGE  *FirstPage = (BORAX_CONS_PAGE *)Buffer;
   UINTN            I;
 
+  // Buffer:Pages may be NULL:0
+  if (Pages == 0) {
+    return;
+  }
+
   // Initialize the first header
   FirstPage->Next        = Alloc->ToSpace.Cons.Pages;
   FirstPage->Pages       = Pages;
@@ -812,6 +817,11 @@ BoraxInjectExternalObjectPages (
 {
   BORAX_OBJECT_CHUNK  *Chunk = (BORAX_OBJECT_CHUNK *)Buffer;
   UINTN               Index  = BORAX_OBJECT_FIRST_INDEX;
+
+  // Buffer:Pages may be NULL:0
+  if (Pages == 0) {
+    return EFI_SUCCESS;
+  }
 
   // Initialize the objects' gcdata
   while (Index < BORAX_PAGE_SIZE * Pages) {

@@ -483,7 +483,9 @@ public:
 TEST_F (ObjectFileTests, EmptyFile) {
   EFI_STATUS  Status;
   AutoPin     Pin;
-  BufferFile  File ({ });
+  BufferFile  File {
+    { }
+  };
 
   Status = LoadObjectFile (File, &Pin);
   ASSERT_EQ (EFI_END_OF_FILE, Status);
@@ -492,10 +494,57 @@ TEST_F (ObjectFileTests, EmptyFile) {
 TEST_F (ObjectFileTests, ZeroHeader) {
   EFI_STATUS  Status;
   AutoPin     Pin;
-  BufferFile  File (std::vector<unsigned char>(sizeof (BXO_HEADER), 0));
+  BufferFile  File { std::vector<unsigned char>(sizeof (BXO_HEADER), 0) };
 
   Status = LoadObjectFile (File, &Pin);
   ASSERT_EQ (EFI_LOAD_ERROR, Status);
+}
+
+// TODO: detect the native memory model
+static constexpr const unsigned char  HeaderOnlyBytes[] = {
+  // BXO file
+  0x7f, 'B', 'X', 'O',
+  // 64-bit little-endian, version 0
+  2,    1,   0,   0,
+  // Root object (fixnum 0)
+  0,    0,   0,   0,  0,  0, 0, 0,
+  // Cons section (no data)
+  0,    0,   0,   0,  0,  0, 0, 0,
+  0,    0,   0,   0,  0,  0, 0, 0,
+  0,    0,   0,   0,  0,  0, 0, 0,
+  // Object section (no data)
+  0,    0,   0,   0,  0,  0, 0, 0,
+  0,    0,   0,   0,  0,  0, 0, 0,
+  0,    0,   0,   0,  0,  0, 0, 0,
+  // String section (no data)
+  0,    0,   0,   0,  0,  0, 0, 0,
+  0,    0,   0,   0,  0,  0, 0, 0,
+  0,    0,   0,   0,  0,  0, 0, 0,
+  // Package section (no data)
+  0,    0,   0,   0,  0,  0, 0, 0,
+  0,    0,   0,   0,  0,  0, 0, 0,
+  0,    0,   0,   0,  0,  0, 0, 0,
+  // Symbol section (no data)
+  0,    0,   0,   0,  0,  0, 0, 0,
+  0,    0,   0,   0,  0,  0, 0, 0,
+  0,    0,   0,   0,  0,  0, 0, 0,
+  // Class section (no data)
+  0,    0,   0,   0,  0,  0, 0, 0,
+  0,    0,   0,   0,  0,  0, 0, 0,
+  0,    0,   0,   0,  0,  0, 0, 0,
+};
+
+TEST_F (ObjectFileTests, HeaderOnly) {
+  EFI_STATUS  Status;
+  AutoPin     Pin;
+  BufferFile  File { std::vector<unsigned char>(
+                            HeaderOnlyBytes,
+                            HeaderOnlyBytes + sizeof (HeaderOnlyBytes)
+                            ) };
+
+  Status = LoadObjectFile (File, &Pin);
+  ASSERT_EQ (EFI_SUCCESS, Status);
+  EXPECT_EQ (static_cast<BORAX_OBJECT>(0), Pin->Object);
 }
 
 int
