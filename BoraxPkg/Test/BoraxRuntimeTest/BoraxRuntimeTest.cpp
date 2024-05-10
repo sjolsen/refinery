@@ -461,16 +461,32 @@ TEST_F (MemoryTests, RootedObjectRecord) {
 class ObjectFileTests : public MemoryTests {
 public:
   MockEventEngine EventEngine;
+
+  EFI_STATUS
+  LoadObjectFile (
+    MockFile  &File,
+    AutoPin   *Pin
+    )
+  {
+    EFI_STATUS  Status;
+    BORAX_PIN   *RawPin;
+
+    Status = BoraxLoadObjectFile (&Alloc, File.GetProtocol (), &RawPin);
+    if (Status == EFI_SUCCESS) {
+      *Pin = AutoPin { RawPin, PinDeleter () };
+    }
+
+    return Status;
+  }
 };
 
-TEST_F (ObjectFileTests, DISABLED_Hello) {
+TEST_F (ObjectFileTests, EmptyFile) {
   EFI_STATUS  Status;
-  BORAX_PIN   *RawPin;
-  MockFile    File;
+  AutoPin     Pin;
+  BufferFile  File ({ });
 
-  Status = BoraxLoadObjectFile (&Alloc, File.GetProtocol (), &RawPin);
-  ASSERT_EQ (EFI_SUCCESS, Status);
-  AutoPin  Pin { RawPin, PinDeleter () };
+  Status = LoadObjectFile (File, &Pin);
+  ASSERT_EQ (EFI_END_OF_FILE, Status);
 }
 
 int
