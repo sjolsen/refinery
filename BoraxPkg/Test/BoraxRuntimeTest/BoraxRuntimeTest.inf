@@ -19,4 +19,7 @@
   BoraxRuntimeTest.cpp
   MockEvent.cpp
   MockEvent.hpp
+  MockFile.cpp
+  MockFile.hpp
   TracingAllocator.hpp
+  WrapFn.hpp

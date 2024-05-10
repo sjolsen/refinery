@@ -9,6 +9,7 @@ extern "C" {
 }
 
 #include "MockEvent.hpp"
+#include "MockFile.hpp"
 #include "TracingAllocator.hpp"
 
 using ::testing::IsEmpty;
@@ -309,12 +310,12 @@ TEST_F (MemoryTests, CleanupRootlessObjectRecord) {
 TEST_F (MemoryTests, IsValidSanityCheck) {
   auto  Conses1 = MakeConses (1000);
 
-  EXPECT_THAT (Conses1, Each (IsValidAddress (Tracer)));
+  EXPECT_THAT (Conses1, Each (IsValidAddress (&Tracer)));
   Collect ();
   auto  Conses2 = MakeConses (1000);
 
-  EXPECT_THAT (Conses1, Each (Not (IsValidAddress (Tracer))));
-  EXPECT_THAT (Conses2, Each (IsValidAddress (Tracer)));
+  EXPECT_THAT (Conses1, Each (Not (IsValidAddress (&Tracer))));
+  EXPECT_THAT (Conses2, Each (IsValidAddress (&Tracer)));
 }
 
 TEST_F (MemoryTests, RootedCons) {
@@ -326,11 +327,11 @@ TEST_F (MemoryTests, RootedCons) {
 
   Collect ();
 
-  ASSERT_THAT (Pin.get (), IsValidAddress (Tracer));
+  ASSERT_THAT (Pin.get (), IsValidAddress (&Tracer));
   ASSERT_TRUE (BORAX_IS_POINTER (Pin->Object));
   BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Pin->Object);
 
-  ASSERT_THAT (Header, IsValidAddress (Tracer));
+  ASSERT_THAT (Header, IsValidAddress (&Tracer));
   ASSERT_TRUE (BORAX_IS_CONS (Header));
   BORAX_CONS  *P = reinterpret_cast<BORAX_CONS *>(Header);
 
@@ -352,11 +353,11 @@ TEST_F (MemoryTests, RootedList) {
 
   Collect ();
 
-  ASSERT_THAT (Pin.get (), IsValidAddress (Tracer));
+  ASSERT_THAT (Pin.get (), IsValidAddress (&Tracer));
   ASSERT_TRUE (BORAX_IS_POINTER (Pin->Object));
   BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Pin->Object);
 
-  ASSERT_THAT (Header, IsValidAddress (Tracer));
+  ASSERT_THAT (Header, IsValidAddress (&Tracer));
   ASSERT_TRUE (BORAX_IS_CONS (Header));
   BORAX_CONS  *P = reinterpret_cast<BORAX_CONS *>(Header);
 
@@ -365,7 +366,7 @@ TEST_F (MemoryTests, RootedList) {
     if (i < Conses.size () - 1) {
       ASSERT_TRUE (BORAX_IS_POINTER (P->Cdr));
       Header = BORAX_GET_POINTER (P->Cdr);
-      ASSERT_THAT (Header, IsValidAddress (Tracer));
+      ASSERT_THAT (Header, IsValidAddress (&Tracer));
       ASSERT_TRUE (BORAX_IS_CONS (Header));
       P = reinterpret_cast<BORAX_CONS *>(Header);
     } else {
@@ -381,11 +382,11 @@ TEST_F (MemoryTests, WeakPointerIsWeak) {
 
   Collect ();
 
-  ASSERT_THAT (Pin.get (), IsValidAddress (Tracer));
+  ASSERT_THAT (Pin.get (), IsValidAddress (&Tracer));
   ASSERT_TRUE (BORAX_IS_POINTER (Pin->Object));
   BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Pin->Object);
 
-  ASSERT_THAT (Header, IsValidAddress (Tracer));
+  ASSERT_THAT (Header, IsValidAddress (&Tracer));
   ASSERT_EQ (BORAX_WIDETAG_WEAK_POINTER, Header->WideTag);
   Wp = reinterpret_cast<BORAX_WEAK_POINTER *>(Header);
 
@@ -403,17 +404,17 @@ TEST_F (MemoryTests, WeakPointerCanAccessAfterCollection) {
 
   Collect ();
 
-  ASSERT_THAT (Pin1.get (), IsValidAddress (Tracer));
+  ASSERT_THAT (Pin1.get (), IsValidAddress (&Tracer));
   ASSERT_TRUE (BORAX_IS_POINTER (Pin1->Object));
   BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Pin1->Object);
 
-  ASSERT_THAT (Header, IsValidAddress (Tracer));
+  ASSERT_THAT (Header, IsValidAddress (&Tracer));
   ASSERT_EQ (BORAX_WIDETAG_WEAK_POINTER, Header->WideTag);
   Wp = reinterpret_cast<BORAX_WEAK_POINTER *>(Header);
 
   ASSERT_TRUE (BORAX_IS_POINTER (Wp->Value));
   Header = BORAX_GET_POINTER (Wp->Value);
-  ASSERT_THAT (Header, IsValidAddress (Tracer));
+  ASSERT_THAT (Header, IsValidAddress (&Tracer));
   ASSERT_TRUE (BORAX_IS_CONS (Header));
   BORAX_CONS  *P = reinterpret_cast<BORAX_CONS *>(Header);
 
@@ -427,11 +428,11 @@ TEST_F (MemoryTests, RootedWordRecord) {
 
   Collect ();
 
-  ASSERT_THAT (Pin.get (), IsValidAddress (Tracer));
+  ASSERT_THAT (Pin.get (), IsValidAddress (&Tracer));
   ASSERT_TRUE (BORAX_IS_POINTER (Pin->Object));
   BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Pin->Object);
 
-  ASSERT_THAT (Header, IsValidAddress (Tracer));
+  ASSERT_THAT (Header, IsValidAddress (&Tracer));
   ASSERT_EQ (BORAX_WIDETAG_WORD_RECORD, Header->WideTag);
 
   Record = reinterpret_cast<BORAX_RECORD *>(Header);
@@ -445,11 +446,11 @@ TEST_F (MemoryTests, RootedObjectRecord) {
 
   Collect ();
 
-  ASSERT_THAT (Pin.get (), IsValidAddress (Tracer));
+  ASSERT_THAT (Pin.get (), IsValidAddress (&Tracer));
   ASSERT_TRUE (BORAX_IS_POINTER (Pin->Object));
   BORAX_OBJECT_HEADER  *Header = BORAX_GET_POINTER (Pin->Object);
 
-  ASSERT_THAT (Header, IsValidAddress (Tracer));
+  ASSERT_THAT (Header, IsValidAddress (&Tracer));
   ASSERT_EQ (BORAX_WIDETAG_OBJECT_RECORD, Header->WideTag);
   Record = reinterpret_cast<BORAX_RECORD *>(Header);
   EXPECT_EQ (gSomeVal, Record->Class);
@@ -465,29 +466,9 @@ public:
 TEST_F (ObjectFileTests, DISABLED_Hello) {
   EFI_STATUS  Status;
   BORAX_PIN   *RawPin;
-  auto        Unsupported = [] (auto...) [[gnu::ms_abi]]->auto {
-    return EFI_UNSUPPORTED;
-  };
+  MockFile    File;
 
-  EFI_FILE_PROTOCOL  File = {
-    .Revision    = EFI_FILE_PROTOCOL_REVISION2,
-    .Open        = Unsupported,
-    .Close       = Unsupported,
-    .Delete      = Unsupported,
-    .Read        = Unsupported,
-    .Write       = Unsupported,
-    .GetPosition = Unsupported,
-    .SetPosition = Unsupported,
-    .GetInfo     = Unsupported,
-    .SetInfo     = Unsupported,
-    .Flush       = Unsupported,
-    .OpenEx      = Unsupported,
-    .ReadEx      = Unsupported,
-    .WriteEx     = Unsupported,
-    .FlushEx     = Unsupported,
-  };
-
-  Status = BoraxLoadObjectFile (&Alloc, &File, &RawPin);
+  Status = BoraxLoadObjectFile (&Alloc, File.GetProtocol (), &RawPin);
   ASSERT_EQ (EFI_SUCCESS, Status);
   AutoPin  Pin { RawPin, PinDeleter () };
 }

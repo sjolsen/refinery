@@ -8,12 +8,10 @@ extern "C" {
   #include <Library/BoraxMemory.h>
 }
 
-#define WRAP_FN(_memfn)                               \
-[](auto This, auto... Args) [[gnu::ms_abi]] -> auto { \
-  return _Cast(This)->_memfn(Args...);                \
-}
+#include "WrapFn.hpp"
 
-class TracingAllocator {
+class TracingAllocator
+  : public ProtocolClass<TracingAllocator, BORAX_SYSTEM_ALLOCATOR_PROTOCOL> {
 public:
   struct PageAllocation {
     VOID     *Address;
@@ -32,25 +30,10 @@ public:
   };
 
 private:
-  BORAX_SYSTEM_ALLOCATOR_PROTOCOL _Protocol = {
-    .AllocatePages = WRAP_FN (_AllocatePages),
-    .FreePages     = WRAP_FN (_FreePages),
-    .AllocatePool  = WRAP_FN (_AllocatePool),
-    .FreePool      = WRAP_FN (_FreePool),
-  };
-
   std::vector<std::shared_ptr<void> > _Allocs;
   std::unordered_map<UINTN, PageAllocation> _PageAllocs;
   std::unordered_map<UINTN, PoolAllocation> _PoolAllocs;
   std::vector<std::string> _Errors;
-
-  static TracingAllocator *
-  _Cast (
-    BORAX_SYSTEM_ALLOCATOR_PROTOCOL  *This
-    )
-  {
-    return BASE_CR (This, TracingAllocator, _Protocol);
-  }
 
   VOID *
   _AllocatePages (
@@ -127,11 +110,15 @@ private:
   }
 
 public:
-  BORAX_SYSTEM_ALLOCATOR_PROTOCOL *
-  GetProtocol (
-    )
+  TracingAllocator(
+                   )
   {
-    return &_Protocol;
+    BORAX_SYSTEM_ALLOCATOR_PROTOCOL  *Protocol = GetProtocol ();
+
+    Protocol->AllocatePages = WRAP_FN (_AllocatePages);
+    Protocol->FreePages     = WRAP_FN (_FreePages);
+    Protocol->AllocatePool  = WRAP_FN (_AllocatePool);
+    Protocol->FreePool      = WRAP_FN (_FreePool);
   }
 
   Report
@@ -227,7 +214,7 @@ operator<< (
 }
 
 MATCHER_P (IsValidAddress, Alloc, "is a valid address") {
-  return Alloc.IsValidAddress (arg);
+  return Alloc->IsValidAddress (arg);
 }
 
 #endif // BORAX_TRACING_ALLOCATOR_H
