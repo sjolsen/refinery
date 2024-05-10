@@ -1,3 +1,8 @@
+#include <filesystem>
+#include <fstream>
+#include <optional>
+#include <vector>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -460,6 +465,7 @@ TEST_F (MemoryTests, RootedObjectRecord) {
 
 class ObjectFileTests : public MemoryTests {
 public:
+  static std::filesystem::path TestFilePath;
   MockEventEngine EventEngine;
 
   EFI_STATUS
@@ -479,6 +485,8 @@ public:
     return Status;
   }
 };
+
+std::filesystem::path  ObjectFileTests::TestFilePath = { };
 
 TEST_F (ObjectFileTests, EmptyFile) {
   EFI_STATUS  Status;
@@ -609,6 +617,49 @@ TEST_F (ObjectFileTests, HeaderOnlyNonNative) {
   ASSERT_NE (EFI_SUCCESS, Status);
 }
 
+static
+std::optional<std::vector<unsigned char> >
+LoadFile (
+  std::filesystem::path  Path
+  )
+{
+  std::ifstream  Stream (Path, std::ios::binary);
+
+  if (Stream.fail ()) {
+    std::cerr << "Failed to construct stream for " << Path << std::endl;
+    return std::nullopt;
+  }
+
+  std::vector<unsigned char>  Result;
+
+  Stream.unsetf (std::ios::skipws);
+  std::copy (
+         std::istream_iterator<unsigned char>(Stream),
+         std::istream_iterator<unsigned char>(),
+         std::back_inserter (Result)
+         );
+  if (!Stream.eof ()) {
+    std::cerr << "Failed to read " << Path << std::endl;
+    return std::nullopt;
+  }
+
+  return std::move (Result);
+}
+
+TEST_F (ObjectFileTests, GeneratedTestFile) {
+  EFI_STATUS  Status;
+  AutoPin     Pin;
+
+  ASSERT_FALSE (TestFilePath.empty ());
+  auto  Data = LoadFile (TestFilePath);
+
+  ASSERT_TRUE (Data.has_value ());
+  BufferFile  File { std::move (*Data) };
+
+  Status = LoadObjectFile (File, &Pin);
+  ASSERT_EQ (EFI_SUCCESS, Status);
+}
+
 int
 main (
   int   argc,
@@ -616,5 +667,9 @@ main (
   )
 {
   testing::InitGoogleTest (&argc, argv);
+  if (argc >= 2) {
+    ObjectFileTests::TestFilePath = argv[1];
+  }
+
   return RUN_ALL_TESTS ();
 }

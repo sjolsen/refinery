@@ -8,7 +8,8 @@
            #:collect
            #:bx-cons #:bx-car #:bx-cdr
            #:object #:index
-           #:record #:make-record #:record-class #:record-data))
+           #:record #:make-record
+           #:record-widetag #:record-class #:record-data))
 
 (in-package :borax-runtime/memory)
 
@@ -91,15 +92,18 @@
   (list (bx-car object) (bx-cdr object)))
 
 (defclass record (object)
-  ((class :type record
+  ((widetag :type (member :word-record :object-record)
+            :accessor record-widetag
+            :initarg :widetag)
+   (class :type record
           :accessor record-class
           :initarg :class)
    (data :type vector
          :accessor record-data
          :initarg :data)))
 
-(defun make-record (class data)
-  (make-instance 'record :class class :data data))
+(defun make-record (widetag class data)
+  (make-instance 'record :widetag widetag :class class :data data))
 
 (defmethod sub-objects ((object record))
   (list* (record-class object)

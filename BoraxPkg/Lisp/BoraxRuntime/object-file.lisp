@@ -48,7 +48,7 @@
 (defmethod file-allocate-object (file-allocator (object record))
   (with-slots (memory-model object-chunk-size translation) file-allocator
     ;; Align the chunk data for the next object
-    (when (evenp object-chunk-size)
+    (when (oddp object-chunk-size)
       (incf object-chunk-size))
     ;; Allocate the record
     (setf (aref translation (index object)) object-chunk-size)
@@ -161,13 +161,15 @@
               when (typep object 'record)
                 do (let ((word-index (aref translation (index object))))
                      (advance-to (+ object-offset (* word-bytes word-index)))
-                     (write-word 0)
-                     (write-translation (length (record-data object)))
+                     (write-word (ecase (record-widetag object)
+                                   (:word-record   #x03)
+                                   (:object-record #x07)))
+                     (write-word (length (record-data object)))
                      (write-translation (record-class object))
                      (loop for datum across (record-data object)
                            do (write-translation datum))))
         (advance-to (+ object-offset object-size))))))
 
 (defun write-object-file (allocator memory-model root stream)
-  (let ((file-allocator (make-file-allocator allocator memory-model)))
+  (let ((file-allocator (file-allocate allocator memory-model)))
     (write-file file-allocator root stream)))

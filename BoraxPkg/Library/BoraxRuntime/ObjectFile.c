@@ -406,6 +406,7 @@ BoraxStageObjectFile2 (
 
     // Allocate the object bitmap
     Impl->ObjectBitmap = AllocateZeroPool (
+                           sizeof (UINTN) *
                            OBJECT_BITMAP_WORDS_PER_PAGE *
                            UNSAFE_PAGE_COUNT_ROUNDING_UP (Impl->Header.Object.Size)
                            );
