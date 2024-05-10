@@ -107,8 +107,8 @@ MockEventEngine::ProcessQueues (
     } else if ((CallbackQueue.size () > 0) && (CurrentTpl < TPL_CALLBACK)) {
       EFI_TPL    OldTpl = MockRaiseTPL (TPL_CALLBACK);
       EFI_EVENT  Event  = CallbackQueue.front ();
-      (VOID)ProcessOne (Event);
       CallbackQueue.pop_front ();
+      (VOID)ProcessOne (Event);
       MockRestoreTPL (OldTpl);
     } else {
       return;
