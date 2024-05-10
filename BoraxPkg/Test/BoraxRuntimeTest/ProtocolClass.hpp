@@ -1,7 +1,9 @@
-#ifndef BORAX_WRAP_FN_H
-#define BORAX_WRAP_FN_H
+#ifndef BORAX_PROTOCOL_CLASS_HPP
+#define BORAX_PROTOCOL_CLASS_HPP
 
 #include <memory>
+
+#include "MockError.hpp"
 
 template <typename T, typename ProtocolT>
 struct ProtocolBlockT {
@@ -25,6 +27,7 @@ protected:
 
   static constexpr const auto Unsupported =
     [] (ProtocolT *Protocol, auto...) [[gnu::ms_abi]]->EFI_STATUS {
+    MOCK_ERROR ("unsupported");
     return EFI_UNSUPPORTED;
   };
 
@@ -68,4 +71,4 @@ public:
   return ProtocolDownCast(This)->_memfn(Args...);     \
 }
 
-#endif // BORAX_WRAP_FN_H
+#endif // BORAX_PROTOCOL_CLASS_HPP

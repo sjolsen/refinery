@@ -1,5 +1,5 @@
-#ifndef BORAX_MOCK_EVENT_H
-#define BORAX_MOCK_EVENT_H
+#ifndef BORAX_MOCK_EVENT_HPP
+#define BORAX_MOCK_EVENT_HPP
 
 #include <deque>
 #include <memory>
@@ -145,4 +145,4 @@ public:
     ) = delete;
 };
 
-#endif // BORAX_MOCK_EVENT_H
+#endif // BORAX_MOCK_EVENT_HPP

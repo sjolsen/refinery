@@ -489,6 +489,15 @@ TEST_F (ObjectFileTests, EmptyFile) {
   ASSERT_EQ (EFI_END_OF_FILE, Status);
 }
 
+TEST_F (ObjectFileTests, ZeroHeader) {
+  EFI_STATUS  Status;
+  AutoPin     Pin;
+  BufferFile  File (std::vector<unsigned char>(sizeof (BXO_HEADER), 0));
+
+  Status = LoadObjectFile (File, &Pin);
+  ASSERT_EQ (EFI_LOAD_ERROR, Status);
+}
+
 int
 main (
   int   argc,

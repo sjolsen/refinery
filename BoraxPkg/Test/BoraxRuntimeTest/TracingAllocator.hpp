@@ -1,5 +1,5 @@
-#ifndef BORAX_TRACING_ALLOCATOR_H
-#define BORAX_TRACING_ALLOCATOR_H
+#ifndef BORAX_TRACING_ALLOCATOR_HPP
+#define BORAX_TRACING_ALLOCATOR_HPP
 
 #include <unordered_map>
 
@@ -8,7 +8,7 @@ extern "C" {
   #include <Library/BoraxMemory.h>
 }
 
-#include "WrapFn.hpp"
+#include "ProtocolClass.hpp"
 
 class TracingAllocator
   : public ProtocolClass<TracingAllocator, BORAX_SYSTEM_ALLOCATOR_PROTOCOL> {
@@ -217,4 +217,4 @@ MATCHER_P (IsValidAddress, Alloc, "is a valid address") {
   return Alloc->IsValidAddress (arg);
 }
 
-#endif // BORAX_TRACING_ALLOCATOR_H
+#endif // BORAX_TRACING_ALLOCATOR_HPP

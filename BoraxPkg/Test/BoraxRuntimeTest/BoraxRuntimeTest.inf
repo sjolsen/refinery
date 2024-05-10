@@ -17,9 +17,10 @@
 
 [Sources]
   BoraxRuntimeTest.cpp
+  MockError.hpp
   MockEvent.cpp
   MockEvent.hpp
   MockFile.cpp
   MockFile.hpp
+  ProtocolClass.hpp
   TracingAllocator.hpp
-  WrapFn.hpp

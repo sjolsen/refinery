@@ -1,8 +1,8 @@
 #include "MockEvent.hpp"
 
 #include <cstdint>
-#include <iostream>
-#include <string_view>
+
+#include "MockError.hpp"
 
 MockEventEngine  *MockEventEngine::Singleton = nullptr;
 
@@ -22,18 +22,6 @@ EventToIndex (
   return static_cast<std::size_t>(reinterpret_cast<std::uintptr_t>(Event));
 }
 
-static inline void
-MockEventError (
-  const char        *File,
-  int               Line,
-  std::string_view  s
-  )
-{
-  std::cerr << File << ":" << Line << ": " << s << std::endl;
-}
-
-#define MOCK_EVENT_ERROR(_s)  (MockEventError (__FILE__, __LINE__, (_s)))
-
 EFI_STATUS
 MockEventEngine::GetEvent (
   EFI_EVENT  Event,
@@ -43,7 +31,7 @@ MockEventEngine::GetEvent (
   std::size_t  Index = EventToIndex (Event);
 
   if (Index >= Events.size ()) {
-    MOCK_EVENT_ERROR ("event index out of range");
+    MOCK_ERROR ("event index out of range");
     return EFI_INVALID_PARAMETER;
   }
 
@@ -72,7 +60,7 @@ MockEventEngine::Enqueue (
       NotifyQueue.push_back (Event);
       return EFI_SUCCESS;
     default:
-      MOCK_EVENT_ERROR ("invalid NotifyTpl");
+      MOCK_ERROR ("invalid NotifyTpl");
       return EFI_INVALID_PARAMETER;
   }
 }
@@ -160,12 +148,12 @@ MockCreateEvent (
     case EVT_NOTIFY_WAIT:
     case EVT_NOTIFY_SIGNAL:
       if (NotifyFunction == nullptr) {
-        MOCK_EVENT_ERROR ("NotifyFunction is null");
+        MOCK_ERROR ("NotifyFunction is null");
         return EFI_INVALID_PARAMETER;
       }
 
       if (NotifyContext == nullptr) {
-        MOCK_EVENT_ERROR ("NotifyContext is null");
+        MOCK_ERROR ("NotifyContext is null");
         return EFI_INVALID_PARAMETER;
       }
 
@@ -175,19 +163,19 @@ MockCreateEvent (
         case TPL_NOTIFY:
           break;
         default:
-          MOCK_EVENT_ERROR ("invalid NotifyTpl");
+          MOCK_ERROR ("invalid NotifyTpl");
           return EFI_INVALID_PARAMETER;
       }
 
       break;
     default:
-      MOCK_EVENT_ERROR ("invalid Type");
+      MOCK_ERROR ("invalid Type");
       return EFI_INVALID_PARAMETER;
   }
 
   // Validate Event
   if (Event == nullptr) {
-    MOCK_EVENT_ERROR ("Event is null");
+    MOCK_ERROR ("Event is null");
     return EFI_INVALID_PARAMETER;
   }
 
@@ -220,22 +208,22 @@ MockWaitForEvent (
 
   // Validate parameters
   if (This->CurrentTpl != TPL_APPLICATION) {
-    MOCK_EVENT_ERROR ("WaitForEvent not called from TPL_APPLICATION");
+    MOCK_ERROR ("WaitForEvent not called from TPL_APPLICATION");
     return EFI_UNSUPPORTED;
   }
 
   if (NumberOfEvents == 0) {
-    MOCK_EVENT_ERROR ("NumberOfEvents is null");
+    MOCK_ERROR ("NumberOfEvents is null");
     return EFI_INVALID_PARAMETER;
   }
 
   if (Event == nullptr) {
-    MOCK_EVENT_ERROR ("Event is null");
+    MOCK_ERROR ("Event is null");
     return EFI_INVALID_PARAMETER;
   }
 
   if (Index == nullptr) {
-    MOCK_EVENT_ERROR ("Index is null");
+    MOCK_ERROR ("Index is null");
     return EFI_INVALID_PARAMETER;
   }
 
@@ -246,7 +234,7 @@ MockWaitForEvent (
     }
 
     if (MockEvent->Type == EVT_NOTIFY_SIGNAL) {
-      MOCK_EVENT_ERROR ("WaitForEvent called on event of type EVT_NOTIFY_SIGNAL");
+      MOCK_ERROR ("WaitForEvent called on event of type EVT_NOTIFY_SIGNAL");
       *Index = I;
       return EFI_INVALID_PARAMETER;
     }
@@ -288,7 +276,7 @@ MockWaitForEvent (
     }
   } while (WorkDone);
 
-  MOCK_EVENT_ERROR ("WaitForEvent will never complete");
+  MOCK_ERROR ("WaitForEvent will never complete");
   return EFI_UNSUPPORTED;
 }
 
@@ -334,12 +322,12 @@ MockCloseEvent (
   std::size_t      Index = EventToIndex (Event);
 
   if (Index >= This->Events.size ()) {
-    MOCK_EVENT_ERROR ("Event index out of range");
+    MOCK_ERROR ("Event index out of range");
     return EFI_INVALID_PARAMETER;
   }
 
   if (This->Events[Index] == nullptr) {
-    MOCK_EVENT_ERROR ("CloseEvent called on closed event");
+    MOCK_ERROR ("CloseEvent called on closed event");
     return EFI_INVALID_PARAMETER;
   }
 
@@ -363,7 +351,7 @@ MockCheckEvent (
   }
 
   if (MockEvent->Type == EVT_NOTIFY_SIGNAL) {
-    MOCK_EVENT_ERROR ("CheckEvent called on event of type EVT_NOTIFY_SIGNAL");
+    MOCK_ERROR ("CheckEvent called on event of type EVT_NOTIFY_SIGNAL");
     return EFI_INVALID_PARAMETER;
   }
 

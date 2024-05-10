@@ -1,5 +1,5 @@
-#ifndef BORAX_MOCK_FILE_H
-#define BORAX_MOCK_FILE_H
+#ifndef BORAX_MOCK_FILE_HPP
+#define BORAX_MOCK_FILE_HPP
 
 #include <vector>
 
@@ -8,30 +8,32 @@ extern "C" {
   #include <Protocol/SimpleFileSystem.h>
 }
 
-#include "WrapFn.hpp"
+#include "ProtocolClass.hpp"
 
 class MockFile : public ProtocolClass<MockFile, EFI_FILE_PROTOCOL> {
 public:
   MockFile(
+           UINT64  Revision = EFI_FILE_PROTOCOL_REVISION2
            );
+
+  virtual
+  EFI_STATUS
+  Read (
+    IN OUT UINTN  *BufferSize,
+    OUT VOID      *Buffer
+    );
 
   virtual
   EFI_STATUS
   GetPosition (
     OUT UINT64  *Position
-    )
-  {
-    return EFI_UNSUPPORTED;
-  }
+    );
 
   virtual
   EFI_STATUS
   SetPosition (
     IN UINT64  Position
-    )
-  {
-    return EFI_UNSUPPORTED;
-  }
+    );
 };
 
 class BufferFile : public MockFile {
@@ -45,6 +47,12 @@ public:
              );
 
   EFI_STATUS
+  Read (
+    IN OUT UINTN  *BufferSize,
+    OUT VOID      *Buffer
+    ) override;
+
+  EFI_STATUS
   GetPosition (
     OUT UINT64  *Position
     ) override;
@@ -55,4 +63,4 @@ public:
     ) override;
 };
 
-#endif // BORAX_MOCK_FILE_H
+#endif // BORAX_MOCK_FILE_HPP

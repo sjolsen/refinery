@@ -162,13 +162,22 @@ BoraxStageObjectFileRead (
     return Status;
   }
 
-  if (File->Revision >= 2) {
+  if (File->Revision >= EFI_FILE_PROTOCOL_REVISION2) {
     IO->BufferSize = Size;
     IO->Buffer     = Buffer;
-    return File->ReadEx (File, IO);
+    Status         = File->ReadEx (File, IO);
+    if (EFI_ERROR (Status)) {
+      BXO_DEBUG_ERROR ("ReadEx failed");
+    }
+
+    return Status;
   } else {
     // Blocking read if ReadEx is not available
     IO->Status = File->Read (File, &Size, Buffer);
+    if (EFI_ERROR (IO->Status)) {
+      BXO_DEBUG_ERROR ("Read failed");
+    }
+
     gBS->SignalEvent (IO->Event);
     return EFI_SUCCESS;
   }
