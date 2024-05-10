@@ -500,8 +500,40 @@ TEST_F (ObjectFileTests, ZeroHeader) {
   ASSERT_EQ (EFI_LOAD_ERROR, Status);
 }
 
-// TODO: detect the native memory model
-static constexpr const unsigned char  HeaderOnlyBytes[] = {
+static constexpr const unsigned char  HeaderOnly32LE[] = {
+  // BXO file
+  0x7f, 'B', 'X', 'O',
+  // 32-bit little-endian, version 0
+  1,    1,   0,   0,
+  // Root object (fixnum 0)
+  0,    0,   0,   0,
+  // Cons section (no data)
+  0,    0,   0,   0,
+  0,    0,   0,   0,
+  0,    0,   0,   0,
+  // Object section (no data)
+  0,    0,   0,   0,
+  0,    0,   0,   0,
+  0,    0,   0,   0,
+  // String section (no data)
+  0,    0,   0,   0,
+  0,    0,   0,   0,
+  0,    0,   0,   0,
+  // Package section (no data)
+  0,    0,   0,   0,
+  0,    0,   0,   0,
+  0,    0,   0,   0,
+  // Symbol section (no data)
+  0,    0,   0,   0,
+  0,    0,   0,   0,
+  0,    0,   0,   0,
+  // Class section (no data)
+  0,    0,   0,   0,
+  0,    0,   0,   0,
+  0,    0,   0,   0,
+};
+
+static constexpr const unsigned char  HeaderOnly64LE[] = {
   // BXO file
   0x7f, 'B', 'X', 'O',
   // 64-bit little-endian, version 0
@@ -534,17 +566,47 @@ static constexpr const unsigned char  HeaderOnlyBytes[] = {
   0,    0,   0,   0,  0,  0, 0, 0,
 };
 
-TEST_F (ObjectFileTests, HeaderOnly) {
+// TODO: Come up with a better way of setting word size/endianness
+#if defined (MDE_CPU_IA32)
+#define HEADER_ONLY_NATIVE      HeaderOnly32LE
+#define HEADER_ONLY_NON_NATIVE  HeaderOnly64LE
+#elif defined (MDE_CPU_X64)
+#define HEADER_ONLY_NATIVE      HeaderOnly64LE
+#define HEADER_ONLY_NON_NATIVE  HeaderOnly32LE
+#else
+  #error "Don't know what memory model to use"
+#endif
+
+template <std::size_t N>
+std::vector<unsigned char>
+MakeVector (
+  const unsigned char (&Data)[N]
+  )
+{
+  return { Data, Data + N };
+}
+
+TEST_F (ObjectFileTests, HeaderOnlyNative) {
   EFI_STATUS  Status;
   AutoPin     Pin;
-  BufferFile  File { std::vector<unsigned char>(
-                            HeaderOnlyBytes,
-                            HeaderOnlyBytes + sizeof (HeaderOnlyBytes)
-                            ) };
+  BufferFile  File { MakeVector (HEADER_ONLY_NATIVE) };
 
   Status = LoadObjectFile (File, &Pin);
   ASSERT_EQ (EFI_SUCCESS, Status);
   EXPECT_EQ (static_cast<BORAX_OBJECT>(0), Pin->Object);
+}
+
+TEST_F (ObjectFileTests, HeaderOnlyNonNative) {
+  EFI_STATUS  Status;
+  AutoPin     Pin;
+  BufferFile  File { MakeVector (HEADER_ONLY_NON_NATIVE) };
+
+  // Loading fails for different reasons depending on the architecture: 32-bit
+  // code can't load 64-bit object files because the identification data in the
+  // header doesn't match, but 64-bit code can't even load the identification
+  // data because the file is too small.
+  Status = LoadObjectFile (File, &Pin);
+  ASSERT_NE (EFI_SUCCESS, Status);
 }
 
 int

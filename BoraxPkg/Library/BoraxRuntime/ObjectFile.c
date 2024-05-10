@@ -299,15 +299,11 @@ BoraxStageObjectFile (
   }
 }
 
-STATIC CONST UINT8  BXO_64BIT_LE[8] = {
+STATIC CONST UINT8  BXO_MAGIC[8] = {
   BXO_MAGIC0,
   BXO_MAGIC1,
   BXO_MAGIC2,
   BXO_MAGIC3,
-  BXO_64BIT,
-  BXO_LITTLE_ENDIAN,
-  0x00,              // Version
-  0x00,              // Padding
 };
 
 STATIC EFI_STATUS
@@ -319,9 +315,24 @@ BoraxStageObjectFile1 (
   EFI_STATUS                     Status;
   BORAX_STAGED_OBJECT_FILE_IMPL  *Impl = Staged->Impl;
 
-  // Parse the file header (assume 64-bit little-endian for now)
-  if (CompareMem (&Impl->Header, BXO_64BIT_LE, 8) != 0) {
-    BXO_DEBUG_ERROR ("wrong file type (expected BXO 64-bit little-endian)");
+  // Parse the file header
+  if (CompareMem (&Impl->Header, BXO_MAGIC, 4) != 0) {
+    BXO_DEBUG_ERROR ("wrong file type (expected BXO file)");
+    return EFI_LOAD_ERROR;
+  }
+
+  if (Impl->Header.WordSize != BXO_NATIVE_WORD_SIZE) {
+    BXO_DEBUG_ERROR ("wrong word size");
+    return EFI_LOAD_ERROR;
+  }
+
+  if (Impl->Header.Endianness != BXO_NATIVE_ENDIANNESS) {
+    BXO_DEBUG_ERROR ("wrong endianness");
+    return EFI_LOAD_ERROR;
+  }
+
+  if (Impl->Header.Version != 0) {
+    BXO_DEBUG_ERROR ("wrong version");
     return EFI_LOAD_ERROR;
   }
 
@@ -378,7 +389,7 @@ BoraxStageObjectFile2 (
   IN BORAX_STAGED_OBJECT_FILE  *Staged
   )
 {
-  EFI_STATUS Status;
+  EFI_STATUS                     Status;
   BORAX_STAGED_OBJECT_FILE_IMPL  *Impl = Staged->Impl;
 
   Impl->IOCallback = BoraxStageObjectFile3;

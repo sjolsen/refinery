@@ -58,6 +58,16 @@ enum {
   BXO_BIG_ENDIAN    = 2,
 };
 
+#if defined (MDE_CPU_IA32)
+#define BXO_NATIVE_WORD_SIZE   BXO_32BIT
+#define BXO_NATIVE_ENDIANNESS  BXO_LITTLE_ENDIAN
+#elif defined (MDE_CPU_X64)
+#define BXO_NATIVE_WORD_SIZE   BXO_64BIT
+#define BXO_NATIVE_ENDIANNESS  BXO_LITTLE_ENDIAN
+#else
+  #error "Don't know what memory model to use"
+#endif
+
 typedef struct {
   UINTN    Offset;
   UINTN    Size;
