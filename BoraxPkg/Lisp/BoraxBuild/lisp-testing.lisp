@@ -1,8 +1,8 @@
-(uiop:define-package :borax-build/testing
+(uiop:define-package :borax-build/lisp-testing
   (:use :uiop/common-lisp :uiop :clunit :borax-build/asdf-extensions)
   (:export #:test-failure #:suite-report #:run-tests))
 
-(in-package :borax-build/testing)
+(in-package :borax-build/lisp-testing)
 
 (define-condition test-failure (error)
   ((suite-report :type list

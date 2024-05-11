@@ -13,8 +13,8 @@
   (flet ((make-load-op (dep)
            `(load-op ,dep)))
     (nconc (mapcar #'make-load-op (system-tests component))
-           (list (make-load-op :borax-build/testing))
+           (list (make-load-op :borax-build/lisp-testing))
            (call-next-method))))
 
 (defmethod perform ((operation test-op) (component package-inferred-system-with-tests))
-  (symbol-call :borax-build/testing :run-tests component))
+  (symbol-call :borax-build/lisp-testing :run-tests component))
