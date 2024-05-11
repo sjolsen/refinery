@@ -107,7 +107,7 @@
         ;; root[2] is a circular list #1=(8 7 6 5 . #1#)
         (let* ((head (bx-cons 5 nil))
                (tail head))
-          (dotimes (i 3) (bx-push (+ 6 1) head))
+          (dotimes (i 3) (bx-push (+ 6 i) head))
           (setf (bx-cdr tail) head)
           (setf (aref root-data 2) head))
         ;; root[3] is a data vector

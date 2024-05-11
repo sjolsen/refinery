@@ -632,6 +632,11 @@ public:
 
     return reinterpret_cast<BORAX_RECORD *>(Header);
   }
+
+  VOID
+  CheckGeneratedFileContents (
+    AutoPin  &Pin
+    );
 };
 
 std::filesystem::path  ObjectFileTests::TestFilePath = { };
@@ -795,6 +800,69 @@ LoadFile (
   return std::move (Result);
 }
 
+VOID
+ObjectFileTests::CheckGeneratedFileContents (
+  AutoPin  &Pin
+  )
+{
+  // Check the root object's class
+  BORAX_RECORD  *Root;
+  BORAX_RECORD  *RootClass;
+  BORAX_RECORD  *RootClassClass;
+
+  ASSERT_NO_THROW (Root           = TheObjectRecord (ThePinnedObject (Pin)));
+  ASSERT_NO_THROW (RootClass      = TheObjectRecord (Root->Class));
+  ASSERT_NO_THROW (RootClassClass = TheObjectRecord (RootClass->Class));
+  ASSERT_EQ (RootClass, RootClassClass);
+  ASSERT_EQ (0U, RootClass->Length);
+
+  // root[0] is a circular reference back to the root
+  BORAX_RECORD  *RootSelf;
+
+  ASSERT_EQ (4U, Root->Length);
+  ASSERT_NO_THROW (RootSelf = TheObjectRecord (Root->Data[0]));
+  ASSERT_EQ (Root, RootSelf);
+
+  // root[1] is an improper list (4 3 2 1 . 0)
+  BORAX_CONS  *Cons[8];
+
+  ASSERT_NO_THROW (Cons[0] = TheCons (Root->Data[1]));
+  ASSERT_EQ (4U << 1, Cons[0]->Car);
+  ASSERT_NO_THROW (Cons[1] = TheCons (Cons[0]->Cdr));
+  ASSERT_EQ (3U << 1, Cons[1]->Car);
+  ASSERT_NO_THROW (Cons[2] = TheCons (Cons[1]->Cdr));
+  ASSERT_EQ (2U << 1, Cons[2]->Car);
+  ASSERT_NO_THROW (Cons[3] = TheCons (Cons[2]->Cdr));
+  ASSERT_EQ (1U << 1, Cons[3]->Car);
+  ASSERT_EQ (0U << 1, Cons[3]->Cdr);
+
+  // root[2] is a circular list #1=(8 7 6 5 . #1#)
+  ASSERT_NO_THROW (Cons[4] = TheCons (Root->Data[2]));
+  ASSERT_EQ (8U << 1, Cons[4]->Car);
+  ASSERT_NO_THROW (Cons[5] = TheCons (Cons[4]->Cdr));
+  ASSERT_EQ (7U << 1, Cons[5]->Car);
+  ASSERT_NO_THROW (Cons[6] = TheCons (Cons[5]->Cdr));
+  ASSERT_EQ (6U << 1, Cons[6]->Car);
+  ASSERT_NO_THROW (Cons[7] = TheCons (Cons[6]->Cdr));
+  ASSERT_EQ (5U << 1, Cons[7]->Car);
+  ASSERT_EQ (Cons[4], TheCons (Cons[7]->Cdr));
+
+  // root[3] is a data vector
+  BORAX_RECORD  *DataVector;
+  BORAX_RECORD  *DataVectorClass;
+
+  ASSERT_NO_THROW (DataVector      = TheWordRecord (Root->Data[3]));
+  ASSERT_NO_THROW (DataVectorClass = TheObjectRecord (DataVector->Class));
+  ASSERT_EQ (RootClass, DataVectorClass);
+  ASSERT_EQ (3U, DataVector->Length);
+  ASSERT_EQ (343U << 1, DataVector->Data[0]);
+  ASSERT_EQ (8675309U << 1, DataVector->Data[1]);
+  ASSERT_EQ (
+    static_cast<UINTN>(static_cast<INTN>(-9000) << 1),
+    DataVector->Data[2]
+    );
+}
+
 TEST_F (ObjectFileTests, GeneratedTestFile) {
   EFI_STATUS  Status;
   AutoPin     Pin;
@@ -808,13 +876,9 @@ TEST_F (ObjectFileTests, GeneratedTestFile) {
   Status = LoadObjectFile (File, &Pin);
   ASSERT_EQ (EFI_SUCCESS, Status);
 
-  BORAX_RECORD  *Root;
-  BORAX_RECORD  *Root0;
-
-  ASSERT_NO_THROW (Root = TheObjectRecord (ThePinnedObject (Pin)));
-  ASSERT_EQ (4U, Root->Length);
-  ASSERT_NO_THROW (Root0 = TheObjectRecord (Root->Data[0]));
-  ASSERT_EQ (Root, Root0);
+  CheckGeneratedFileContents (Pin);
+  Collect ();
+  CheckGeneratedFileContents (Pin);
 }
 
 int
