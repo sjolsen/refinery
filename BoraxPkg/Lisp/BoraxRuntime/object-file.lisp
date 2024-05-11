@@ -63,7 +63,8 @@
 (defgeneric translate (file-allocator object))
 
 (defun tag-word-index (memory-model tag word-index)
-  (logior (ash tag (- (word-bits memory-model) 3))
+  (logior 1  ;; pointer tag
+          (ash tag (- (word-bits memory-model) 3))
           (* word-index (word-bytes memory-model))))
 
 (defmethod translate (file-allocator (object bx-cons))

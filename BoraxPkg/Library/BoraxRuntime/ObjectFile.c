@@ -471,8 +471,9 @@ ScanObjects (
   while (Index < Impl->Header.Object.Size) {
     BORAX_OBJECT_HEADER  *Header = (BORAX_OBJECT_HEADER *)
                                    ((CHAR8 *)Impl->Object + Index);
-    UINTN  Word = Index / BORAX_WORD_BITS;
-    UINTN  Bit  = Index % BORAX_WORD_BITS;
+    UINTN  BitmapIndex = Index / BORAX_ALIGNMENT;
+    UINTN  Word        = BitmapIndex / BORAX_WORD_BITS;
+    UINTN  Bit         = BitmapIndex % BORAX_WORD_BITS;
 
     switch (BORAX_DISCRIMINATE_POINTER (Header)) {
       case BORAX_DISCRIM_WORD_RECORD:

@@ -463,6 +463,79 @@ TEST_F (MemoryTests, RootedObjectRecord) {
   EXPECT_EQ (BORAX_IMMEDIATE_UNBOUND, Record->Data[9]);
 }
 
+class ObjectValidationError : public std::exception {
+};
+
+class NotValidAddressError : public ObjectValidationError {
+public:
+  const char *
+  what (
+    ) const noexcept override
+  {
+    return "invalid address";
+  }
+};
+
+class TypeError : public ObjectValidationError {
+private:
+  std::string WhatStr;
+
+  const char *
+  GetDiscriminatorString (
+    BORAX_OBJECT  Object
+    )
+  {
+    struct DiscrimEntry {
+      UINTN         Value;
+      const char    *Name;
+    };
+
+    static constexpr const DiscrimEntry  Entries[] = {
+      { BORAX_DISCRIM_FIXNUM,        "FIXNUM"        },
+      { BORAX_DISCRIM_UNBOUND,       "UNBOUND"       },
+      { BORAX_DISCRIM_CHARACTER,     "CHARACTER"     },
+      { BORAX_DISCRIM_CONS,          "CONS"          },
+      { BORAX_DISCRIM_WORD_RECORD,   "WORD_RECORD"   },
+      { BORAX_DISCRIM_OBJECT_RECORD, "OBJECT_RECORD" },
+      { BORAX_DISCRIM_WEAK_POINTER,  "WEAK_POINTER"  },
+      { BORAX_DISCRIM_PIN,           "PIN"           },
+      { BORAX_DISCRIM_MOVED,         "MOVED"         },
+      { BORAX_DISCRIM_UNINITIALIZED, "UNINITIALIZED" },
+      { 0,                           nullptr         }
+    };
+
+    UINTN  Discrim = BORAX_DISCRIMINATE (Object);
+
+    for (std::size_t i = 0; Entries[i].Name != nullptr; ++i) {
+      if (Entries[i].Value == Discrim) {
+        return Entries[i].Name;
+      }
+    }
+
+    return "(unknown)";
+  }
+
+public:
+  TypeError(
+            std::string_view  Expected,
+            BORAX_OBJECT      Actual
+            )
+  {
+    std::stringstream  ss;
+
+    ss << "type error: expected " << Expected
+    << "; got " << GetDiscriminatorString (Actual);
+    WhatStr = std::move (ss).str ();
+  }
+
+  const char *
+  what (
+    ) const noexcept override
+  {
+    return WhatStr.c_str ();
+  }
+};
+
 class ObjectFileTests : public MemoryTests {
 public:
   static std::filesystem::path TestFilePath;
@@ -483,6 +556,81 @@ public:
     }
 
     return Status;
+  }
+
+  template <typename T>
+  T *
+  TheValidAddress (
+    T  *Pointer
+    )
+  {
+    if (!Tracer.IsValidAddress (Pointer)) {
+      throw NotValidAddressError ();
+    }
+
+    return Pointer;
+  }
+
+  BORAX_OBJECT
+  ThePinnedObject (
+    const AutoPin  &Pin
+    )
+  {
+    return TheValidAddress (Pin.get ())->Object;
+  }
+
+  BORAX_OBJECT_HEADER *
+  TheObject (
+    BORAX_OBJECT  Object
+    )
+  {
+    if (!BORAX_IS_POINTER (Object)) {
+      throw TypeError ("object", Object);
+    }
+
+    return TheValidAddress (BORAX_GET_POINTER (Object));
+  }
+
+  BORAX_CONS *
+  TheCons (
+    BORAX_OBJECT  Object
+    )
+  {
+    BORAX_OBJECT_HEADER  *Header = TheObject (Object);
+
+    if (!BORAX_IS_CONS (Header)) {
+      throw TypeError ("cons", Object);
+    }
+
+    return reinterpret_cast<BORAX_CONS *>(Header);
+  }
+
+  BORAX_RECORD *
+  TheWordRecord (
+    BORAX_OBJECT  Object
+    )
+  {
+    BORAX_OBJECT_HEADER  *Header = TheObject (Object);
+
+    if (Header->WideTag != BORAX_WIDETAG_WORD_RECORD) {
+      throw TypeError ("word-record", Object);
+    }
+
+    return reinterpret_cast<BORAX_RECORD *>(Header);
+  }
+
+  BORAX_RECORD *
+  TheObjectRecord (
+    BORAX_OBJECT  Object
+    )
+  {
+    BORAX_OBJECT_HEADER  *Header = TheObject (Object);
+
+    if (Header->WideTag != BORAX_WIDETAG_OBJECT_RECORD) {
+      throw TypeError ("object-record", Object);
+    }
+
+    return reinterpret_cast<BORAX_RECORD *>(Header);
   }
 };
 
@@ -529,6 +677,7 @@ static constexpr const unsigned char  HeaderOnly32LE[] = {
   0,    0,   0,   0,
   // Package section (no data)
   0,    0,   0,   0,
+
   0,    0,   0,   0,
   0,    0,   0,   0,
   // Symbol section (no data)
@@ -658,6 +807,14 @@ TEST_F (ObjectFileTests, GeneratedTestFile) {
 
   Status = LoadObjectFile (File, &Pin);
   ASSERT_EQ (EFI_SUCCESS, Status);
+
+  BORAX_RECORD  *Root;
+  BORAX_RECORD  *Root0;
+
+  ASSERT_NO_THROW (Root = TheObjectRecord (ThePinnedObject (Pin)));
+  ASSERT_EQ (4U, Root->Length);
+  ASSERT_NO_THROW (Root0 = TheObjectRecord (Root->Data[0]));
+  ASSERT_EQ (Root, Root0);
 }
 
 int
