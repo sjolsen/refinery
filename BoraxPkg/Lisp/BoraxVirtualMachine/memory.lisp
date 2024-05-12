@@ -1,4 +1,4 @@
-(uiop:define-package :borax-runtime/memory
+(uiop:define-package :borax-virtual-machine/memory
   (:use :uiop/common-lisp)
   (:export #:+page-bytes+ #:memory-model #:make-memory-model
            #:word-bits #:endianness #:cons-first-word #:object-first-word
@@ -11,7 +11,7 @@
            #:record #:make-record
            #:record-widetag #:record-class #:record-data))
 
-(in-package :borax-runtime/memory)
+(in-package :borax-virtual-machine/memory)
 
 (defconstant +page-bytes+ 4096)
 

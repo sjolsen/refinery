@@ -10,8 +10,8 @@
 !include UnitTestFrameworkPkg/UnitTestFrameworkPkgHost.dsc.inc
 
 [LibraryClasses]
-  BoraxRuntime|BoraxPkg/Library/BoraxRuntime/BoraxRuntime.inf
+  BoraxVirtualMachine|BoraxPkg/Library/BoraxVirtualMachine/BoraxVirtualMachine.inf
   SafeIntLib|MdePkg/Library/BaseSafeIntLib/BaseSafeIntLib.inf
 
 [Components]
-  BoraxPkg/Test/BoraxRuntimeTest/BoraxRuntimeTest.inf
+  BoraxPkg/Test/BoraxVirtualMachineTest/BoraxVirtualMachineTest.inf

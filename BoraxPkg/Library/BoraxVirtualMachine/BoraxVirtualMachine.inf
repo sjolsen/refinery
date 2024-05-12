@@ -1,10 +1,10 @@
 [Defines]
   INF_VERSION    = 1.27
-  BASE_NAME      = BoraxRuntime
+  BASE_NAME      = BoraxVirtualMachine
   FILE_GUID      = 07462900-83b8-40a0-b1e9-2f7d8aa1b220
   MODULE_TYPE    = UEFI_APPLICATION
   VERSION_STRING = 0.00
-  LIBRARY_CLASS  = BoraxRuntime
+  LIBRARY_CLASS  = BoraxVirtualMachine
 
 [LibraryClasses]
   BaseMemoryLib

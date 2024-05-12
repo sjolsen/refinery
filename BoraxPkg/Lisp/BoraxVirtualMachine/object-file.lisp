@@ -1,8 +1,8 @@
-(uiop:define-package :borax-runtime/object-file
-  (:use :uiop/common-lisp :borax-runtime/memory)
+(uiop:define-package :borax-virtual-machine/object-file
+  (:use :uiop/common-lisp :borax-virtual-machine/memory)
   (:export #:write-object-file))
 
-(in-package :borax-runtime/object-file)
+(in-package :borax-virtual-machine/object-file)
 
 (defclass file-allocator ()
   ((objects :type (vector *)

@@ -12,8 +12,9 @@
  * Object files serve two purposes: representing the initial lisp image, and
  * representing compiled files. At a high level, an object file is a container
  * for a graph of lisp objects that are to be loaded into a running lisp
- * environment. The runtime maps the objects into memory, updates file addresses
- * to memory addresses, and returns a reference to designated "root" object.
+ * environment. The virtual machine maps the objects into memory, updates file
+ * addresses to memory addresses, and returns a reference to designated "root"
+ * object.
  *
  * The graph of objects in an object file is not necessarily self-contained. A
  * record object, for instance, may need to reference a class object that is
@@ -23,9 +24,9 @@
  * To facilitate fast and simple loading, the structure of an object file
  * reflects the memory structure of the garbage collector. Object files contain,
  * among other things, cons and object sections that directly store garbage
- * collector pages. This structure allows the runtime to use the loaded file
- * data directly without an intermediate copy, but it also makes object files
- * architecture-specific.
+ * collector pages. This structure allows the virtual machine to use the loaded
+ * file data directly without an intermediate copy, but it also makes object
+ * files architecture-specific.
  *
  * The object file format is inspired by ELF, but it is not compatible with ELF
  * and it is heavily simplified. The Borax object file format is designated
@@ -122,7 +123,7 @@ typedef struct {
  *
  * File addresses pointing to cons and object sections are interpreted by
  * extending the offset bits with three zero-valued low-order bits, or
- * equivalently by masking out the lowtag as the runtime would do when
+ * equivalently by masking out the lowtag as the virtual machine would do when
  * calculating an object address. The resulting eight-byte aligned offset is
  * treated as a byte offset into the relevant section.
  *

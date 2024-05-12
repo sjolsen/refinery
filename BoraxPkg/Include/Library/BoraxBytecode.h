@@ -1,9 +1,9 @@
-#ifndef BORAX_VIRTUAL_MACHINE_H
-#define BORAX_VIRTUAL_MACHINE_H
+#ifndef BORAX_BYTECODE_H
+#define BORAX_BYTECODE_H
 
 /*
- * Why a virtual machine?
- * ======================
+ * Why a bytecode interpreter?
+ * ===========================
  *
  * Traditionally, the simplest way to interpret languages like lisp is to
  * implement a recursive evaluator:
@@ -271,10 +271,10 @@
  * This approach does make poorly-coded programs susceptible to livelocks and
  * deadlocks; we won't attempt to detect or resolve those.
  *
- * The Borax virtual machine
- * =========================
+ * The Borax bytecode interpreter
+ * ==============================
  *
- * Our virtual machine relies heavily on the garbage-collected store we defined
+ * The interpeter relies heavily on the garbage-collected store we defined
  * earlier. The global environment is implemented entirely in terms of heap
  * objects. The interpreter uses pins to retain references to a handful of key
  * root objects like the package registry and the task list.
@@ -369,7 +369,7 @@
  * locally-created shared bindings; CONVOLUTED could allocated one shared
  * binding block containing X, Y, and Z, and pass it to both nested
  * functions. The compiler is free to do this, for instance to improve locality,
- * but to avoid hanging on to dead locals the virtual machine supports splitting
+ * but to avoid hanging on to dead locals the interpreter supports splitting
  * shared locals up into multiple blocks. These bindings are addressed with two
  * indices as well.
  *
@@ -409,12 +409,12 @@
  * The Borax instruction set
  * =========================
  *
- * The Borax instruction set is designed around manipulating the virtual machine
- * described above. The breadth of data processing instructions like add, shift,
- * etc. typical of traditional architectures is left to functions.
+ * The Borax instruction set is designed around manipulating the interpreter
+ * state described above. The breadth of data processing instructions like add,
+ * shift, etc. typical of traditional architectures is left to functions.
  *
- * Note that the virtual machine has no value stack or general-purpose
- * registers. Instead, the virtual machine supports a number of addressing modes
+ * Note that the interpreter has no value stack or general-purpose
+ * registers. Instead, the interpreter supports a number of addressing modes
  * that allow instructions to access stack bindings, constant data, and certain
  * kinds of heap data directly. The VR communicates data into and out of
  * functions and exits.
@@ -824,4 +824,4 @@ enum {
   BORAX_MODE_CLOSURE,
 };
 
-#endif // BORAX_VIRTUAL_MACHINE_H
+#endif // BORAX_BYTECODE_H

@@ -1,8 +1,8 @@
-(uiop:define-package :borax-runtime/object-file-test
-  (:use :uiop/common-lisp :borax-runtime/memory :borax-runtime/object-file
+(uiop:define-package :borax-virtual-machine/object-file-test
+  (:use :uiop/common-lisp :borax-virtual-machine/memory :borax-virtual-machine/object-file
         :clunit :flexi-streams))
 
-(in-package :borax-runtime/object-file-test)
+(in-package :borax-virtual-machine/object-file-test)
 
 (defun object-file-bytes (allocator memory-model root)
   (with-output-to-sequence (stream)

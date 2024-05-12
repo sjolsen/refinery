@@ -1,7 +1,7 @@
-(uiop:define-package :borax-runtime/memory-test
-  (:use :uiop/common-lisp :borax-runtime/memory :clunit))
+(uiop:define-package :borax-virtual-machine/memory-test
+  (:use :uiop/common-lisp :borax-virtual-machine/memory :clunit))
 
-(in-package :borax-runtime/memory-test)
+(in-package :borax-virtual-machine/memory-test)
 
 (defsuite memory-model-suite ())
 

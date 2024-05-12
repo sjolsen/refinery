@@ -213,9 +213,9 @@ STATIC_ASSERT (
  * ====================
  *
  * A consequence of the object representation scheme is that while proper
- * objects may contain runtime metadata, cons cells cannot. However, cons cells
- * are fixed-size, which makes it feasible to aggregate their metadata into the
- * header blocks of their respective pages.
+ * objects may contain garbage collection metadata, cons cells cannot. However,
+ * cons cells are fixed-size, which makes it feasible to aggregate their
+ * metadata into the header blocks of their respective pages.
  *
  * Cons cell pages are arranged into a linked list, the root of which is owned
  * by the allocator. Because the allocator implements compacting garbage
@@ -390,10 +390,10 @@ typedef struct {
  *
  * There are two possible solutions to this problem: fix the location of any
  * objects that will be referenced externally; or do not allow direct object
- * references to escape the lisp runtime. To simplify garbage collection, we opt
- * for the latter approach (or to be precise: we do both).
+ * references to escape the virtual machine. To simplify garbage collection, we
+ * opt for the latter approach (or to be precise: we do both).
  *
- * When the lisp runtime needs to supply a reference to an object O to the C
+ * When the virtual machine needs to supply a reference to an object O to the C
  * environment, it allocates a pin object P that refers to O. P itself is
  * managed by the garbage collector separately from other objects; it will
  * remain at a stable address for the duration of its lifetime. P's internal

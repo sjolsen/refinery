@@ -1,12 +1,12 @@
 (uiop:define-package :borax-build/c-testing
   (:use :uiop/common-lisp :borax-build/workspace
-        :borax-runtime/memory :borax-runtime/object-file)
+        :borax-virtual-machine/memory :borax-virtual-machine/object-file)
   (:export #:make-test-files))
 
 (in-package :borax-build/c-testing)
 
 (defun make-test-file (path memory-model)
-  "Generate test inputs for BoraxRuntimeTest.cpp"
+  "Generate test inputs for BoraxVirtualMachineTest.cpp"
   (with-open-file (stream path :direction :output
                                :element-type '(unsigned-byte 8)
                                :if-exists :supersede
@@ -37,7 +37,7 @@
       (write-object-file *allocator* memory-model root stream))))
 
 (defun make-test-files ()
-  (let* ((test-base (uiop:merge-pathnames* #P"BoraxPkg/Test/BoraxRuntimeTest/" *refinery-root*))
+  (let* ((test-base (uiop:merge-pathnames* #P"BoraxPkg/Test/BoraxVirtualMachineTest/" *refinery-root*))
          (test-files `((#P"TestFileIA32.bxo" . ,(make-memory-model 32 :little-endian))
                        (#P"TestFileX64.bxo"  . ,(make-memory-model 64 :little-endian)))))
     (loop for (basename . memory-model) in test-files
