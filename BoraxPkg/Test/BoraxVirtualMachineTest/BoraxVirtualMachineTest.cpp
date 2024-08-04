@@ -819,7 +819,7 @@ ObjectFileTests::CheckGeneratedFileContents (
   // root[0] is a circular reference back to the root
   BORAX_RECORD  *RootSelf;
 
-  ASSERT_EQ (4U, Root->Length);
+  ASSERT_EQ (5U, Root->Length);
   ASSERT_NO_THROW (RootSelf = TheObjectRecord (Root->Data[0]));
   ASSERT_EQ (Root, RootSelf);
 
@@ -847,20 +847,32 @@ ObjectFileTests::CheckGeneratedFileContents (
   ASSERT_EQ (5U << 1, Cons[7]->Car);
   ASSERT_EQ (Cons[4], TheCons (Cons[7]->Cdr));
 
-  // root[3] is a data vector
-  BORAX_RECORD  *DataVector;
-  BORAX_RECORD  *DataVectorClass;
+  // root[3] is an object vector containing fixnums
+  BORAX_RECORD  *ObjectVector;
+  BORAX_RECORD  *ObjectVectorClass;
 
-  ASSERT_NO_THROW (DataVector      = TheWordRecord (Root->Data[3]));
-  ASSERT_NO_THROW (DataVectorClass = TheObjectRecord (DataVector->Class));
-  ASSERT_EQ (RootClass, DataVectorClass);
-  ASSERT_EQ (3U, DataVector->Length);
-  ASSERT_EQ (343U << 1, DataVector->Data[0]);
-  ASSERT_EQ (8675309U << 1, DataVector->Data[1]);
+  ASSERT_NO_THROW (ObjectVector      = TheObjectRecord (Root->Data[3]));
+  ASSERT_NO_THROW (ObjectVectorClass = TheObjectRecord (ObjectVector->Class));
+  ASSERT_EQ (RootClass, ObjectVectorClass);
+  ASSERT_EQ (3U, ObjectVector->Length);
+  ASSERT_EQ (343U << 1, ObjectVector->Data[0]);
+  ASSERT_EQ (8675309U << 1, ObjectVector->Data[1]);
   ASSERT_EQ (
     static_cast<UINTN>(static_cast<INTN>(-9000) << 1),
-    DataVector->Data[2]
+    ObjectVector->Data[2]
     );
+
+  // root[4] is a word vector
+  BORAX_RECORD  *WordVector;
+  BORAX_RECORD  *WordVectorClass;
+
+  ASSERT_NO_THROW (WordVector      = TheWordRecord (Root->Data[4]));
+  ASSERT_NO_THROW (WordVectorClass = TheObjectRecord (WordVector->Class));
+  ASSERT_EQ (RootClass, WordVectorClass);
+  ASSERT_EQ (3U, WordVector->Length);
+  ASSERT_EQ (343U, WordVector->Data[0]);
+  ASSERT_EQ (8675309U, WordVector->Data[1]);
+  ASSERT_EQ (static_cast<UINTN>(-9000), WordVector->Data[2]);
 }
 
 TEST_F (ObjectFileTests, GeneratedTestFile) {

@@ -13,7 +13,7 @@
                                :if-does-not-exist :create)
     (let* ((*allocator* (make-allocator))
            (root-class (make-record :object-record nil #()))
-           (root-data (make-array 4 :initial-element 0))
+           (root-data (make-array 5 :initial-element 0))
            (root (make-record :object-record root-class root-data)))
       (macrolet ((bx-push (obj place)
                    `(setf ,place (bx-cons ,obj ,place))))
@@ -31,8 +31,11 @@
           (dotimes (i 3) (bx-push (+ 6 i) head))
           (setf (bx-cdr tail) head)
           (setf (aref root-data 2) head))
-        ;; root[3] is a data vector
+        ;; root[3] is an object vector containing fixnums
         (setf (aref root-data 3)
+              (make-record :object-record root-class #(343 8675309 -9000)))
+        ;; root[4] is a word vector
+        (setf (aref root-data 4)
               (make-record :word-record root-class #(343 8675309 -9000))))
       (write-object-file *allocator* memory-model root stream))))
 

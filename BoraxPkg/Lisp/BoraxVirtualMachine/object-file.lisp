@@ -167,8 +167,11 @@
                                    (:object-record #x07)))
                      (write-word (length (record-data object)))
                      (write-translation (record-class object))
-                     (loop for datum across (record-data object)
-                           do (write-translation datum))))
+                     (ecase (record-widetag object)
+                       (:word-record (loop for datum across (record-data object)
+                                           do (write-word datum)))
+                       (:object-record (loop for datum across (record-data object)
+                                             do (write-translation datum))))))
         (advance-to (+ object-offset object-size))))))
 
 (defun write-object-file (allocator memory-model root stream)
