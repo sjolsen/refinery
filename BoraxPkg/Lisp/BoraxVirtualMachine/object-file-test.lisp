@@ -11,15 +11,9 @@
 (defun load-word (data memory-model byte-offset)
   (let ((result 0)
         (word-bytes (word-bytes memory-model)))
-    (ecase (endianness memory-model)
-      (:little-endian
-       (dotimes (i word-bytes)
-         (setf (ldb (byte 8 (* 8 i)) result)
-               (aref data (+ byte-offset i)))))
-      (:big-endian
-       (dotimes (i word-bytes)
-         (setf (ldb (byte 8 (* 8 i)) result)
-               (aref data (+ byte-offset (- word-bytes 1 i)))))))
+    (dotimes (i word-bytes)
+      (setf (ldb (byte 8 (* 8 i)) result)
+            (aref data (+ byte-offset i))))
     result))
 
 (defclass section-header ()
@@ -34,13 +28,9 @@
   (let* ((word-bits (ecase (aref data 4)
                       (1 32)
                       (2 64)))
-         (endianness (ecase (aref data 5)
-                       (1 :little-endian)
-                       (2 :big-endian)))
-         (memory-model (make-memory-model word-bits endianness))
+         (memory-model (make-memory-model word-bits))
          (word-bytes (word-bytes memory-model)))
     (assert-equal (word-bits intended-memory-model) word-bits)
-    (assert-equal (endianness intended-memory-model) endianness)
     (assert-equalp #(0 0) (subseq data 6 8))
     ;; Header
     (labels ((load-header-word (word-index)
@@ -65,20 +55,14 @@
 
 (defsuite smoke-test-suite ())
 
-(defun smoke-test (word-bits endianness)
+(defun smoke-test (word-bits)
   (let* ((*allocator* (make-allocator))
-         (memory-model (make-memory-model word-bits endianness))
+         (memory-model (make-memory-model word-bits))
          (data (object-file-bytes *allocator* memory-model 0)))
     (validate-object-file data memory-model)))
 
-(deftest smoke-test-32bit-le (smoke-test-suite)
-  (smoke-test 32 :little-endian))
+(deftest smoke-test-32bit (smoke-test-suite)
+  (smoke-test 32))
 
-(deftest smoke-test-32bit-be (smoke-test-suite)
-  (smoke-test 32 :big-endian))
-
-(deftest smoke-test-64bit-le (smoke-test-suite)
-  (smoke-test 64 :little-endian))
-
-(deftest smoke-test-64bit-be (smoke-test-suite)
-  (smoke-test 64 :big-endian))
+(deftest smoke-test-64bit (smoke-test-suite)
+  (smoke-test 64))

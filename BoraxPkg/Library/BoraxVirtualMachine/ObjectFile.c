@@ -326,11 +326,6 @@ BoraxStageObjectFile1 (
     return EFI_LOAD_ERROR;
   }
 
-  if (Impl->Header.Endianness != BXO_NATIVE_ENDIANNESS) {
-    BXO_DEBUG_ERROR ("wrong endianness");
-    return EFI_LOAD_ERROR;
-  }
-
   if (Impl->Header.Version != 0) {
     BXO_DEBUG_ERROR ("wrong version");
     return EFI_LOAD_ERROR;

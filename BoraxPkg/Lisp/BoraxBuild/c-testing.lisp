@@ -41,8 +41,8 @@
 
 (defun make-test-files ()
   (let* ((test-base (uiop:merge-pathnames* #P"BoraxPkg/Test/BoraxVirtualMachineTest/" *refinery-root*))
-         (test-files `((#P"TestFileIA32.bxo" . ,(make-memory-model 32 :little-endian))
-                       (#P"TestFileX64.bxo"  . ,(make-memory-model 64 :little-endian)))))
+         (test-files `((#P"TestFileIA32.bxo" . ,(make-memory-model 32))
+                       (#P"TestFileX64.bxo"  . ,(make-memory-model 64)))))
     (loop for (basename . memory-model) in test-files
           for path = (uiop:merge-pathnames* basename test-base)
           do (make-test-file path memory-model))))

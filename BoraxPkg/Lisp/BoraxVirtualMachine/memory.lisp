@@ -1,7 +1,7 @@
 (uiop:define-package :borax-virtual-machine/memory
   (:use :uiop/common-lisp)
   (:export #:+page-bytes+ #:memory-model #:make-memory-model
-           #:word-bits #:endianness #:cons-first-word #:object-first-word
+           #:word-bits #:cons-first-word #:object-first-word
            #:word-type #:word-bytes
            #:most-positive-bx-fixnum #:most-negative-bx-fixnum
            #:allocator #:make-allocator #:*allocator* #:objects
@@ -9,7 +9,7 @@
            #:bx-cons #:bx-car #:bx-cdr
            #:object #:index
            #:record #:make-record
-           #:record-widetag #:record-class #:record-data))
+           #:record-widetag #:record-length-aux #:record-class #:record-data))
 
 (in-package :borax-virtual-machine/memory)
 
@@ -19,9 +19,6 @@
   ((word-bits :type (member 32 64)
               :reader word-bits
               :initarg :word-bits)
-   (endianness :type (member :little-endian :big-endian)
-               :reader endianness
-               :initarg :endianness)
    (cons-first-word :type fixnum
                     :reader cons-first-word
                     :initarg :cons-first-word)
@@ -29,14 +26,14 @@
                       :reader object-first-word
                       :initarg :object-first-word)))
 
-(defun make-memory-model (word-bits endianness)
+(defun make-memory-model (word-bits)
   (let* ((word-bytes (floor word-bits 8))
          (cons-bytes (* 2 word-bytes))
          (cons-per-page (floor +page-bytes+ cons-bytes))
          (cons-bitmap-words (floor cons-per-page word-bits))
          (cons-header-words (+ 2 cons-bitmap-words)))
     (make-instance 'memory-model
-     :word-bits word-bits :endianness endianness
+     :word-bits word-bits
      :cons-first-word cons-header-words
      :object-first-word 2)))
 

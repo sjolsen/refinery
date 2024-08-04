@@ -661,11 +661,11 @@ TEST_F (ObjectFileTests, ZeroHeader) {
   ASSERT_EQ (EFI_LOAD_ERROR, Status);
 }
 
-static constexpr const unsigned char  HeaderOnly32LE[] = {
+static constexpr const unsigned char  HeaderOnly32[] = {
   // BXO file
   0x7f, 'B', 'X', 'O',
-  // 32-bit little-endian, version 0
-  1,    1,   0,   0,
+  // 32-bit, version 0
+  1,    0,   0,   0,
   // Root object (fixnum 0)
   0,    0,   0,   0,
   // Cons section (no data)
@@ -695,11 +695,11 @@ static constexpr const unsigned char  HeaderOnly32LE[] = {
   0,    0,   0,   0,
 };
 
-static constexpr const unsigned char  HeaderOnly64LE[] = {
+static constexpr const unsigned char  HeaderOnly64[] = {
   // BXO file
   0x7f, 'B', 'X', 'O',
-  // 64-bit little-endian, version 0
-  2,    1,   0,   0,
+  // 64-bit, version 0
+  2,    0,   0,   0,
   // Root object (fixnum 0)
   0,    0,   0,   0,  0,  0, 0, 0,
   // Cons section (no data)
@@ -728,13 +728,13 @@ static constexpr const unsigned char  HeaderOnly64LE[] = {
   0,    0,   0,   0,  0,  0, 0, 0,
 };
 
-// TODO: Come up with a better way of setting word size/endianness
+// TODO: Come up with a better way of setting word size
 #if defined (MDE_CPU_IA32)
-#define HEADER_ONLY_NATIVE      HeaderOnly32LE
-#define HEADER_ONLY_NON_NATIVE  HeaderOnly64LE
+#define HEADER_ONLY_NATIVE      HeaderOnly32
+#define HEADER_ONLY_NON_NATIVE  HeaderOnly64
 #elif defined (MDE_CPU_X64)
-#define HEADER_ONLY_NATIVE      HeaderOnly64LE
-#define HEADER_ONLY_NON_NATIVE  HeaderOnly32LE
+#define HEADER_ONLY_NATIVE      HeaderOnly64
+#define HEADER_ONLY_NON_NATIVE  HeaderOnly32
 #else
   #error "Don't know what memory model to use"
 #endif

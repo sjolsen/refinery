@@ -82,25 +82,12 @@
     (assert (<= object (most-positive-bx-fixnum memory-model)))
     (dpb object (byte (1- (word-bits memory-model)) 1) 0)))
 
-(defun write-word-little-endian (word-bits word stream)
-  (do ((i 0 (+ i 8)))
-      ((>= i word-bits))
-    (write-byte (ldb (byte 8 i) word) stream)))
-
-(defun write-word-big-endian (word-bits word stream)
-  (do ((i (- word-bits 8) (- i 8)))
-      ((< i 0))
-    (write-byte (ldb (byte 8 i) word) stream)))
-
 (defun write-file (file-allocator root stream)
   (with-slots (objects memory-model
                cons-chunk-size object-chunk-size
                translation)
       file-allocator
-    (let* ((write-word (ecase (endianness memory-model)
-                         (:little-endian #'write-word-little-endian)
-                         (:big-endian #'write-word-big-endian)))
-           (word-bits (word-bits memory-model))
+    (let* ((word-bits (word-bits memory-model))
            (word-bytes (word-bytes memory-model))
            (header-bytes (+ 8 word-bytes (* 6 3 word-bytes)))
            (cons-offset header-bytes)
@@ -108,7 +95,9 @@
            (object-offset (+ cons-offset cons-size))
            (object-size (* word-bytes object-chunk-size)))
       (labels ((write-word (word)
-                 (funcall write-word word-bits word stream))
+                 (do ((i 0 (+ i 8)))
+                     ((>= i word-bits))
+                   (write-byte (ldb (byte 8 i) word) stream)))
                (write-section (offset size)
                  (write-word offset)
                  (write-word size)
@@ -131,11 +120,8 @@
                       (32 1)
                       (64 2))
                     stream)
-        ;; Endianness
-        (write-byte (ecase (endianness memory-model)
-                      (:little-endian 1)
-                      (:big-endian    2))
-                    stream)
+        ;; Padding
+        (write-byte 0 stream)
         ;; Version
         (write-byte 0 stream)
         ;; Padding

@@ -54,17 +54,10 @@ enum {
   BXO_64BIT = 2,
 };
 
-enum {
-  BXO_LITTLE_ENDIAN = 1,
-  BXO_BIG_ENDIAN    = 2,
-};
-
 #if defined (MDE_CPU_IA32)
 #define BXO_NATIVE_WORD_SIZE   BXO_32BIT
-#define BXO_NATIVE_ENDIANNESS  BXO_LITTLE_ENDIAN
 #elif defined (MDE_CPU_X64)
 #define BXO_NATIVE_WORD_SIZE   BXO_64BIT
-#define BXO_NATIVE_ENDIANNESS  BXO_LITTLE_ENDIAN
 #else
   #error "Don't know what memory model to use"
 #endif
@@ -78,9 +71,9 @@ typedef struct {
 typedef struct {
   UINT8          Magic[4]; // \x7F B X O
   UINT8          WordSize;
-  UINT8          Endianness;
+  UINT8          Pad0; // 0x00
   UINT8          Version;
-  UINT8          Pad; // 0x00
+  UINT8          Pad1; // 0x00
   UINTN          RootObject;
   BXO_SECTION    Cons;
   BXO_SECTION    Object;
@@ -140,10 +133,10 @@ typedef struct {
  * The string section exists to resolve package and symbol relocations. The cons
  * and object sections may not reference strings.
  *
- * Strings are represented as NUL-terminated UCS-2 strings in native
- * endianness. The first string in a section starts at offset zero, and each
- * subsequent string immediately follows the preceding string's NUL
- * terminator. The final code unit of a string section must be NUL.
+ * Strings are represented as NUL-terminated little-endian UCS-2 strings. The
+ * first string in a section starts at offset zero, and each subsequent string
+ * immediately follows the preceding string's NUL terminator. The final code
+ * unit of a string section must be NUL.
  *
  * When the string section is loaded, the strings are assigned indices starting
  * from zero. The offset of a file address pointing to the string section is
