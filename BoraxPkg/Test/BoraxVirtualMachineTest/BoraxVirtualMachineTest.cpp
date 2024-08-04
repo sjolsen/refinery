@@ -819,7 +819,7 @@ ObjectFileTests::CheckGeneratedFileContents (
   // root[0] is a circular reference back to the root
   BORAX_RECORD  *RootSelf;
 
-  ASSERT_EQ (5U, Root->Length);
+  ASSERT_EQ (6U, Root->Length);
   ASSERT_NO_THROW (RootSelf = TheObjectRecord (Root->Data[0]));
   ASSERT_EQ (Root, RootSelf);
 
@@ -873,6 +873,21 @@ ObjectFileTests::CheckGeneratedFileContents (
   ASSERT_EQ (343U, WordVector->Data[0]);
   ASSERT_EQ (8675309U, WordVector->Data[1]);
   ASSERT_EQ (static_cast<UINTN>(-9000), WordVector->Data[2]);
+
+  // root[5] is a byte vector #(0 1 2)
+  BORAX_RECORD  *ByteVector;
+  BORAX_RECORD  *ByteVectorClass;
+  UINT8         *ByteVectorData;
+
+  ASSERT_NO_THROW (ByteVector      = TheWordRecord (Root->Data[5]));
+  ASSERT_NO_THROW (ByteVectorClass = TheObjectRecord (ByteVector->Class));
+  ASSERT_EQ (RootClass, ByteVectorClass);
+  ASSERT_EQ (sizeof (UINTN), 3U + ByteVector->LengthAux);
+  ASSERT_EQ (1U, ByteVector->Length);
+  ByteVectorData = reinterpret_cast<UINT8 *>(ByteVector->Data);
+  ASSERT_EQ (0U, ByteVectorData[0]);
+  ASSERT_EQ (1U, ByteVectorData[1]);
+  ASSERT_EQ (2U, ByteVectorData[2]);
 }
 
 TEST_F (ObjectFileTests, GeneratedTestFile) {

@@ -92,6 +92,9 @@
   ((widetag :type (member :word-record :object-record)
             :accessor record-widetag
             :initarg :widetag)
+   (length-aux :type fixnum
+               :accessor record-length-aux
+               :initarg :length-aux)
    (class :type record
           :accessor record-class
           :initarg :class)
@@ -99,8 +102,9 @@
          :accessor record-data
          :initarg :data)))
 
-(defun make-record (widetag class data)
-  (make-instance 'record :widetag widetag :class class :data data))
+(defun make-record (widetag class data &key (length-aux 0))
+  (make-instance 'record :widetag widetag :class class
+                         :data data :length-aux length-aux))
 
 (defmethod sub-objects ((object record))
   (list* (record-class object)
