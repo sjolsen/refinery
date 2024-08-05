@@ -8,7 +8,8 @@
            #:collect
            #:bx-cons #:bx-car #:bx-cdr #:bx-push
            #:object #:index
-           #:record #:make-record
+           #:record #:object-record #:word-record
+           #:make-object-record #:make-word-record
            #:record-widetag #:record-length-aux #:record-class #:record-data))
 
 (in-package :borax-virtual-machine/memory)
@@ -97,26 +98,38 @@
          ,set))))
 
 (defclass record (object)
-  ((widetag :type (member :word-record :object-record)
-            :accessor record-widetag
-            :initarg :widetag)
-   (length-aux :type fixnum
-               :accessor record-length-aux
-               :initarg :length-aux)
-   (class :type record
+  ((class :type record
           :accessor record-class
           :initarg :class)
    (data :type vector
          :accessor record-data
          :initarg :data)))
 
-(defun make-record (widetag class data &key (length-aux 0))
-  (make-instance 'record :widetag widetag :class class
-                         :data data :length-aux length-aux))
-
 (defmethod sub-objects ((object record))
   (list* (record-class object)
          (concatenate 'list (record-data object))))
+
+(defclass object-record (record)
+  ())
+
+(defun make-object-record (class data)
+  (make-instance 'object-record :class class :data data))
+
+(defclass word-record (record)
+  ((length-aux :type fixnum
+               :accessor record-length-aux
+               :initarg :length-aux
+               :initform 0)))
+
+(defun make-word-record (class data &key (length-aux 0))
+  (make-instance 'word-record :class class :data data :length-aux length-aux))
+
+(defgeneric record-widetag (object)
+  (:method ((object word-record))   #x03)
+  (:method ((object object-record)) #x07))
+
+(defmethod record-length-aux ((object object-record))
+  0)
 
 (defun collect (roots)
   (let ((grey-list nil))

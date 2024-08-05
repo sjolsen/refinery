@@ -149,20 +149,17 @@
         ;; Object data
         (loop for object across objects
               when (typep object 'record)
-                do (let ((word-index (aref translation (index object)))
-                         (widetag (ecase (record-widetag object)
-                                    (:word-record   #x03)
-                                    (:object-record #x07)))
-                         (length-aux (record-length-aux object)))
+                do (let ((word-index (aref translation (index object))))
                      (advance-to (+ object-offset (* word-bytes word-index)))
-                     (write-word (pack-halfwords widetag length-aux))
+                     (write-word (pack-halfwords (record-widetag object)
+                                                 (record-length-aux object)))
                      (write-word (length (record-data object)))
                      (write-translation (record-class object))
-                     (ecase (record-widetag object)
-                       (:word-record (loop for datum across (record-data object)
-                                           do (write-word datum)))
-                       (:object-record (loop for datum across (record-data object)
-                                             do (write-translation datum))))))
+                     (etypecase object
+                       (word-record (loop for datum across (record-data object)
+                                          do (write-word datum)))
+                       (object-record (loop for datum across (record-data object)
+                                            do (write-translation datum))))))
         (advance-to (+ object-offset object-size))))))
 
 (defun write-object-file (allocator memory-model root stream)

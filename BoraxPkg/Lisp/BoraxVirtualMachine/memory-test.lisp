@@ -68,11 +68,11 @@
     (assert-equal 6 (length (objects a)))))
 
 (defun make-funny-record ()
-  (let ((class (make-record :word-record nil #())))
+  (let ((class (make-word-record nil #())))
     (setf (record-class class) class)
-    (let* ((nested (make-record :word-record class #(1 2 3)))
+    (let* ((nested (make-word-record class #(1 2 3)))
            (data (make-array 3 :initial-contents (list nested nested nil))))
-      (make-record :object-record class data))))
+      (make-object-record class data))))
 
 (deftest test-record-discard (collect-suite)
   (with-allocator a
