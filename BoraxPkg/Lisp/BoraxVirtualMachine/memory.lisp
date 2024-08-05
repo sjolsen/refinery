@@ -6,7 +6,7 @@
            #:most-positive-bx-fixnum #:most-negative-bx-fixnum
            #:allocator #:make-allocator #:*allocator* #:objects
            #:collect
-           #:bx-cons #:bx-car #:bx-cdr
+           #:bx-cons #:bx-car #:bx-cdr #:bx-push
            #:object #:index
            #:record #:make-record
            #:record-widetag #:record-length-aux #:record-class #:record-data))
@@ -87,6 +87,14 @@
 
 (defmethod sub-objects ((object bx-cons))
   (list (bx-car object) (bx-cdr object)))
+
+(defmacro bx-push (obj place &environment env)
+  (multiple-value-bind (vars vals store-vars set get)
+      (get-setf-expansion place env)
+    (destructuring-bind (store-var) store-vars
+      `(let* (,@(mapcar #'list vars vals)
+              (,store-var (bx-cons ,obj ,get)))
+         ,set))))
 
 (defclass record (object)
   ((widetag :type (member :word-record :object-record)
