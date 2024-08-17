@@ -1,6 +1,6 @@
 (uiop:define-package :borax-virtual-machine/object-file-test
-  (:use :uiop/common-lisp :borax-virtual-machine/memory :borax-virtual-machine/object-file
-        :clunit :flexi-streams))
+  (:mix :uiop/common-lisp :borax-virtual-machine/memory)
+  (:use :borax-virtual-machine/object-file :clunit :flexi-streams))
 
 (in-package :borax-virtual-machine/object-file-test)
 

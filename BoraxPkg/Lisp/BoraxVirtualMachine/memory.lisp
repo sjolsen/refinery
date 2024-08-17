@@ -1,12 +1,15 @@
 (uiop:define-package :borax-virtual-machine/memory
+  (:nicknames :borax-vm/memory)
   (:use :uiop/common-lisp)
+  (:shadow #:most-positive-fixnum #:most-negative-fixnum
+           #:cons #:car #:cdr #:push)
   (:export #:+page-bytes+ #:memory-model #:make-memory-model
            #:word-bits #:cons-first-word #:object-first-word
            #:word-type #:word-bytes
-           #:most-positive-bx-fixnum #:most-negative-bx-fixnum
+           #:most-positive-fixnum #:most-negative-fixnum
            #:allocator #:make-allocator #:*allocator* #:objects
            #:collect
-           #:bx-cons #:bx-car #:bx-cdr #:bx-push
+           #:cons #:car #:cdr #:push
            #:object #:index
            #:record #:object-record #:word-record
            #:make-object-record #:make-word-record
@@ -44,10 +47,10 @@
 (defun word-bytes (memory-model)
   (floor (word-bits memory-model) 8))
 
-(defun most-positive-bx-fixnum (memory-model)
+(defun most-positive-fixnum (memory-model)
   (- (ash 1 (- (word-bits memory-model) 2)) 1))
 
-(defun most-negative-bx-fixnum (memory-model)
+(defun most-negative-fixnum (memory-model)
   (- (ash 1 (- (word-bits memory-model) 2))))
 
 (defconstant +initial-space-size+ 100)
@@ -79,22 +82,22 @@
 (defgeneric sub-objects (object)
   (:method ((object integer)) nil))
 
-(defclass bx-cons (object)
-  ((bx-car :accessor bx-car :initarg :car)
-   (bx-cdr :accessor bx-cdr :initarg :cdr)))
+(defclass cons (object)
+  ((car :accessor car :initarg :car)
+   (cdr :accessor cdr :initarg :cdr)))
 
-(defun bx-cons (car cdr)
-  (make-instance 'bx-cons :car car :cdr cdr))
+(defun cons (car cdr)
+  (make-instance 'cons :car car :cdr cdr))
 
-(defmethod sub-objects ((object bx-cons))
-  (list (bx-car object) (bx-cdr object)))
+(defmethod sub-objects ((object cons))
+  (list (car object) (cdr object)))
 
-(defmacro bx-push (obj place &environment env)
+(defmacro push (obj place &environment env)
   (multiple-value-bind (vars vals store-vars set get)
       (get-setf-expansion place env)
     (destructuring-bind (store-var) store-vars
       `(let* (,@(mapcar #'list vars vals)
-              (,store-var (bx-cons ,obj ,get)))
+              (,store-var (cons ,obj ,get)))
          ,set))))
 
 (defclass record (object)
@@ -138,7 +141,7 @@
                (when (typep object 'object)
                  (when (eq (color object) 'white)
                    (setf (color object) 'grey)
-                   (push object grey-list)))))
+                   (cl:push object grey-list)))))
            (mark-black (object)
              (setf (color object) 'black)))
       ;; Mark roots grey

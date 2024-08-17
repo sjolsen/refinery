@@ -1,6 +1,6 @@
 (uiop:define-package :borax-build/c-testing
-  (:use :uiop/common-lisp :borax-build/workspace
-        :borax-virtual-machine/memory :borax-virtual-machine/object-file)
+  (:mix :uiop/common-lisp :borax-virtual-machine/memory)
+  (:use :borax-build/workspace :borax-virtual-machine/object-file)
   (:export #:make-test-files))
 
 (in-package :borax-build/c-testing)
@@ -21,13 +21,13 @@
       (setf (aref root-data 0) root)
       ;; root[1] is an improper list (4 3 2 1 . 0)
       (let ((head 0))
-        (dotimes (i 4) (bx-push (1+ i) head))
+        (dotimes (i 4) (borax-vm/memory:push (1+ i) head))
         (setf (aref root-data 1) head))
       ;; root[2] is a circular list #1=(8 7 6 5 . #1#)
-      (let* ((head (bx-cons 5 nil))
+      (let* ((head (borax-vm/memory:cons 5 nil))
              (tail head))
-        (dotimes (i 3) (bx-push (+ 6 i) head))
-        (setf (bx-cdr tail) head)
+        (dotimes (i 3) (borax-vm/memory:push (+ 6 i) head))
+        (setf (borax-vm/memory:cdr tail) head)
         (setf (aref root-data 2) head))
       ;; root[3] is an object vector containing fixnums
       (setf (aref root-data 3)

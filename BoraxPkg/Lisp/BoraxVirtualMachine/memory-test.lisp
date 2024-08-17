@@ -1,5 +1,6 @@
 (uiop:define-package :borax-virtual-machine/memory-test
-  (:use :uiop/common-lisp :borax-virtual-machine/memory :clunit))
+  (:mix :uiop/common-lisp :borax-virtual-machine/memory)
+  (:use :clunit))
 
 (in-package :borax-virtual-machine/memory-test)
 
@@ -9,15 +10,15 @@
   (let ((memory-model (make-memory-model 32)))
     (assert-equal 32 (word-bits memory-model))
     (assert-equal 18 (cons-first-word memory-model))
-    (assert-equal #x3fffffff (most-positive-bx-fixnum memory-model))
-    (assert-equal #x-40000000 (most-negative-bx-fixnum memory-model))))
+    (assert-equal #x3fffffff (borax-vm/memory:most-positive-fixnum memory-model))
+    (assert-equal #x-40000000 (borax-vm/memory:most-negative-fixnum memory-model))))
 
 (deftest test-64bit (memory-model-suite)
   (let ((memory-model (make-memory-model 64)))
     (assert-equal 64 (word-bits memory-model))
     (assert-equal 6 (cons-first-word memory-model))
-    (assert-equal #x3fffffffffffffff (most-positive-bx-fixnum memory-model))
-    (assert-equal #x-4000000000000000 (most-negative-bx-fixnum memory-model))))
+    (assert-equal #x3fffffffffffffff (borax-vm/memory:most-positive-fixnum memory-model))
+    (assert-equal #x-4000000000000000 (borax-vm/memory:most-negative-fixnum memory-model))))
 
 (defsuite collect-suite ())
 
@@ -28,21 +29,21 @@
 
 (deftest test-cons-discard (collect-suite)
   (with-allocator a
-    (bx-cons 1 2)
+    (borax-vm/memory:cons 1 2)
     (collect nil)
     (assert-equal 0 (length (objects a)))))
 
 (deftest test-cons-keep (collect-suite)
   (with-allocator a
-    (collect (list (bx-cons 1 2)))
+    (collect (list (borax-vm/memory:cons 1 2)))
     (assert-equal 1 (length (objects a)))))
 
 (deftest test-cons-keep-some (collect-suite)
   (with-allocator a
     (let ((roots nil))
       (dotimes (n 5)
-        (bx-cons 1 2)
-        (push (bx-cons 3 4) roots))
+        (borax-vm/memory:cons 1 2)
+        (push (borax-vm/memory:cons 3 4) roots))
       (collect roots))
     (assert-equal 5 (length (objects a)))
     (loop for i upfrom 0
@@ -50,11 +51,11 @@
           do (assert-equal i (index object)))))
 
 (defun make-circular (n)
-  (let* ((last (bx-cons 0 nil))
+  (let* ((last (borax-vm/memory:cons 0 nil))
          (first last))
     (dotimes (i n)
-      (setf first (bx-cons (1+ i) first)))
-    (setf (bx-cdr last) first)))
+      (setf first (borax-vm/memory:cons (1+ i) first)))
+    (setf (borax-vm/memory:cdr last) first)))
 
 (deftest test-circular-discard (collect-suite)
   (with-allocator a
