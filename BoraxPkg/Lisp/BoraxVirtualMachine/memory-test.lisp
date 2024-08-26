@@ -21,26 +21,26 @@
 (defsuite collect-suite ())
 
 (deftest test-cons-discard (collect-suite)
-  (with-allocator a
+  (with-image nil
     (borax-vm/memory:cons 1 2)
     (collect nil)
-    (assert-equal 0 (length (objects a)))))
+    (assert-equal 0 (length (objects *image*)))))
 
 (deftest test-cons-keep (collect-suite)
-  (with-allocator a
+  (with-image nil
     (collect (list (borax-vm/memory:cons 1 2)))
-    (assert-equal 1 (length (objects a)))))
+    (assert-equal 1 (length (objects *image*)))))
 
 (deftest test-cons-keep-some (collect-suite)
-  (with-allocator a
+  (with-image nil
     (let ((roots nil))
       (dotimes (n 5)
         (borax-vm/memory:cons 1 2)
         (push (borax-vm/memory:cons 3 4) roots))
       (collect roots))
-    (assert-equal 5 (length (objects a)))
+    (assert-equal 5 (length (objects *image*)))
     (loop for i upfrom 0
-          for object across (objects a)
+          for object across (objects *image*)
           do (assert-equal i (index object)))))
 
 (defun make-circular (n)
@@ -51,15 +51,15 @@
     (setf (borax-vm/memory:cdr last) first)))
 
 (deftest test-circular-discard (collect-suite)
-  (with-allocator a
+  (with-image nil
     (make-circular 5)
     (collect nil)
-    (assert-equal 0 (length (objects a)))))
+    (assert-equal 0 (length (objects *image*)))))
 
 (deftest test-circular-keep (collect-suite)
-  (with-allocator a
+  (with-image nil
     (collect (list (make-circular 5)))
-    (assert-equal 6 (length (objects a)))))
+    (assert-equal 6 (length (objects *image*)))))
 
 (defun make-funny-record ()
   (let ((class (make-word-record nil #())))
@@ -69,12 +69,12 @@
       (make-object-record class data))))
 
 (deftest test-record-discard (collect-suite)
-  (with-allocator a
+  (with-image nil
     (make-funny-record)
     (collect nil)
-    (assert-equal 0 (length (objects a)))))
+    (assert-equal 0 (length (objects *image*)))))
 
 (deftest test-record-keep (collect-suite)
-  (with-allocator a
+  (with-image nil
     (collect (list (make-funny-record)))
-    (assert-equal 3 (length (objects a)))))
+    (assert-equal 3 (length (objects *image*)))))

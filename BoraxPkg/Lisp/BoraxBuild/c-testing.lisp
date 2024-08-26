@@ -11,7 +11,7 @@
                                :element-type '(unsigned-byte 8)
                                :if-exists :supersede
                                :if-does-not-exist :create)
-    (with-allocator allocator
+    (with-image memory-model
       (let* ((root-class (make-object-record nil #()))
              (root-data (make-array 6 :initial-element 0))
              (root (make-object-record root-class root-data)))
@@ -39,7 +39,7 @@
         (setf (aref root-data 5)
               (make-word-record root-class #(#x020100)
                                 :length-aux (- (word-bytes memory-model) 3)))
-        (write-object-file allocator memory-model root stream)))))
+        (write-object-file root stream)))))
 
 (defun make-test-files ()
   (let* ((test-base (uiop:merge-pathnames* #P"BoraxPkg/Test/BoraxVirtualMachineTest/" *refinery-root*))

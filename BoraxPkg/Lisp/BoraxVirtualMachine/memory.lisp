@@ -8,8 +8,8 @@
            #:page-bytes #:word-bits #:word-bytes #:word-type
            #:most-positive-fixnum #:most-negative-fixnum
            #:cons-first-word #:object-first-word
-           ;; allocator
-           #:allocator #:with-allocator #:objects #:collect
+           ;; image
+           #:image #:with-image #:*image* #:objects #:collect
            ;; object
            #:object #:index
            #:cons #:car #:cdr #:push
@@ -55,18 +55,20 @@
   (make-array (or initial-size +initial-space-size+)
               :fill-pointer 0 :adjustable t))
 
-(defclass allocator ()
-  ((objects :type (vector *)
+(defclass image ()
+  ((memory-model :type memory-model
+                 :reader memory-model
+                 :initarg :memory-model)
+   (objects :type (vector *)
             :reader objects
             :initform (make-space))))
 
-(defvar *allocator* nil)
+(defvar *image* nil)
 
-(defmacro with-allocator (name &body body)
+(defmacro with-image (memory-model &body body)
   `(progn
-     (assert (null *allocator*))
-     (let* ((,name (make-instance 'allocator))
-            (*allocator* ,name))
+     (assert (null *image*))
+     (let ((*image* (make-instance 'image :memory-model ,memory-model)))
        ,@body)))
 
 (defclass object ()
@@ -77,7 +79,7 @@
           :accessor index)))
 
 (defmethod initialize-instance :after ((instance object) &key)
-  (setf (index instance) (vector-push-extend instance (objects *allocator*))))
+  (setf (index instance) (vector-push-extend instance (objects *image*))))
 
 (defgeneric sub-objects (object))
 
@@ -99,7 +101,7 @@
         (mark-grey (sub-objects object))
         (mark-black object))
       ;; Compact
-      (with-slots (objects) *allocator*
+      (with-slots (objects) *image*
         (do* ((source 0 (1+ source))
               (object (aref objects source) (aref objects source))
               (destination 0))

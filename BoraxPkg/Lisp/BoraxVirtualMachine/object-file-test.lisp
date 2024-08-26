@@ -4,9 +4,9 @@
 
 (in-package :borax-virtual-machine/object-file-test)
 
-(defun object-file-bytes (allocator memory-model root)
+(defun object-file-bytes (root)
   (with-output-to-sequence (stream)
-    (write-object-file allocator memory-model root stream)))
+    (write-object-file root stream)))
 
 (defun load-word (data memory-model byte-offset)
   (let ((result 0)
@@ -55,8 +55,8 @@
 (defsuite smoke-test-suite ())
 
 (defun smoke-test (memory-model)
-  (with-allocator a
-    (let ((data (object-file-bytes a memory-model 0)))
+  (with-image memory-model
+    (let ((data (object-file-bytes 0)))
       (validate-object-file data memory-model))))
 
 (deftest smoke-test-32bit (smoke-test-suite)
