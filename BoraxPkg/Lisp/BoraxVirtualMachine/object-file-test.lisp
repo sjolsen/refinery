@@ -55,9 +55,9 @@
 (defsuite smoke-test-suite ())
 
 (defun smoke-test (memory-model)
-  (let* ((*allocator* (make-allocator))
-         (data (object-file-bytes *allocator* memory-model 0)))
-    (validate-object-file data memory-model)))
+  (with-allocator a
+    (let ((data (object-file-bytes a memory-model 0)))
+      (validate-object-file data memory-model))))
 
 (deftest smoke-test-32bit (smoke-test-suite)
   (smoke-test +32-bit+))

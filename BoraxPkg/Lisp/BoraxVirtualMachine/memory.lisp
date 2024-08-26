@@ -3,14 +3,16 @@
   (:use :uiop/common-lisp)
   (:shadow #:most-positive-fixnum #:most-negative-fixnum
            #:cons #:car #:cdr #:push)
-  (:export #:memory-model #:+32-bit+ #:+64-bit+
+  (:export ;; memory-model
+           #:memory-model #:+32-bit+ #:+64-bit+
            #:page-bytes #:word-bits #:word-bytes #:word-type
            #:most-positive-fixnum #:most-negative-fixnum
            #:cons-first-word #:object-first-word
-           #:allocator #:make-allocator #:*allocator* #:objects
-           #:collect
-           #:cons #:car #:cdr #:push
+           ;; allocator
+           #:allocator #:with-allocator #:objects #:collect
+           ;; object
            #:object #:index
+           #:cons #:car #:cdr #:push
            #:record #:object-record #:word-record
            #:make-object-record #:make-word-record
            #:record-widetag #:record-length-aux #:record-class #:record-data))
@@ -58,10 +60,14 @@
             :reader objects
             :initform (make-space))))
 
-(defun make-allocator ()
-  (make-instance 'allocator))
-
 (defvar *allocator* nil)
+
+(defmacro with-allocator (name &body body)
+  `(progn
+     (assert (null *allocator*))
+     (let* ((,name (make-instance 'allocator))
+            (*allocator* ,name))
+       ,@body)))
 
 (defclass object ()
   ((color :type (member white grey black)
@@ -73,8 +79,39 @@
 (defmethod initialize-instance :after ((instance object) &key)
   (setf (index instance) (vector-push-extend instance (objects *allocator*))))
 
-(defgeneric sub-objects (object)
-  (:method ((object integer)) nil))
+(defgeneric sub-objects (object))
+
+(defun collect (roots)
+  (let ((grey-list nil))
+    (flet ((mark-grey (objects)
+             (dolist (object objects)
+               (when (typep object 'object)
+                 (when (eq (color object) 'white)
+                   (setf (color object) 'grey)
+                   (cl:push object grey-list)))))
+           (mark-black (object)
+             (setf (color object) 'black)))
+      ;; Mark roots grey
+      (mark-grey roots)
+      ;; Scan sub-objects then mark black
+      (do ((object (pop grey-list) (pop grey-list)))
+          ((null object))
+        (mark-grey (sub-objects object))
+        (mark-black object))
+      ;; Compact
+      (with-slots (objects) *allocator*
+        (do* ((source 0 (1+ source))
+              (object (aref objects source) (aref objects source))
+              (destination 0))
+             ((= source (length objects))
+              (setf (fill-pointer objects) destination))
+          (ecase (color object)
+            (white)
+            (black
+             (setf (aref objects destination) object)
+             (setf (index object) destination)
+             (setf (color object) 'white)
+             (incf destination))))))))
 
 (defclass cons (object)
   ((car :accessor car :initarg :car)
@@ -127,35 +164,3 @@
 
 (defmethod record-length-aux ((object object-record))
   0)
-
-(defun collect (roots)
-  (let ((grey-list nil))
-    (flet ((mark-grey (objects)
-             (dolist (object objects)
-               (when (typep object 'object)
-                 (when (eq (color object) 'white)
-                   (setf (color object) 'grey)
-                   (cl:push object grey-list)))))
-           (mark-black (object)
-             (setf (color object) 'black)))
-      ;; Mark roots grey
-      (mark-grey roots)
-      ;; Scan sub-objects then mark black
-      (do ((object (pop grey-list) (pop grey-list)))
-          ((null object))
-        (mark-grey (sub-objects object))
-        (mark-black object))
-      ;; Compact
-      (with-slots (objects) *allocator*
-        (do* ((source 0 (1+ source))
-              (object (aref objects source) (aref objects source))
-              (destination 0))
-             ((= source (length objects))
-              (setf (fill-pointer objects) destination))
-          (ecase (color object)
-            (white)
-            (black
-             (setf (aref objects destination) object)
-             (setf (index object) destination)
-             (setf (color object) 'white)
-             (incf destination))))))))

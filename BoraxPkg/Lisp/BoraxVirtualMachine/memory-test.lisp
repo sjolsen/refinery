@@ -20,11 +20,6 @@
 
 (defsuite collect-suite ())
 
-(defmacro with-allocator (name &body body)
-  `(let* ((,name (make-allocator))
-          (*allocator* ,name))
-     ,@body))
-
 (deftest test-cons-discard (collect-suite)
   (with-allocator a
     (borax-vm/memory:cons 1 2)
