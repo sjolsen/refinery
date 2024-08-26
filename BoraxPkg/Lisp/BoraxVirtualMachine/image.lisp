@@ -1,5 +1,5 @@
-(uiop:define-package :borax-virtual-machine/memory
-  (:nicknames :borax-vm/memory)
+(uiop:define-package :borax-virtual-machine/image
+  (:nicknames :borax-vm/image)
   (:use :uiop/common-lisp)
   (:shadow #:most-positive-fixnum #:most-negative-fixnum
            #:cons #:car #:cdr #:push)
@@ -17,7 +17,7 @@
            #:make-object-record #:make-word-record
            #:record-widetag #:record-length-aux #:record-class #:record-data))
 
-(in-package :borax-virtual-machine/memory)
+(in-package :borax-virtual-machine/image)
 
 (defstruct (memory-model (:constructor %make-memory-model) :conc-name)
   (page-bytes           0 :type fixnum         :read-only t)

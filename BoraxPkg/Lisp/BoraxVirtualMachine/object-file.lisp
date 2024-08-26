@@ -1,5 +1,5 @@
 (uiop:define-package :borax-virtual-machine/object-file
-  (:mix :uiop/common-lisp :borax-virtual-machine/memory)
+  (:mix :uiop/common-lisp :borax-virtual-machine/image)
   (:export #:write-object-file))
 
 (in-package :borax-virtual-machine/object-file)
@@ -26,7 +26,7 @@
 
 (defgeneric file-allocate-object (file-allocator object))
 
-(defmethod file-allocate-object (file-allocator (object borax-vm/memory:cons))
+(defmethod file-allocate-object (file-allocator (object borax-vm/image:cons))
   (with-slots (cons-chunk-size translation) file-allocator
     (with-slots (memory-model) *image*
       (with-slots (page-bytes word-bytes cons-first-word) memory-model
@@ -65,7 +65,7 @@
               (ash tag (- word-bits 3))      ;; section tag
               (* word-index word-bytes)))))  ;; section offset
 
-(defmethod translate (file-allocator (object borax-vm/memory:cons))
+(defmethod translate (file-allocator (object borax-vm/image:cons))
   (with-slots (translation) file-allocator
     (tag-word-index 1 (aref translation (index object)))))
 
@@ -76,8 +76,8 @@
 (defmethod translate (file-allocator (object integer))
   (with-slots (memory-model) *image*
     ;; TODO: arbitrary integers
-    (assert (>= object (borax-vm/memory:most-negative-fixnum memory-model)))
-    (assert (<= object (borax-vm/memory:most-positive-fixnum memory-model)))
+    (assert (>= object (borax-vm/image:most-negative-fixnum memory-model)))
+    (assert (<= object (borax-vm/image:most-positive-fixnum memory-model)))
     (dpb object (byte (1- (word-bits memory-model)) 1) 0)))
 
 (defun write-file (file-allocator root stream)
@@ -135,11 +135,11 @@
             (write-section 0 0)  ; class
             ;; Cons data
             (loop for object across objects
-                  when (typep object 'borax-vm/memory:cons)
+                  when (typep object 'borax-vm/image:cons)
                     do (let ((word-index (aref translation (index object))))
                          (advance-to (+ cons-offset (* word-bytes word-index)))
-                         (write-translation (borax-vm/memory:car object))
-                         (write-translation (borax-vm/memory:cdr object))))
+                         (write-translation (borax-vm/image:car object))
+                         (write-translation (borax-vm/image:cdr object))))
             (advance-to (+ cons-offset cons-size))
             ;; Object data
             (loop for object across objects
