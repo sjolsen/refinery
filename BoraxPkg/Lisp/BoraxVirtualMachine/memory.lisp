@@ -3,10 +3,10 @@
   (:use :uiop/common-lisp)
   (:shadow #:most-positive-fixnum #:most-negative-fixnum
            #:cons #:car #:cdr #:push)
-  (:export #:+page-bytes+ #:memory-model #:make-memory-model
-           #:word-bits #:cons-first-word #:object-first-word
-           #:word-type #:word-bytes
+  (:export #:memory-model #:+32-bit+ #:+64-bit+
+           #:page-bytes #:word-bits #:word-bytes #:word-type
            #:most-positive-fixnum #:most-negative-fixnum
+           #:cons-first-word #:object-first-word
            #:allocator #:make-allocator #:*allocator* #:objects
            #:collect
            #:cons #:car #:cdr #:push
@@ -17,41 +17,35 @@
 
 (in-package :borax-virtual-machine/memory)
 
-(defconstant +page-bytes+ 4096)
-
-(defclass memory-model ()
-  ((word-bits :type (member 32 64)
-              :reader word-bits
-              :initarg :word-bits)
-   (cons-first-word :type fixnum
-                    :reader cons-first-word
-                    :initarg :cons-first-word)
-   (object-first-word :type fixnum
-                      :reader object-first-word
-                      :initarg :object-first-word)))
+(defstruct (memory-model (:constructor %make-memory-model) :conc-name)
+  (page-bytes           0 :type fixnum         :read-only t)
+  (word-bits            0 :type (member 32 64) :read-only t)
+  (word-bytes           0 :type (member 4 8)   :read-only t)
+  (word-type            t                      :read-only t)
+  (most-positive-fixnum 0 :type integer        :read-only t)
+  (most-negative-fixnum 0 :type integer        :read-only t)
+  (cons-first-word      0 :type fixnum         :read-only t)
+  (object-first-word    0 :type fixnum         :read-only t))
 
 (defun make-memory-model (word-bits)
-  (let* ((word-bytes (floor word-bits 8))
+  (let* ((page-bytes 4096)
+         (word-bytes (floor word-bits 8))
          (cons-bytes (* 2 word-bytes))
-         (cons-per-page (floor +page-bytes+ cons-bytes))
+         (cons-per-page (floor page-bytes cons-bytes))
          (cons-bitmap-words (floor cons-per-page word-bits))
          (cons-header-words (+ 2 cons-bitmap-words)))
-    (make-instance 'memory-model
+    (%make-memory-model
+     :page-bytes page-bytes
      :word-bits word-bits
+     :word-bytes word-bytes
+     :word-type `(unsigned-byte ,word-bits)
+     :most-positive-fixnum (- (ash 1 (- word-bits 2)) 1)
+     :most-negative-fixnum (- (ash 1 (- word-bits 2)))
      :cons-first-word cons-header-words
      :object-first-word 2)))
 
-(defun word-type (memory-model)
-  `(unsigned-byte ,(word-bits memory-model)))
-
-(defun word-bytes (memory-model)
-  (floor (word-bits memory-model) 8))
-
-(defun most-positive-fixnum (memory-model)
-  (- (ash 1 (- (word-bits memory-model) 2)) 1))
-
-(defun most-negative-fixnum (memory-model)
-  (- (ash 1 (- (word-bits memory-model) 2))))
+(defvar +32-bit+ (make-memory-model 32))
+(defvar +64-bit+ (make-memory-model 64))
 
 (defconstant +initial-space-size+ 100)
 

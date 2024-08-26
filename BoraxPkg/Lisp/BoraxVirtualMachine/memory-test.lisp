@@ -7,18 +7,16 @@
 (defsuite memory-model-suite ())
 
 (deftest test-32bit (memory-model-suite)
-  (let ((memory-model (make-memory-model 32)))
-    (assert-equal 32 (word-bits memory-model))
-    (assert-equal 18 (cons-first-word memory-model))
-    (assert-equal #x3fffffff (borax-vm/memory:most-positive-fixnum memory-model))
-    (assert-equal #x-40000000 (borax-vm/memory:most-negative-fixnum memory-model))))
+  (assert-equal 32 (word-bits +32-bit+))
+  (assert-equal 18 (cons-first-word +32-bit+))
+  (assert-equal #x3fffffff (borax-vm/memory:most-positive-fixnum +32-bit+))
+  (assert-equal #x-40000000 (borax-vm/memory:most-negative-fixnum +32-bit+)))
 
 (deftest test-64bit (memory-model-suite)
-  (let ((memory-model (make-memory-model 64)))
-    (assert-equal 64 (word-bits memory-model))
-    (assert-equal 6 (cons-first-word memory-model))
-    (assert-equal #x3fffffffffffffff (borax-vm/memory:most-positive-fixnum memory-model))
-    (assert-equal #x-4000000000000000 (borax-vm/memory:most-negative-fixnum memory-model))))
+  (assert-equal 64 (word-bits +64-bit+))
+  (assert-equal 6 (cons-first-word +64-bit+))
+  (assert-equal #x3fffffffffffffff (borax-vm/memory:most-positive-fixnum +64-bit+))
+  (assert-equal #x-4000000000000000 (borax-vm/memory:most-negative-fixnum +64-bit+)))
 
 (defsuite collect-suite ())
 

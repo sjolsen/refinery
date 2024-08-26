@@ -35,18 +35,19 @@
 
 (defmethod file-allocate-object (file-allocator (object borax-vm/memory:cons))
   (with-slots (memory-model cons-chunk-size translation) file-allocator
-    ;; Extend the chunk data up to the next cons cell
-    (let ((page-words (floor +page-bytes+ (word-bytes memory-model))))
-      (multiple-value-bind (page-index page-word)
-          (floor cons-chunk-size page-words)
-        (setf page-word (max page-word (cons-first-word memory-model)))
-        (setf cons-chunk-size (+ (* page-index page-words) page-word))))
-    ;; Allocate the cons cell
-    (setf (aref translation (index object)) cons-chunk-size)
-    (incf cons-chunk-size 2)))
+    (with-slots (page-bytes word-bytes cons-first-word) memory-model
+      ;; Extend the chunk data up to the next cons cell
+      (let ((page-words (floor page-bytes word-bytes)))
+        (multiple-value-bind (page-index page-word)
+            (floor cons-chunk-size page-words)
+          (setf page-word (max page-word cons-first-word))
+          (setf cons-chunk-size (+ (* page-index page-words) page-word))))
+      ;; Allocate the cons cell
+      (setf (aref translation (index object)) cons-chunk-size)
+      (incf cons-chunk-size 2))))
 
 (defmethod file-allocate-object (file-allocator (object record))
-  (with-slots (memory-model object-chunk-size translation) file-allocator
+  (with-slots (object-chunk-size translation) file-allocator
     ;; Align the chunk data for the next object
     (when (oddp object-chunk-size)
       (incf object-chunk-size))
@@ -87,80 +88,79 @@
                cons-chunk-size object-chunk-size
                translation)
       file-allocator
-    (let* ((word-bits (word-bits memory-model))
-           (word-bytes (word-bytes memory-model))
-           (halfword-bits (/ word-bits 2))
-           (header-bytes (+ 8 word-bytes (* 6 3 word-bytes)))
-           (cons-offset header-bytes)
-           (cons-size (* word-bytes cons-chunk-size))
-           (object-offset (+ cons-offset cons-size))
-           (object-size (* word-bytes object-chunk-size)))
-      (labels ((pack-halfwords (low high)
-                 (logior low (ash high halfword-bits)))
-               (write-word (word)
-                 (do ((i 0 (+ i 8)))
-                     ((>= i word-bits))
-                   (write-byte (ldb (byte 8 i) word) stream)))
-               (write-section (offset size)
-                 (write-word offset)
-                 (write-word size)
-                 ;; relocation count
-                 (write-word 0))
-               (advance-to (offset)
-                 (let ((remainder (- offset (file-position stream))))
-                   (assert (>= remainder 0))
-                   (dotimes (n remainder)
-                     (write-byte 0 stream))))
-               (write-translation (object)
-                 (write-word (translate file-allocator object))))
-        ;; \x7f B X O
-        (write-byte #x7f stream)
-        (write-byte (char-code #\B) stream)
-        (write-byte (char-code #\X) stream)
-        (write-byte (char-code #\O) stream)
-        ;; Word size
-        (write-byte (ecase (word-bits memory-model)
-                      (32 1)
-                      (64 2))
-                    stream)
-        ;; Padding
-        (write-byte 0 stream)
-        ;; Version
-        (write-byte 0 stream)
-        ;; Padding
-        (write-byte 0 stream)
-        ;; Root object
-        (write-word (translate file-allocator root))
-        ;; Sections
-        (write-section cons-offset cons-size)
-        (write-section object-offset object-size)
-        (write-section 0 0)  ; string
-        (write-section 0 0)  ; package
-        (write-section 0 0)  ; symbol
-        (write-section 0 0)  ; class
-        ;; Cons data
-        (loop for object across objects
-              when (typep object 'borax-vm/memory:cons)
-                do (let ((word-index (aref translation (index object))))
-                     (advance-to (+ cons-offset (* word-bytes word-index)))
-                     (write-translation (borax-vm/memory:car object))
-                     (write-translation (borax-vm/memory:cdr object))))
-        (advance-to (+ cons-offset cons-size))
-        ;; Object data
-        (loop for object across objects
-              when (typep object 'record)
-                do (let ((word-index (aref translation (index object))))
-                     (advance-to (+ object-offset (* word-bytes word-index)))
-                     (write-word (pack-halfwords (record-widetag object)
-                                                 (record-length-aux object)))
-                     (write-word (length (record-data object)))
-                     (write-translation (record-class object))
-                     (etypecase object
-                       (word-record (loop for datum across (record-data object)
-                                          do (write-word datum)))
-                       (object-record (loop for datum across (record-data object)
-                                            do (write-translation datum))))))
-        (advance-to (+ object-offset object-size))))))
+    (with-slots (word-bits word-bytes) memory-model
+      (let* ((halfword-bits (/ word-bits 2))
+             (header-bytes (+ 8 word-bytes (* 6 3 word-bytes)))
+             (cons-offset header-bytes)
+             (cons-size (* word-bytes cons-chunk-size))
+             (object-offset (+ cons-offset cons-size))
+             (object-size (* word-bytes object-chunk-size)))
+        (labels ((pack-halfwords (low high)
+                   (logior low (ash high halfword-bits)))
+                 (write-word (word)
+                   (do ((i 0 (+ i 8)))
+                       ((>= i word-bits))
+                     (write-byte (ldb (byte 8 i) word) stream)))
+                 (write-section (offset size)
+                   (write-word offset)
+                   (write-word size)
+                   ;; relocation count
+                   (write-word 0))
+                 (advance-to (offset)
+                   (let ((remainder (- offset (file-position stream))))
+                     (assert (>= remainder 0))
+                     (dotimes (n remainder)
+                       (write-byte 0 stream))))
+                 (write-translation (object)
+                   (write-word (translate file-allocator object))))
+          ;; \x7f B X O
+          (write-byte #x7f stream)
+          (write-byte (char-code #\B) stream)
+          (write-byte (char-code #\X) stream)
+          (write-byte (char-code #\O) stream)
+          ;; Word size
+          (write-byte (ecase word-bits
+                        (32 1)
+                        (64 2))
+                      stream)
+          ;; Padding
+          (write-byte 0 stream)
+          ;; Version
+          (write-byte 0 stream)
+          ;; Padding
+          (write-byte 0 stream)
+          ;; Root object
+          (write-word (translate file-allocator root))
+          ;; Sections
+          (write-section cons-offset cons-size)
+          (write-section object-offset object-size)
+          (write-section 0 0)  ; string
+          (write-section 0 0)  ; package
+          (write-section 0 0)  ; symbol
+          (write-section 0 0)  ; class
+          ;; Cons data
+          (loop for object across objects
+                when (typep object 'borax-vm/memory:cons)
+                  do (let ((word-index (aref translation (index object))))
+                       (advance-to (+ cons-offset (* word-bytes word-index)))
+                       (write-translation (borax-vm/memory:car object))
+                       (write-translation (borax-vm/memory:cdr object))))
+          (advance-to (+ cons-offset cons-size))
+          ;; Object data
+          (loop for object across objects
+                when (typep object 'record)
+                  do (let ((word-index (aref translation (index object))))
+                       (advance-to (+ object-offset (* word-bytes word-index)))
+                       (write-word (pack-halfwords (record-widetag object)
+                                                   (record-length-aux object)))
+                       (write-word (length (record-data object)))
+                       (write-translation (record-class object))
+                       (etypecase object
+                         (word-record (loop for datum across (record-data object)
+                                            do (write-word datum)))
+                         (object-record (loop for datum across (record-data object)
+                                              do (write-translation datum))))))
+          (advance-to (+ object-offset object-size)))))))
 
 (defun write-object-file (allocator memory-model root stream)
   (let ((file-allocator (file-allocate allocator memory-model)))
