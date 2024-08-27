@@ -161,10 +161,10 @@
   (find-class 'record-direct-slot-definition))
 
 (defclass record-effective-slot-definition (standard-effective-slot-definition)
-  ((direct-slot-definitions :type list
-                            :accessor direct-slot-definitions)
-   (record-location :type fixnum
-                    :accessor record-location)))
+  ((record-slot-p :type boolean
+                  :accessor record-slot-p)
+   (record-slot-location :type fixnum
+                         :accessor record-slot-location)))
 
 (defmethod effective-slot-definition-class ((class record-class) &rest initargs)
   (declare (ignore initargs))
@@ -173,19 +173,28 @@
 (defmethod compute-effective-slot-definition :around
     ((class record-class) name direct-slot-definitions)
   (let ((effective-slot (call-next-method)))
-    (setf (direct-slot-definitions effective-slot) direct-slot-definitions)
+    (setf (record-slot-p effective-slot)
+          (typep (first direct-slot-definitions)
+                 'record-direct-slot-definition))
     effective-slot))
 
+(defun compute-slot-order (class)
+  (let ((names ()))
+    (dolist (c (reverse (class-precedence-list class)))
+      (dolist (slot (class-direct-slots c))
+        (pushnew (slot-definition-name slot) names)))
+    (nreverse names)))
+
 (defmethod compute-slots :around ((class record-class))
-  (let ((effective-slots (call-next-method)))
-    (loop for effective-slot in effective-slots
-          with i = 0
-          when (typep (first (direct-slot-definitions effective-slot))
-                      'record-direct-slot-definition)
-            do (progn
-                 (setf (record-location effective-slot) i)
-                 (incf i))
-            and collect effective-slot into record-slots
+  (let ((slot-order (compute-slot-order class))
+        (effective-slots (call-next-method)))
+    (loop with i = 0
+          for slot-name in slot-order
+          for slot = (find slot-name effective-slots :key #'slot-definition-name)
+          when (record-slot-p slot)
+            do (setf (record-slot-location slot)
+                     (prog1 i (incf i)))
+            and collect slot into record-slots
           finally (setf (record-slots class) record-slots))
     effective-slots))
 
