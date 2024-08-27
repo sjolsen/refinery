@@ -15,7 +15,7 @@
            #:cons #:car #:cdr #:push
            #:record #:object-record #:word-record
            #:make-object-record #:make-word-record
-           #:record-widetag #:record-length-aux #:record-class #:record-data))
+           #:widetag #:length-aux #:record-class #:record-data #:data))
 
 (in-package :borax-virtual-machine/image)
 
@@ -133,6 +133,7 @@
               (,store-var (cons ,obj ,get)))
          ,set))))
 
+;; TODO: Move this incarnation of records to test-only code
 (defclass record (object)
   ((class :type record
           :accessor record-class
@@ -146,23 +147,23 @@
          (concatenate 'list (record-data object))))
 
 (defclass object-record (record)
-  ())
+  ((widetag :type fixnum
+            :reader widetag
+            :allocation :class
+            :initform #x07)))
 
 (defun make-object-record (class data)
   (make-instance 'object-record :class class :data data))
 
 (defclass word-record (record)
-  ((length-aux :type fixnum
-               :accessor record-length-aux
+  ((widetag :type fixnum
+            :reader widetag
+            :allocation :class
+            :initform #x03)
+   (length-aux :type fixnum
+               :accessor length-aux
                :initarg :length-aux
                :initform 0)))
 
 (defun make-word-record (class data &key (length-aux 0))
   (make-instance 'word-record :class class :data data :length-aux length-aux))
-
-(defgeneric record-widetag (object)
-  (:method ((object word-record))   #x03)
-  (:method ((object object-record)) #x07))
-
-(defmethod record-length-aux ((object object-record))
-  0)
