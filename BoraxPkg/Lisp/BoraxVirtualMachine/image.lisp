@@ -133,7 +133,13 @@
 (defclass record-object (object) ())
 
 (defclass record-class (standard-class)
-  ((record-slots :type list
+  ((classes :type (vector *)
+            :reader classes
+            :allocation :class
+            :initform (make-space 10))
+   (index :type fixnum
+          :accessor index)
+   (record-slots :type list
                  :accessor record-slots)))
 
 (defun default-direct-superclasses (direct-superclasses)
@@ -144,6 +150,9 @@
   (apply #'call-next-method class
          :direct-superclasses (default-direct-superclasses direct-superclasses)
          initargs))
+
+(defmethod initialize-instance :after ((class record-class) &key &allow-other-keys)
+  (setf (index class) (vector-push-extend class (classes class))))
 
 (defmethod reinitialize-instance :around
     ((class record-class) &rest initargs &key direct-superclasses &allow-other-keys)
