@@ -142,17 +142,17 @@
 (defun write-translation (object)
   (write-word (translate object)))
 
-(defun write-section-header (section)
-  (if section
-      (progn
-        (write-word (base section))
-        (write-word (size section))
-        ;; relocation count
-        (write-word 0))
-      (progn
-        (write-word 0)
-        (write-word 0)
-        (write-word 0))))
+(defgeneric write-section-header (section))
+
+(defmethod write-section-header ((section null))
+  (write-word 0)
+  (write-word 0)
+  (write-word 0))
+
+(defmethod write-section-header ((section section))
+  (write-word (base section))
+  (write-word (size section))
+  (write-word 0))  ; relocation count
 
 (defun write-section-data (section)
   (with-slots (memory-model) *image*
