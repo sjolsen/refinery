@@ -12,7 +12,9 @@
            #:image #:with-image #:*image* #:objects #:collect
            ;; object
            #:object #:index #:sub-objects
-           #:cons #:car #:cdr #:push))
+           #:cons #:car #:cdr #:push
+           ;; record-object
+           #:record-object #:record-class))
 
 (in-package :borax-virtual-machine/image)
 
@@ -206,18 +208,7 @@
           finally (setf (record-slots class) record-slots))
     effective-slots))
 
-(defclass test ()
-  ((x :initform 42)
-   (y :initform t)
-   (z :initform "hello"))
-  (:metaclass record-class))
-
-(defclass test2 (test)
-  ((a :initform #\A))
-  (:metaclass record-class))
-
-(defun record-data (object)
+(defmethod sub-objects ((object record-object))
   (let ((class (class-of object)))
-    (assert (subclassp class (find-class 'record-object)))
     (loop for slot in (record-slots class)
           collecting (slot-value-using-class class object slot))))
