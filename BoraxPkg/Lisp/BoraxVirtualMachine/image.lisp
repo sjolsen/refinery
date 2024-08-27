@@ -1,6 +1,6 @@
 (uiop:define-package :borax-virtual-machine/image
   (:nicknames :borax-vm/image)
-  (:use :uiop/common-lisp)
+  (:mix :closer-mop :uiop/common-lisp)
   (:shadow #:most-positive-fixnum #:most-negative-fixnum
            #:cons #:car #:cdr #:push)
   (:export ;; memory-model
@@ -129,3 +129,78 @@
       `(let* (,@(mapcar #'list vars vals)
               (,store-var (cons ,obj ,get)))
          ,set))))
+
+(defclass record-object (object) ())
+
+(defclass record-class (standard-class)
+  ((record-slots :type list
+                 :accessor record-slots)))
+
+(defun default-direct-superclasses (direct-superclasses)
+  (or direct-superclasses (list (find-class 'record-object))))
+
+(defmethod initialize-instance :around
+    ((class record-class) &rest initargs &key direct-superclasses &allow-other-keys)
+  (apply #'call-next-method class
+         :direct-superclasses (default-direct-superclasses direct-superclasses)
+         initargs))
+
+(defmethod reinitialize-instance :around
+    ((class record-class) &rest initargs &key direct-superclasses &allow-other-keys)
+  (apply #'call-next-method class
+         :direct-superclasses (default-direct-superclasses direct-superclasses)
+         initargs))
+
+(defmethod validate-superclass ((class record-class) superclass)
+  (subclassp superclass (find-class 'record-object)))
+
+(defclass record-direct-slot-definition (standard-direct-slot-definition) ())
+
+(defmethod direct-slot-definition-class ((class record-class) &rest initargs)
+  (declare (ignore initargs))
+  (find-class 'record-direct-slot-definition))
+
+(defclass record-effective-slot-definition (standard-effective-slot-definition)
+  ((direct-slot-definitions :type list
+                            :accessor direct-slot-definitions)
+   (record-location :type fixnum
+                    :accessor record-location)))
+
+(defmethod effective-slot-definition-class ((class record-class) &rest initargs)
+  (declare (ignore initargs))
+  (find-class 'record-effective-slot-definition))
+
+(defmethod compute-effective-slot-definition :around
+    ((class record-class) name direct-slot-definitions)
+  (let ((effective-slot (call-next-method)))
+    (setf (direct-slot-definitions effective-slot) direct-slot-definitions)
+    effective-slot))
+
+(defmethod compute-slots :around ((class record-class))
+  (let ((effective-slots (call-next-method)))
+    (loop for effective-slot in effective-slots
+          with i = 0
+          when (typep (first (direct-slot-definitions effective-slot))
+                      'record-direct-slot-definition)
+            do (progn
+                 (setf (record-location effective-slot) i)
+                 (incf i))
+            and collect effective-slot into record-slots
+          finally (setf (record-slots class) record-slots))
+    effective-slots))
+
+(defclass test ()
+  ((x :initform 42)
+   (y :initform t)
+   (z :initform "hello"))
+  (:metaclass record-class))
+
+(defclass test2 (test)
+  ((a :initform #\A))
+  (:metaclass record-class))
+
+(defun record-data (object)
+  (let ((class (class-of object)))
+    (assert (subclassp class (find-class 'record-object)))
+    (loop for slot in (record-slots class)
+          collecting (slot-value-using-class class object slot))))
