@@ -48,9 +48,8 @@
 
 (defconstant +initial-space-size+ 100)
 
-(defun make-space (&optional initial-size)
-  (make-array (or initial-size +initial-space-size+)
-              :fill-pointer 0 :adjustable t))
+(defun make-space (&optional (initial-size +initial-space-size+))
+  (make-array initial-size :fill-pointer 0 :adjustable t))
 
 (defclass image ()
   ((memory-model :type memory-model
@@ -100,17 +99,17 @@
       ;; Compact
       (with-slots (objects) *image*
         (do* ((source 0 (1+ source))
-              (object (aref objects source) (aref objects source))
               (destination 0))
              ((= source (length objects))
               (setf (fill-pointer objects) destination))
-          (ecase (color object)
-            (white)
-            (black
-             (setf (aref objects destination) object)
-             (setf (index object) destination)
-             (setf (color object) 'white)
-             (incf destination))))))))
+          (let ((object (aref objects source)))
+            (ecase (color object)
+              (white)
+              (black
+               (setf (aref objects destination) object)
+               (setf (index object) destination)
+               (setf (color object) 'white)
+               (incf destination)))))))))
 
 (defclass cons (object)
   ((car :accessor car :initarg :car)
