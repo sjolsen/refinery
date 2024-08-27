@@ -160,12 +160,12 @@
       (let ((section-name (class-name (class-of section)))
             (base (base section))
             (size (size section)))
-          (loop for object across (objects *image*)
-                when (eq section-name (get-object-section object))
-                  do (let ((word-index (object-offset object)))
-                       (advance-to (+ base (* word-bytes word-index)))
-                       (write-object object)))
-          (advance-to (+ base size))))))
+        (loop for object across (objects *image*)
+              when (eq section-name (get-object-section object))
+                do (let ((word-index (object-offset object)))
+                     (advance-to (+ base (* word-bytes word-index)))
+                     (write-object object)))
+        (advance-to (+ base size))))))
 
 (defgeneric write-object (object))
 
