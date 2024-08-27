@@ -1,6 +1,12 @@
 (uiop:define-package :borax-virtual-machine/object-file
   (:mix :uiop/common-lisp :borax-virtual-machine/image)
-  (:export #:write-object-file))
+  (:export ;; Allocation protocol
+           #:cons-section #:object-section
+           #:get-object-section #:allocate-in-section
+           ;; Stream output protocol
+           #:write-word #:write-halfword #:write-translation #:write-object
+           ;; Object file API
+           #:write-object-file))
 
 (in-package :borax-virtual-machine/object-file)
 
@@ -59,9 +65,6 @@
 (defmethod get-object-section ((object borax-vm/image:cons))
   (values 'cons-section))
 
-(defmethod get-object-section ((object record))
-  (values 'object-section :size (+ 3 (length (record-data object)))))
-
 (defgeneric allocate-in-section (section object &key &allow-other-keys))
 
 (defmethod allocate-in-section ((section cons-section) (object borax-vm/image:cons) &key &allow-other-keys)
@@ -83,7 +86,7 @@
     ;; Align the chunk data for the next object
     (when (oddp cursor)
       (incf cursor))
-    ;; Allocate the record
+    ;; Allocate the object
     (prog1 cursor
       (incf cursor size))))
 
@@ -169,23 +172,6 @@
 (defmethod write-object ((object borax-vm/image:cons))
   (write-translation (borax-vm/image:car object))
   (write-translation (borax-vm/image:cdr object)))
-
-(defmethod write-object ((object object-record))
-  (with-slots (widetag class data) object
-    (write-word widetag)
-    (write-word (length data))
-    (write-translation class)
-    (loop for datum across data
-          do (write-translation datum))))
-
-(defmethod write-object ((object record))
-  (with-slots (widetag class data length-aux) object
-    (write-halfword widetag)
-    (write-halfword length-aux)
-    (write-word (length data))
-    (write-translation class)
-    (loop for datum across data
-          do (write-word datum))))
 
 (defun write-file (root)
   (with-slots (cons-section object-section) *allocator*

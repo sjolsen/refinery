@@ -1,6 +1,6 @@
 (uiop:define-package :borax-virtual-machine/image-test
   (:mix :uiop/common-lisp :borax-virtual-machine/image)
-  (:use :clunit))
+  (:use :borax-virtual-machine/mock-record :clunit))
 
 (in-package :borax-virtual-machine/image-test)
 
