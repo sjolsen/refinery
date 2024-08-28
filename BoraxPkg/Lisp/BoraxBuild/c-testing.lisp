@@ -3,7 +3,7 @@
   (:use :borax-build/workspace
         :borax-virtual-machine/object-file
         :borax-virtual-machine/mock-record)
-  (:export #:make-test-files))
+  (:export #:make-test-file))
 
 (in-package :borax-build/c-testing)
 
@@ -42,14 +42,3 @@
               (make-word-record root-class #(#x020100)
                                 :length-aux (- (word-bytes memory-model) 3)))
         (write-object-file root stream)))))
-
-(defun make-test-files ()
-  ;; TODO: Don't put generated files in the source tree
-  (let* ((test-base (uiop:merge-pathnames* #P"BoraxPkg/Test/BoraxVirtualMachineTest/" *refinery-root*))
-         (arches `((:IA32 . ,+32-bit+)
-                   (:X64  . ,+64-bit+))))
-    (loop for (arch . memory-model) in arches
-          for basename = (format nil "TestFile~A.bxo" (string arch))
-          for path = (uiop:merge-pathnames* basename test-base)
-          do (make-test-file path memory-model)
-          collecting (cons arch path))))
