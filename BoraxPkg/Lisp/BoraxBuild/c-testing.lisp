@@ -44,9 +44,12 @@
         (write-object-file root stream)))))
 
 (defun make-test-files ()
+  ;; TODO: Don't put generated files in the source tree
   (let* ((test-base (uiop:merge-pathnames* #P"BoraxPkg/Test/BoraxVirtualMachineTest/" *refinery-root*))
-         (test-files `((#P"TestFileIA32.bxo" . ,+32-bit+)
-                       (#P"TestFileX64.bxo"  . ,+64-bit+))))
-    (loop for (basename . memory-model) in test-files
+         (arches `((:IA32 . ,+32-bit+)
+                   (:X64  . ,+64-bit+))))
+    (loop for (arch . memory-model) in arches
+          for basename = (format nil "TestFile~A.bxo" (string arch))
           for path = (uiop:merge-pathnames* basename test-base)
-          do (make-test-file path memory-model))))
+          do (make-test-file path memory-model)
+          collecting (cons arch path))))
