@@ -14,7 +14,7 @@
            #:object #:index #:sub-objects
            #:cons #:car #:cdr #:push
            ;; record-object
-           #:record-object #:record-class))
+           #:record-object #:record-class #:+record-classes+))
 
 (in-package :borax-virtual-machine/image)
 
@@ -135,13 +135,15 @@
 
 (defclass record-class (standard-class)
   ((classes :type (vector *)
-            :reader classes
             :allocation :class
             :initform (make-space 10))
    (index :type fixnum
           :accessor index)
    (record-slots :type list
                  :accessor record-slots)))
+
+(define-symbol-macro +record-classes+
+  (slot-value (class-prototype (find-class 'record-class)) 'classes))
 
 (defun default-direct-superclasses (direct-superclasses)
   (or direct-superclasses (list (find-class 'record-object))))
@@ -153,7 +155,7 @@
          initargs))
 
 (defmethod initialize-instance :after ((class record-class) &key &allow-other-keys)
-  (setf (index class) (vector-push-extend class (classes class))))
+  (setf (index class) (vector-push-extend class +record-classes+)))
 
 (defmethod reinitialize-instance :around
     ((class record-class) &rest initargs &key direct-superclasses &allow-other-keys)
