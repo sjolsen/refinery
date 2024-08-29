@@ -74,7 +74,7 @@ DemoFillContent (
 
   for (List = Root->Numbers; List != Root->Nil; List = Cdr (Root, List)) {
     BORAX_OBJECT  Object = Car (Root, List);
-    UINTN         Value;
+    INTN          Value;
 
     if (!BORAX_IS_FIXNUM (Object)) {
       (VOID)BufferWrite (Content, L"Not a fixnum\n");

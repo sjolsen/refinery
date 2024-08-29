@@ -96,22 +96,40 @@ EFI_STATUS
 EFIAPI
 BufferWriteInt (
   IN BUFFER  *Buffer,
-  IN UINTN   Value
+  IN INTN    Value
   )
 {
   EFI_STATUS  Status;
+  BOOLEAN     Negative;
+  UINTN       UValue;
   UINTN       Start, End;
+
+  // absolute value
+  Negative = Value < 0;
+  if (Negative) {
+    UValue = ~((UINTN)Value) + 1;
+  } else {
+    UValue = (UINTN)Value;
+  }
 
   // digits
   Start = Buffer->Terminator;
   do {
-    Status = BufferWriteChar (Buffer, L'0' + (Value % 10));
+    Status = BufferWriteChar (Buffer, L'0' + (UValue % 10));
     if (EFI_ERROR (Status)) {
       goto error;
     }
 
-    Value /= 10;
-  } while (Value != 0);
+    UValue /= 10;
+  } while (UValue != 0);
+
+  // sign
+  if (Negative) {
+    Status = BufferWriteChar (Buffer, L'-');
+    if (EFI_ERROR (Status)) {
+      goto error;
+    }
+  }
 
   End = Buffer->Terminator;
 

@@ -37,7 +37,7 @@ EFI_STATUS
 EFIAPI
 BufferWriteInt (
   IN BUFFER  *Buffer,
-  IN UINTN   Value
+  IN INTN    Value
   );
 
 #endif // REFINERY_BUFFER_H
