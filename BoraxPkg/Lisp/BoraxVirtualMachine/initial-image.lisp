@@ -1,5 +1,6 @@
 (uiop:define-package :borax-virtual-machine/initial-image
-  (:mix :uiop/common-lisp :borax-virtual-machine/image))
+  (:mix :uiop/common-lisp :borax-virtual-machine/image)
+  (:export #:make-initial-image))
 
 (in-package :borax-virtual-machine/initial-image)
 
