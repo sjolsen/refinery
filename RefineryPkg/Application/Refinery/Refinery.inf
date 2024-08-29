@@ -18,6 +18,8 @@
   RefineryPkg/RefineryPkg.dec
 
 [Sources]
+  Buffer.c
+  Buffer.h
   Demo.c
   Demo.h
   Display.c
