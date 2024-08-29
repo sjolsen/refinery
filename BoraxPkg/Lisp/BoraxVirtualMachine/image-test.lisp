@@ -78,3 +78,25 @@
   (with-image nil
     (collect (list (make-funny-record)))
     (assert-equal 3 (length (objects *image*)))))
+
+(defsuite record-object-suite ())
+
+(defclass test ()
+  ((x :initform 42)
+   (y :initform t)
+   (z :initform "hello"))
+  (:metaclass record-class))
+
+(deftest test-basic-object (record-object-suite)
+  (with-image nil
+    (let ((o (make-instance 'test)))
+      (assert-equal '(42 t "hello") (sub-objects o)))))
+
+(defclass test2 (test)
+  ((a :initform #\A))
+  (:metaclass record-class))
+
+(deftest test-derived-object (record-object-suite)
+  (with-image nil
+    (let ((o (make-instance 'test2)))
+      (assert-equal '(42 t "hello" #\A) (sub-objects o)))))

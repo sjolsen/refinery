@@ -1,6 +1,6 @@
 (uiop:define-package :borax-virtual-machine/image
   (:nicknames :borax-vm/image)
-  (:use :uiop/common-lisp)
+  (:mix :closer-mop :uiop/common-lisp)
   (:shadow #:most-positive-fixnum #:most-negative-fixnum
            #:cons #:car #:cdr #:push)
   (:export ;; memory-model
@@ -12,7 +12,9 @@
            #:image #:with-image #:*image* #:objects #:collect
            ;; object
            #:object #:index #:sub-objects
-           #:cons #:car #:cdr #:push))
+           #:cons #:car #:cdr #:push
+           ;; record-object
+           #:record-object #:record-class #:+record-classes+ #:record-slots))
 
 (in-package :borax-virtual-machine/image)
 
@@ -128,3 +130,87 @@
       `(let* (,@(mapcar #'list vars vals)
               (,store-var (cons ,obj ,get)))
          ,set))))
+
+(defclass record-object (object) ())
+
+(defclass record-class (standard-class)
+  ((classes :type (vector *)
+            :allocation :class
+            :initform (make-space 10))
+   (index :type fixnum
+          :accessor index)
+   (record-slots :type list
+                 :accessor record-slots)))
+
+(define-symbol-macro +record-classes+
+  (slot-value (class-prototype (find-class 'record-class)) 'classes))
+
+(defun default-direct-superclasses (direct-superclasses)
+  (or direct-superclasses (list (find-class 'record-object))))
+
+(defmethod initialize-instance :around
+    ((class record-class) &rest initargs &key direct-superclasses &allow-other-keys)
+  (apply #'call-next-method class
+         :direct-superclasses (default-direct-superclasses direct-superclasses)
+         initargs))
+
+(defmethod initialize-instance :after ((class record-class) &key &allow-other-keys)
+  (setf (index class) (vector-push-extend class +record-classes+)))
+
+(defmethod reinitialize-instance :around
+    ((class record-class) &rest initargs &key direct-superclasses &allow-other-keys)
+  (apply #'call-next-method class
+         :direct-superclasses (default-direct-superclasses direct-superclasses)
+         initargs))
+
+(defmethod validate-superclass ((class record-class) superclass)
+  (subclassp superclass (find-class 'record-object)))
+
+(defclass record-direct-slot-definition (standard-direct-slot-definition) ())
+
+(defmethod direct-slot-definition-class ((class record-class) &rest initargs)
+  (declare (ignore initargs))
+  (find-class 'record-direct-slot-definition))
+
+(defclass record-effective-slot-definition (standard-effective-slot-definition)
+  ((record-slot-p :type boolean
+                  :accessor record-slot-p)
+   (record-slot-location :type fixnum
+                         :accessor record-slot-location)))
+
+(defmethod effective-slot-definition-class ((class record-class) &rest initargs)
+  (declare (ignore initargs))
+  (find-class 'record-effective-slot-definition))
+
+(defmethod compute-effective-slot-definition :around
+    ((class record-class) name direct-slot-definitions)
+  (let ((effective-slot (call-next-method)))
+    (setf (record-slot-p effective-slot)
+          (typep (first direct-slot-definitions)
+                 'record-direct-slot-definition))
+    effective-slot))
+
+(defun compute-slot-order (class)
+  (let ((names ()))
+    (dolist (c (reverse (class-precedence-list class)))
+      (dolist (slot (class-direct-slots c))
+        (pushnew (slot-definition-name slot) names)))
+    (nreverse names)))
+
+(defmethod compute-slots :around ((class record-class))
+  (let ((slot-order (compute-slot-order class))
+        (effective-slots (call-next-method)))
+    (loop with i = 0
+          for slot-name in slot-order
+          for slot = (find slot-name effective-slots :key #'slot-definition-name)
+          when (record-slot-p slot)
+            do (setf (record-slot-location slot)
+                     (prog1 i (incf i)))
+            and collect slot into record-slots
+          finally (setf (record-slots class) record-slots))
+    effective-slots))
+
+(defmethod sub-objects ((object record-object))
+  (let ((class (class-of object)))
+    (loop for slot in (record-slots class)
+          collecting (slot-value-using-class class object slot))))
