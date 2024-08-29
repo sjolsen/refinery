@@ -14,7 +14,7 @@
            #:object #:index #:sub-objects
            #:cons #:car #:cdr #:push
            ;; record-object
-           #:record-object #:record-class #:+record-classes+))
+           #:record-object #:record-class #:+record-classes+ #:record-slots))
 
 (in-package :borax-virtual-machine/image)
 
