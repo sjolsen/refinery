@@ -53,7 +53,7 @@ RefineryMain (
 
   Status = LoadDrivers ();
   if (EFI_ERROR (Status)) {
-    return Status;
+    goto exit;
   }
 
   Status = gBS->LocateProtocol (
@@ -62,30 +62,30 @@ RefineryMain (
                   (VOID **)&Pointer
                   );
   if (EFI_ERROR (Status)) {
-    return Status;
+    goto exit;
   }
 
   Status = DemoInit (&gDemo, gST->ConOut);
   if (EFI_ERROR (Status)) {
-    return Status;
+    goto exit;
   }
 
   Status = InputInit (&gInput, &gDemo, gST->ConIn, Pointer);
   if (EFI_ERROR (Status)) {
-    return Status;
+    goto cleanup;
   }
 
   while (gDemo.State == DEMO_STATE_RUNNING) {
     if (gDemo.Redraw) {
       Status = DemoRedraw (&gDemo);
       if (EFI_ERROR (Status)) {
-        return Status;
+        goto cleanup;
       }
     }
 
     Status = InputDispatch (&gInput);
     if (EFI_ERROR (Status)) {
-      return Status;
+      goto cleanup;
     }
   }
 
@@ -105,5 +105,8 @@ RefineryMain (
       break;
   }
 
+cleanup:
+  DemoCleanup (&gDemo);
+exit:
   return Status;
 }
