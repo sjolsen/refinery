@@ -11,9 +11,87 @@
 
 STATIC BORAX_ALLOCATOR  gAlloc;
 
+typedef struct {
+  BORAX_RECORD    Record;
+  BORAX_OBJECT    Nil;
+  BORAX_OBJECT    Numbers;
+} ROOT;
+
+STATIC BORAX_OBJECT
+EFIAPI
+Car (
+  ROOT          *Root,
+  BORAX_OBJECT  Object
+  )
+{
+  BORAX_CONS  *Cons;
+
+  if (BORAX_DISCRIMINATE (Object) != BORAX_DISCRIM_CONS) {
+    return Root->Nil;
+  }
+
+  Cons = (BORAX_CONS *)BORAX_GET_POINTER (Object);
+  return Cons->Car;
+}
+
+STATIC BORAX_OBJECT
+EFIAPI
+Cdr (
+  ROOT          *Root,
+  BORAX_OBJECT  Object
+  )
+{
+  BORAX_CONS  *Cons;
+
+  if (BORAX_DISCRIMINATE (Object) != BORAX_DISCRIM_CONS) {
+    return Root->Nil;
+  }
+
+  Cons = (BORAX_CONS *)BORAX_GET_POINTER (Object);
+  return Cons->Cdr;
+}
+
 STATIC EFI_STATUS
 EFIAPI
 DemoFillContent (
+  IN OUT BUFFER    *Content,
+  IN BORAX_OBJECT  RootObject
+  )
+{
+  ROOT          *Root;
+  BORAX_OBJECT  List;
+
+  if (BORAX_DISCRIMINATE (RootObject) != BORAX_DISCRIM_OBJECT_RECORD) {
+    (VOID)BufferWrite (Content, L"Not an object record\n");
+    return EFI_INVALID_PARAMETER;
+  }
+
+  Root = (ROOT *)BORAX_GET_POINTER (RootObject);
+  if (Root->Record.Length < BORAX_RECORD_LENGTH (ROOT)) {
+    (VOID)BufferWrite (Content, L"Record not large enough\n");
+    return EFI_INVALID_PARAMETER;
+  }
+
+  for (List = Root->Numbers; List != Root->Nil; List = Cdr (Root, List)) {
+    BORAX_OBJECT  Object = Car (Root, List);
+    UINTN         Value;
+
+    if (!BORAX_IS_FIXNUM (Object)) {
+      (VOID)BufferWrite (Content, L"Not a fixnum\n");
+      return EFI_INVALID_PARAMETER;
+    }
+
+    Value = BORAX_GET_FIXNUM (Object);
+    (VOID)BufferWriteInt (Content, Value);
+    (VOID)BufferWriteChar (Content, L'\n');
+  }
+
+  return EFI_SUCCESS;
+}
+
+STATIC EFI_STATUS
+EFIAPI
+DemoLoadInitialImage (
   IN OUT BUFFER  *Content
   )
 {
@@ -22,7 +100,7 @@ DemoFillContent (
   EFI_DEVICE_PATH_PROTOCOL  *Remainder;
   CHAR16                    *InitialImagePath = NULL;
   EFI_FILE_PROTOCOL         *InitialImage     = NULL;
-  BORAX_PIN                 *Root;
+  BORAX_PIN                 *RootPin;
 
   BoraxAllocatorInit (&gAlloc, &gSystemAllocator);
 
@@ -57,7 +135,7 @@ DemoFillContent (
     goto cleanup;
   }
 
-  Status = BoraxLoadObjectFile (&gAlloc, InitialImage, &Root);
+  Status = BoraxLoadObjectFile (&gAlloc, InitialImage, &RootPin);
   if (EFI_ERROR (Status)) {
     (VOID)BufferWrite (Content, L"Failed to load ");
     (VOID)BufferWrite (Content, InitialImagePath);
@@ -68,6 +146,8 @@ DemoFillContent (
   (VOID)BufferWrite (Content, L"Loaded ");
   (VOID)BufferWrite (Content, InitialImagePath);
   (VOID)BufferWrite (Content, L"\n");
+
+  (VOID)DemoFillContent (Content, RootPin->Object);
 
 cleanup:
   if (InitialImage != NULL) {
@@ -108,7 +188,7 @@ DemoInit (
     return Status;
   }
 
-  Status = DemoFillContent (&Demo->Content);
+  Status = DemoLoadInitialImage (&Demo->Content);
   if (EFI_ERROR (Status)) {
     BufferDestroy (&Demo->Content);
     return Status;

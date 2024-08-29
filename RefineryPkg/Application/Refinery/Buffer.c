@@ -91,3 +91,45 @@ BufferWriteChar (
 
   return BufferWrite (Buffer, String);
 }
+
+EFI_STATUS
+EFIAPI
+BufferWriteInt (
+  IN BUFFER  *Buffer,
+  IN UINTN   Value
+  )
+{
+  EFI_STATUS  Status;
+  UINTN       Start, End;
+
+  // digits
+  Start = Buffer->Terminator;
+  do {
+    Status = BufferWriteChar (Buffer, L'0' + (Value % 10));
+    if (EFI_ERROR (Status)) {
+      goto error;
+    }
+
+    Value /= 10;
+  } while (Value != 0);
+
+  End = Buffer->Terminator;
+
+  // reverse
+  while (Start < End - 1) {
+    CHAR16  A = Buffer->Data[Start];
+    CHAR16  B = Buffer->Data[End - 1];
+
+    Buffer->Data[Start]   = B;
+    Buffer->Data[End - 1] = A;
+    ++Start;
+    --End;
+  }
+
+  return EFI_SUCCESS;
+
+error:
+  Buffer->Terminator  = Start;
+  Buffer->Data[Start] = L'\0';
+  return Status;
+}

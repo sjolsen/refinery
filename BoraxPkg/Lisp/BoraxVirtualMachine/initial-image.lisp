@@ -33,6 +33,10 @@
     (with-slots (nil numbers) root
       (setf nil (make-instance 'null))
       (setf numbers nil)
+      ;; reverse order
+      (borax-vm/image:push 8675309 numbers)
+      (borax-vm/image:push 343 numbers)
+      (borax-vm/image:push 42 numbers)
       (loop for i from 5 downto 0
             do (borax-vm/image:push i numbers))
       root)))

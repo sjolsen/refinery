@@ -120,6 +120,9 @@ enum {
 #define BORAX_MAKE_FIXNUM(_n) \
 ((_n) << 1)
 
+#define BORAX_GET_FIXNUM(_n) \
+((_n) >> 1)
+
 #define BORAX_IS_CHARACTER(_obj) \
 (((_obj) & BORAX_IMMEDIATE_MASK_CHARACTER) == BORAX_IMMEDIATE_CHARACTER_BEGIN)
 
