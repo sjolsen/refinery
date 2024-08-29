@@ -1,24 +1,15 @@
 #include "Demo.h"
 
 #include "Display.h"
+#include "Library/BoraxMemory.h"
+#include "Library/BoraxObjectFile.h"
+#include "Library/BoraxSystemAllocator.h"
+#include "Library/BundledResource.h"
+#include "Library/DevicePathLib.h"
+#include "Library/MemoryAllocationLib.h"
+#include "Library/UefiLib.h"
 
-static const CHAR16  *LoremIpsum[] = {
-  L"Libero iste soluta quia corrupti similique ut. Aut fugiat impedit rerum \
-omnis maxime quam. Modi aut tempora omnis facere error cum rem quaerat.",
-  L"Et temporibus aut id facilis. Repudiandae quas dolorem ipsum nobis totam \
-aut ipsa est. Minima dolorum a nihil.",
-  L"Quod et rem magni consequatur fugit similique non ut. Expedita eveniet et \
-sunt eos cum. Exercitationem vel perspiciatis voluptatem quos explicabo \
-dolorem doloremque. Molestiae vel aut ad quasi animi nihil aliquam. Enim qui \
-placeat ratione possimus occaecati qui nostrum consequuntur. Eos odit officiis \
-dolore placeat nostrum.",
-  L"Non labore quod asperiores explicabo veniam consequuntur. Ut facere aut \
-quos. Nulla et temporibus tempora sint magnam non. Iusto eius voluptas et \
-praesentium recusandae ea.",
-  L"Error sed sint in. A consequatur ut voluptatem nihil ipsam id ex. \
-Voluptatem neque laborum labore fugit ipsum voluptatem illo iure. Distinctio \
-doloribus dolor ipsum distinctio aliquid recusandae.",
-};
+STATIC BORAX_ALLOCATOR  gAlloc;
 
 STATIC EFI_STATUS
 EFIAPI
@@ -26,22 +17,67 @@ DemoFillContent (
   IN OUT BUFFER  *Content
   )
 {
-  EFI_STATUS  Status;
-  UINTN       I;
+  EFI_STATUS                Status;
+  EFI_DEVICE_PATH_PROTOCOL  *InitialImageDevicePath = NULL;
+  EFI_DEVICE_PATH_PROTOCOL  *Remainder;
+  CHAR16                    *InitialImagePath = NULL;
+  EFI_FILE_PROTOCOL         *InitialImage     = NULL;
+  BORAX_PIN                 *Root;
 
-  for (I = 0; I < ARRAY_SIZE (LoremIpsum); ++I) {
-    Status = BufferWrite (Content, LoremIpsum[I]);
-    if (EFI_ERROR (Status)) {
-      return Status;
-    }
+  BoraxAllocatorInit (&gAlloc, &gSystemAllocator);
 
-    Status = BufferWrite (Content, L"\n\n");
-    if (EFI_ERROR (Status)) {
-      return Status;
-    }
+  Status = BundledResourcePath (L"initial-image.bxo", &InitialImageDevicePath);
+  if (EFI_ERROR (Status)) {
+    (VOID)BufferWrite (Content, L"Failed to construct device path\n");
+    goto cleanup;
   }
 
-  return EFI_SUCCESS;
+  InitialImagePath = ConvertDevicePathToText (
+                       InitialImageDevicePath,
+                       TRUE,
+                       TRUE
+                       );
+  if (InitialImagePath == NULL) {
+    (VOID)BufferWrite (Content, L"Failed to render device path\n");
+    Status = EFI_OUT_OF_RESOURCES;
+    goto cleanup;
+  }
+
+  Remainder = InitialImageDevicePath;
+  Status    = EfiOpenFileByDevicePath (
+                &Remainder,
+                &InitialImage,
+                EFI_FILE_MODE_READ,
+                0
+                );
+  if (EFI_ERROR (Status)) {
+    (VOID)BufferWrite (Content, L"Failed to open ");
+    (VOID)BufferWrite (Content, InitialImagePath);
+    (VOID)BufferWrite (Content, L"\n");
+    goto cleanup;
+  }
+
+  Status = BoraxLoadObjectFile (&gAlloc, InitialImage, &Root);
+  if (EFI_ERROR (Status)) {
+    (VOID)BufferWrite (Content, L"Failed to load ");
+    (VOID)BufferWrite (Content, InitialImagePath);
+    (VOID)BufferWrite (Content, L"\n");
+    goto cleanup;
+  }
+
+  (VOID)BufferWrite (Content, L"Loaded ");
+  (VOID)BufferWrite (Content, InitialImagePath);
+  (VOID)BufferWrite (Content, L"\n");
+
+cleanup:
+  if (InitialImage != NULL) {
+    InitialImage->Close (InitialImage);
+  }
+
+  FreePool (InitialImagePath);
+  FreePool (InitialImageDevicePath);
+  BoraxAllocatorCleanup (&gAlloc);
+  return Status;
 }
 
 EFI_STATUS
