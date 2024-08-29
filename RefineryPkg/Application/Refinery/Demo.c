@@ -2,26 +2,23 @@
 
 #include "Display.h"
 
-static const CHAR16  LoremIpsum[] = L"\
-Libero iste soluta quia corrupti similique ut. Aut fugiat impedit rerum omnis \
-maxime quam. Modi aut tempora omnis facere error cum rem quaerat.\
-\n\n\
-Et temporibus aut id facilis. Repudiandae quas dolorem ipsum nobis totam aut \
-ipsa est. Minima dolorum a nihil.\
-\n\n\
-Quod et rem magni consequatur fugit similique non ut. Expedita eveniet et sunt \
-eos cum. Exercitationem vel perspiciatis voluptatem quos explicabo dolorem \
-doloremque. Molestiae vel aut ad quasi animi nihil aliquam. Enim qui placeat \
-ratione possimus occaecati qui nostrum consequuntur. Eos odit officiis dolore \
-placeat nostrum.\
-\n\n\
-Non labore quod asperiores explicabo veniam consequuntur. Ut facere aut quos. \
-Nulla et temporibus tempora sint magnam non. Iusto eius voluptas et \
-praesentium recusandae ea.\
-\n\n\
-Error sed sint in. A consequatur ut voluptatem nihil ipsam id ex. Voluptatem \
-neque laborum labore fugit ipsum voluptatem illo iure. Distinctio doloribus \
-dolor ipsum distinctio aliquid recusandae.";
+static const CHAR16  *LoremIpsum[] = {
+  L"Libero iste soluta quia corrupti similique ut. Aut fugiat impedit rerum \
+omnis maxime quam. Modi aut tempora omnis facere error cum rem quaerat.",
+  L"Et temporibus aut id facilis. Repudiandae quas dolorem ipsum nobis totam \
+aut ipsa est. Minima dolorum a nihil.",
+  L"Quod et rem magni consequatur fugit similique non ut. Expedita eveniet et \
+sunt eos cum. Exercitationem vel perspiciatis voluptatem quos explicabo \
+dolorem doloremque. Molestiae vel aut ad quasi animi nihil aliquam. Enim qui \
+placeat ratione possimus occaecati qui nostrum consequuntur. Eos odit officiis \
+dolore placeat nostrum.",
+  L"Non labore quod asperiores explicabo veniam consequuntur. Ut facere aut \
+quos. Nulla et temporibus tempora sint magnam non. Iusto eius voluptas et \
+praesentium recusandae ea.",
+  L"Error sed sint in. A consequatur ut voluptatem nihil ipsam id ex. \
+Voluptatem neque laborum labore fugit ipsum voluptatem illo iure. Distinctio \
+doloribus dolor ipsum distinctio aliquid recusandae.",
+};
 
 EFI_STATUS
 EFIAPI
@@ -31,6 +28,7 @@ DemoInit (
   )
 {
   EFI_STATUS  Status;
+  UINTN       I;
 
   Demo->State      = DEMO_STATE_RUNNING;
   Demo->Redraw     = TRUE;
@@ -39,11 +37,40 @@ DemoInit (
   Demo->Foreground = EFI_WHITE;
   Demo->Cursor.X   = 3;
   Demo->Cursor.Y   = 1;
-  Demo->Content    = LoremIpsum;
 
   // Assume the display mode never changes
   Status = ScreenBounds (Demo->TextOut, &Demo->ScreenBounds);
-  return Status;
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = BufferInit (&Demo->Content);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  for (I = 0; I < ARRAY_SIZE (LoremIpsum); ++I) {
+    Status = BufferWrite (&Demo->Content, LoremIpsum[I]);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+
+    Status = BufferWrite (&Demo->Content, L"\n\n");
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+  }
+
+  return EFI_SUCCESS;
+}
+
+VOID
+EFIAPI
+DemoCleanup (
+  IN DEMO  *Demo
+  )
+{
+  BufferDestroy (&Demo->Content);
 }
 
 EFI_STATUS
@@ -83,7 +110,7 @@ DemoRedraw (
       return Status;
     }
 
-    Status = PrintContent (Demo->TextOut, &ContentBox, Demo->Content);
+    Status = PrintContent (Demo->TextOut, &ContentBox, Demo->Content.Data);
     if (EFI_ERROR (Status)) {
       return Status;
     }

@@ -10,7 +10,7 @@
 !include MdePkg/MdeLibs.dsc.inc
 
 [LibraryClasses]
-  BundledDriver|RefineryPkg/Library/BundledDriver/BundledDriver.inf
+  BundledResource|RefineryPkg/Library/BundledResource/BundledResource.inf
 
   BaseLib|MdePkg/Library/BaseLib/BaseLib.inf
   BaseMemoryLib|MdePkg/Library/BaseMemoryLib/BaseMemoryLib.inf

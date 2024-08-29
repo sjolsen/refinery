@@ -1,4 +1,6 @@
 #include <Library/BundledDriver.h>
+#include <Library/BundledResource.h>
+#include <Library/MemoryAllocationLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiRuntimeServicesTableLib.h>
 
@@ -7,6 +9,35 @@
 
 DEMO         gDemo;
 INPUT_STATE  gInput;
+
+STATIC EFI_STATUS
+EFIAPI
+LoadDrivers (
+  VOID
+  )
+{
+  EFI_STATUS                Status;
+  EFI_DEVICE_PATH_PROTOCOL  *DriverPath = NULL;
+
+  Status = BundledResourcePath (L"Drivers\\UsbMouseDxe.efi", &DriverPath);
+  if (EFI_ERROR (Status)) {
+    goto cleanup;
+  }
+
+  Status = LoadBundledDriver (DriverPath);
+  if (EFI_ERROR (Status)) {
+    goto cleanup;
+  }
+
+  Status = ConnectAllEfi ();
+  if (EFI_ERROR (Status)) {
+    goto cleanup;
+  }
+
+cleanup:
+  FreePool (DriverPath);
+  return Status;
+}
 
 EFI_STATUS
 EFIAPI
@@ -20,12 +51,7 @@ RefineryMain (
 
   gBS->SetWatchdogTimer (0, 0, 0, NULL);
 
-  Status = LoadBundledDriver (L"UsbMouseDxe.efi");
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  Status = ConnectAllEfi ();
+  Status = LoadDrivers ();
   if (EFI_ERROR (Status)) {
     return Status;
   }

@@ -1,6 +1,7 @@
 #ifndef REFINERY_DEMO_H
 #define REFINERY_DEMO_H
 
+#include "Buffer.h"
 #include "Geometry.h"
 
 typedef enum _DEMO_STATE {
@@ -22,7 +23,7 @@ typedef struct _DEMO {
   UINTN                              Foreground;
   BOUNDING_BOX                       ScreenBounds;
   VEC2_INTN                          Cursor;
-  const CHAR16                       *Content;
+  BUFFER                             Content;
 } DEMO;
 
 EFI_STATUS
@@ -30,6 +31,12 @@ EFIAPI
 DemoInit (
   DEMO                             *Demo,
   EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL  *TextOut
+  );
+
+VOID
+EFIAPI
+DemoCleanup (
+  IN DEMO  *Demo
   );
 
 EFI_STATUS
