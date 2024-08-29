@@ -121,32 +121,39 @@ BundledResourcePath (
   )
 {
   EFI_STATUS                Status;
-  EFI_DEVICE_PATH_PROTOCOL  *Volume = NULL;
-  EFI_DEVICE_PATH_PROTOCOL  *VR     = NULL;
-  EFI_DEVICE_PATH_PROTOCOL  *VRF    = NULL;
+  EFI_DEVICE_PATH_PROTOCOL  *Volume   = NULL;
+  EFI_DEVICE_PATH_PROTOCOL  *Efi      = NULL;
+  EFI_DEVICE_PATH_PROTOCOL  *Refinery = NULL;
+  EFI_DEVICE_PATH_PROTOCOL  *File     = NULL;
 
   Status = GetEfiVolume (&Volume);
   if (EFI_ERROR (Status)) {
     goto cleanup;
   }
 
-  Status = AppendFilePath (Volume, L"EFI\\Refinery", &VR);
+  Status = AppendFilePath (Volume, L"EFI", &Efi);
   if (EFI_ERROR (Status)) {
     goto cleanup;
   }
 
-  Status = AppendFilePath (VR, Path, &VRF);
+  Status = AppendFilePath (Efi, L"Refinery", &Refinery);
   if (EFI_ERROR (Status)) {
     goto cleanup;
   }
 
-  *Result = VRF;
-  VRF     = NULL;
+  Status = AppendFilePath (Refinery, Path, &File);
+  if (EFI_ERROR (Status)) {
+    goto cleanup;
+  }
+
+  *Result = File;
+  File    = NULL;
   Status  = EFI_SUCCESS;
 
 cleanup:
-  FreePool (VRF);
-  FreePool (VR);
+  FreePool (File);
+  FreePool (Refinery);
+  FreePool (Efi);
   FreePool (Volume);
   return Status;
 }
