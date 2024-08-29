@@ -20,6 +20,30 @@ Voluptatem neque laborum labore fugit ipsum voluptatem illo iure. Distinctio \
 doloribus dolor ipsum distinctio aliquid recusandae.",
 };
 
+STATIC EFI_STATUS
+EFIAPI
+DemoFillContent (
+  IN OUT BUFFER  *Content
+  )
+{
+  EFI_STATUS  Status;
+  UINTN       I;
+
+  for (I = 0; I < ARRAY_SIZE (LoremIpsum); ++I) {
+    Status = BufferWrite (Content, LoremIpsum[I]);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+
+    Status = BufferWrite (Content, L"\n\n");
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+  }
+
+  return EFI_SUCCESS;
+}
+
 EFI_STATUS
 EFIAPI
 DemoInit (
@@ -28,7 +52,6 @@ DemoInit (
   )
 {
   EFI_STATUS  Status;
-  UINTN       I;
 
   Demo->State      = DEMO_STATE_RUNNING;
   Demo->Redraw     = TRUE;
@@ -49,16 +72,10 @@ DemoInit (
     return Status;
   }
 
-  for (I = 0; I < ARRAY_SIZE (LoremIpsum); ++I) {
-    Status = BufferWrite (&Demo->Content, LoremIpsum[I]);
-    if (EFI_ERROR (Status)) {
-      return Status;
-    }
-
-    Status = BufferWrite (&Demo->Content, L"\n\n");
-    if (EFI_ERROR (Status)) {
-      return Status;
-    }
+  Status = DemoFillContent (&Demo->Content);
+  if (EFI_ERROR (Status)) {
+    BufferDestroy (&Demo->Content);
+    return Status;
   }
 
   return EFI_SUCCESS;
