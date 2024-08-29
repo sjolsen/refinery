@@ -1,10 +1,10 @@
 [Defines]
   INF_VERSION    = 1.27
-  BASE_NAME      = BundledDriver
+  BASE_NAME      = BundledResource
   FILE_GUID      = ed637947-ffed-4a1d-b99c-2a3f61de864d
   MODULE_TYPE    = UEFI_APPLICATION
   VERSION_STRING = 0.00
-  LIBRARY_CLASS  = BundledDriver
+  LIBRARY_CLASS  = BundledResource
 
 [LibraryClasses]
   DevicePathLib
@@ -18,6 +18,7 @@
 
 [Sources]
   BundledDriver.c
+  BundledResource.c
 
 [Protocols]
   gEfiLoadedImageDevicePathProtocolGuid  ## CONSUMES

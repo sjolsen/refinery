@@ -6,7 +6,7 @@
 EFI_STATUS
 EFIAPI
 LoadBundledDriver (
-  const CHAR16  *Basename
+  IN EFI_DEVICE_PATH_PROTOCOL  *DriverPath
   );
 
 EFI_STATUS

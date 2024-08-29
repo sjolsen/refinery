@@ -7,7 +7,7 @@
   ENTRY_POINT    = RefineryMain
 
 [LibraryClasses]
-  BundledDriver
+  BundledResource
   MemoryAllocationLib
   UefiApplicationEntryPoint
   UefiLib
