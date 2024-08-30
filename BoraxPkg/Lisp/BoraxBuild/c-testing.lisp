@@ -1,9 +1,8 @@
 (uiop:define-package :borax-build/c-testing
   (:use :uiop/common-lisp
         :borax-build/workspace
-        :borax-virtual-machine/image
-        :borax-virtual-machine/mock-record
-        :borax-virtual-machine/object-file)
+        :borax-virtual-machine
+        :borax-virtual-machine/mock-record)
   (:export #:make-test-file))
 
 (in-package :borax-build/c-testing)
