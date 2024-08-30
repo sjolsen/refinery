@@ -15,6 +15,7 @@ typedef struct {
   BORAX_RECORD    Record;
   BORAX_OBJECT    Nil;
   BORAX_OBJECT    Numbers;
+  BORAX_OBJECT    Stuff;
 } ROOT;
 
 STATIC BORAX_OBJECT
@@ -53,13 +54,105 @@ Cdr (
 
 STATIC EFI_STATUS
 EFIAPI
+FormatRecursive (
+  IN OUT BUFFER    *Content,
+  IN ROOT          *Root,
+  IN BORAX_OBJECT  Object
+  )
+{
+  switch (BORAX_DISCRIMINATE (Object)) {
+    case BORAX_DISCRIM_FIXNUM:
+      return BufferWriteInt (Content, BORAX_GET_FIXNUM (Object));
+
+    case BORAX_DISCRIM_UNBOUND:
+      return BufferWrite (Content, L"<UNBOUND>");
+
+    case BORAX_DISCRIM_CHARACTER:
+      return BufferWriteChar (Content, BORAX_GET_CHARACTER (Object));
+
+    case BORAX_DISCRIM_CONS:
+    {
+      EFI_STATUS    Status;
+      BORAX_OBJECT  List;
+      BOOLEAN       Start = TRUE;
+
+      Status = BufferWriteChar (Content, L'(');
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      for (List = Object;
+           BORAX_DISCRIMINATE (List) == BORAX_DISCRIM_CONS;
+           List = Cdr (Root, List))
+      {
+        BORAX_OBJECT  Value = Car (Root, List);
+
+        if (Start) {
+          Start = FALSE;
+        } else {
+          Status = BufferWriteChar (Content, L' ');
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
+        }
+
+        Status = FormatRecursive (Content, Root, Value);
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+      }
+
+      if (List != Root->Nil) {
+        Status = BufferWrite (Content, L" . ");
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        Status = FormatRecursive (Content, Root, List);
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+      }
+
+      Status = BufferWriteChar (Content, L')');
+      return Status;
+    }
+
+    case BORAX_DISCRIM_WORD_RECORD:
+      return BufferWrite (Content, L"<WORD RECORD>");
+
+    case BORAX_DISCRIM_OBJECT_RECORD:
+      if (Object == Root->Nil) {
+        return BufferWrite (Content, L"NIL");
+      } else {
+        return BufferWrite (Content, L"<OBJECT RECORD>");
+      }
+
+    case BORAX_DISCRIM_WEAK_POINTER:
+      return BufferWrite (Content, L"<WEAK POINTER>");
+
+    case BORAX_DISCRIM_PIN:
+      return BufferWrite (Content, L"<PIN>");
+
+    case BORAX_DISCRIM_MOVED:
+      return BufferWrite (Content, L"<MOVED>");
+
+    case BORAX_DISCRIM_UNINITIALIZED:
+      return BufferWrite (Content, L"<UNINITIALIZED>");
+
+    default:
+      return BufferWrite (Content, L"<ILLEGAL>");
+  }
+}
+
+STATIC EFI_STATUS
+EFIAPI
 DemoFillContent (
   IN OUT BUFFER    *Content,
   IN BORAX_OBJECT  RootObject
   )
 {
-  ROOT          *Root;
-  BORAX_OBJECT  List;
+  ROOT  *Root;
 
   if (BORAX_DISCRIMINATE (RootObject) != BORAX_DISCRIM_OBJECT_RECORD) {
     (VOID)BufferWrite (Content, L"Not an object record\n");
@@ -72,26 +165,13 @@ DemoFillContent (
     return EFI_INVALID_PARAMETER;
   }
 
-  (VOID)BufferWriteChar (Content, L'(');
+  (VOID)BufferWrite (Content, L"NUMBERS = ");
+  (VOID)FormatRecursive (Content, Root, Root->Numbers);
+  (VOID)BufferWriteChar (Content, L'\n');
 
-  for (List = Root->Numbers; List != Root->Nil; List = Cdr (Root, List)) {
-    BORAX_OBJECT  Object = Car (Root, List);
-    INTN          Value;
-
-    if (!BORAX_IS_FIXNUM (Object)) {
-      (VOID)BufferWrite (Content, L"Not a fixnum\n");
-      return EFI_INVALID_PARAMETER;
-    }
-
-    if (List != Root->Numbers) {
-      (VOID)BufferWriteChar (Content, L' ');
-    }
-
-    Value = BORAX_GET_FIXNUM (Object);
-    (VOID)BufferWriteInt (Content, Value);
-  }
-
-  (VOID)BufferWriteChar (Content, L')');
+  (VOID)BufferWrite (Content, L"STUFF = ");
+  (VOID)FormatRecursive (Content, Root, Root->Stuff);
+  (VOID)BufferWriteChar (Content, L'\n');
 
   return EFI_SUCCESS;
 }
