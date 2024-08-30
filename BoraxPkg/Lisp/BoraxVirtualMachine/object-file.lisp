@@ -1,5 +1,5 @@
 (uiop:define-package :borax-virtual-machine/object-file
-  (:mix :uiop/common-lisp :borax-virtual-machine/image)
+  (:mix :closer-mop :uiop/common-lisp :borax-virtual-machine/image)
   (:export ;; Allocation protocol
            #:cons-section #:object-section
            #:get-object-section #:allocate-in-section
@@ -64,6 +64,10 @@
 
 (defmethod get-object-section ((object borax-vm/image:cons))
   (values 'cons-section))
+
+(defmethod get-object-section ((object record-object))
+  (let ((class (class-of object)))
+    (values 'object-section :size (+ 3 (length (record-slots class))))))
 
 (defgeneric allocate-in-section (section object &key &allow-other-keys))
 
@@ -172,6 +176,15 @@
 (defmethod write-object ((object borax-vm/image:cons))
   (write-translation (borax-vm/image:car object))
   (write-translation (borax-vm/image:cdr object)))
+
+(defmethod write-object ((object record-object))
+  (let ((class (class-of object)))
+    (write-word #x07)  ; widetag object-record
+    (write-word (length (record-slots class)))
+    (write-word #x07)  ; unbound
+    (loop for slot in (record-slots class)
+          for value = (slot-value-using-class class object slot)
+          do (write-translation value))))
 
 (defun write-file (root)
   (with-slots (cons-section object-section) *allocator*
