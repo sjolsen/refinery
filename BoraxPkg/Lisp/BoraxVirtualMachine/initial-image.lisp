@@ -1,5 +1,5 @@
 (uiop:define-package :borax-virtual-machine/initial-image
-  (:mix :uiop/common-lisp :borax-virtual-machine/common-lisp)
+  (:mix :closer-mop :uiop/common-lisp :borax-virtual-machine/common-lisp)
   (:use :borax-virtual-machine/image)
   (:export #:make-initial-image))
 
@@ -17,27 +17,37 @@
 
 (defvar *root* nil)
 
-(defun borax-vm/cl:list (&rest values)
-  (with-slots (borax-vm/cl:nil) *root*
-    (let ((result borax-vm/cl:nil))
-      (dolist (value (nreverse values))
-        (borax-vm/cl:push value result))
-      result)))
+(defgeneric reify (object))
 
-(defun borax-vm/cl:list* (&rest values)
-  (with-slots (borax-vm/cl:nil) *root*
-    (destructuring-bind (result . rvalues)
-        (nreverse values)
-      (dolist (value rvalues)
-        (borax-vm/cl:push value result))
-      result)))
+(define-modify-macro reify-place ()
+  reify)
+
+(defmethod reify ((object borax-vm/cl:cons))
+  (reify-place (borax-vm/cl:car object))
+  (reify-place (borax-vm/cl:cdr object))
+  object)
+
+(defmethod reify ((object record-object))
+  (let ((class (class-of object)))
+    (loop for slot in (record-slots class)
+          do (reify-place (slot-value-using-class class object slot))))
+  object)
+
+(defmethod reify ((object null))
+  (slot-value *root* 'borax-vm/cl:nil))
+
+(defmethod reify ((object cons))
+  (borax-vm/cl:cons (reify (car object))
+                    (reify (cdr object))))
+
+(defmethod reify ((object integer))
+  ;; TODO: Arbitrary-precision integers
+  object)
 
 (defun make-initial-image ()
   (let ((*root* (make-instance 'root)))
     (with-slots (borax-vm/cl:nil numbers stuff) *root*
       (setf borax-vm/cl:nil (make-instance 'borax-vm/cl:null))
-      (setf numbers (borax-vm/cl:list -100 -3 0 1 2 3 4 5 43 343 8675309))
-      (setf stuff (borax-vm/cl:list (borax-vm/cl:list 1 2 3)
-                                    (borax-vm/cl:cons borax-vm/cl:nil borax-vm/cl:nil)
-                                    (borax-vm/cl:list* 4 5 6 7)))
-      *root*)))
+      (setf numbers '(-100 -3 0 1 2 3 4 5 43 343 8675309))
+      (setf stuff '((1 2 3) (nil . nil) (4 5 6 . 7)))
+      (reify *root*))))
