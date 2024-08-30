@@ -10,6 +10,7 @@
            #:immediate #:immediate-value #:+unbound+
            ;; image
            #:image #:with-image #:*image* #:objects #:root
+           #:image-class #:image-class-locative
            #:reify #:reify-place #:reify-image
            ;; object
            #:object #:index #:sub-objects
@@ -75,17 +76,22 @@
             :reader objects
             :initform (make-space))
    (classes :type (vector *)
-            :accessor classes
-            :initform (make-space 10))
+            :initarg :classes)
    (root :accessor root
          :initform +unbound+)))
 
 (defvar *image* nil)
 
+(defun make-image (memory-model)
+  (make-instance 'image :memory-model memory-model
+                 :classes (make-array (length +classes+)
+                                      :initial-element nil
+                                      :adjustable t)))
+
 (defmacro with-image (memory-model &body body)
   `(progn
      (assert (null *image*))
-     (let ((*image* (make-instance 'image :memory-model ,memory-model)))
+     (let ((*image* (make-image ,memory-model)))
        ,@body)))
 
 (defclass object ()
@@ -178,6 +184,36 @@
 
 (defmethod validate-superclass ((class borax-vm/cl:class) superclass)
   (subclassp superclass (default-direct-superclass class)))
+
+(defun ensure-image-class (class)
+  (with-slots (index) class
+    (with-slots (classes) *image*
+      (unless (> (length classes) index)
+        (adjust-array classes (1+ index) :initial-element nil))
+      (when (null (aref classes index))
+        (setf (aref classes index) class))
+      (values classes index))))
+
+(defun image-class (class)
+  (multiple-value-bind (classes index)
+      (ensure-image-class class)
+    (aref classes index)))
+
+(defun image-class-locative (class)
+  (multiple-value-bind (classes index)
+      (ensure-image-class class)
+    (locative-for (aref classes index))))
+
+(defmethod sub-objects :around ((object object))
+  ;; TODO: This hack is needed for mock-record, which should be removed.
+  (if (typep (class-of object) 'borax-vm/cl:class)
+      (cons (image-class-locative (class-of object))
+            (call-next-method))
+      (call-next-method)))
+
+(defmethod reify ((object borax-vm/cl:class))
+  ;; TODO: Class object
+  +unbound+)
 
 (defclass borax-vm/cl:cons ()
   ((borax-vm/cl:car :accessor borax-vm/cl:car

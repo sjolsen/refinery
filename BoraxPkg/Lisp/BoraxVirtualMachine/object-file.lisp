@@ -191,14 +191,14 @@
   (let ((class (class-of object)))
     (write-word #x07)  ; widetag object-record
     (write-word (length (record-slots class)))
-    (write-word #x07)  ; unbound
+    (write-translation (image-class (class-of object)))
     (do-record-slots (value) object
       (write-translation value))))
 
 (defmethod write-object ((object record-vector))
   (write-word #x07)  ; widetag object-record
   (write-word (length (vector-data object)))
-  (write-word #x07)  ; unbound
+  (write-translation (image-class (class-of object)))
   (map nil #'write-translation (vector-data object)))
 
 (defun write-file (root)

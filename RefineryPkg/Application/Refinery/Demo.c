@@ -130,7 +130,7 @@ FormatRecursive (
     }
 
     case BORAX_DISCRIM_WORD_RECORD:
-      return BufferWrite (Content, L"<WORD RECORD>");
+      return BufferWrite (Content, L"<WORD-RECORD>");
 
     case BORAX_DISCRIM_OBJECT_RECORD:
       if (Object == Root->Nil) {
@@ -143,7 +143,17 @@ FormatRecursive (
 
         Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
 
-        Status = BufferWrite (Content, L"<OBJECT RECORD #(");
+        Status = BufferWrite (Content, L"<OBJECT-RECORD ");
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        Status = FormatRecursive (Content, Root, Record->Class);
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        Status = BufferWrite (Content, L" #(");
         if (EFI_ERROR (Status)) {
           return Status;
         }
@@ -170,7 +180,7 @@ FormatRecursive (
       }
 
     case BORAX_DISCRIM_WEAK_POINTER:
-      return BufferWrite (Content, L"<WEAK POINTER>");
+      return BufferWrite (Content, L"<WEAK-POINTER>");
 
     case BORAX_DISCRIM_PIN:
       return BufferWrite (Content, L"<PIN>");

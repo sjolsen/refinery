@@ -94,7 +94,7 @@
 (deftest test-basic-object (record-object-suite)
   (with-image nil
     (let ((o (make-instance 'test)))
-      (assert-equal '(42 t "hello")
+      (assert-equal (list (find-class 'test) 42 t "hello")
           (mapcar #'dereference (sub-objects o))))))
 
 (defclass test2 (test)
@@ -104,5 +104,5 @@
 (deftest test-derived-object (record-object-suite)
   (with-image nil
     (let ((o (make-instance 'test2)))
-      (assert-equal '(42 t "hello" #\A)
+      (assert-equal (list (find-class 'test2) 42 t "hello" #\A)
           (mapcar #'dereference (sub-objects o))))))
