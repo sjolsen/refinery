@@ -1,5 +1,5 @@
 (uiop:define-package :borax-virtual-machine/image-test
-  (:use :uiop/common-lisp :clunit
+  (:use :uiop/common-lisp :clunit :cl-locatives
         :borax-virtual-machine/image
         :borax-virtual-machine/mock-record))
 
@@ -91,7 +91,8 @@
 (deftest test-basic-object (record-object-suite)
   (with-image nil
     (let ((o (make-instance 'test)))
-      (assert-equal '(42 t "hello") (sub-objects o)))))
+      (assert-equal '(42 t "hello")
+          (mapcar #'dereference (sub-objects o))))))
 
 (defclass test2 (test)
   ((a :initform #\A))
@@ -100,4 +101,5 @@
 (deftest test-derived-object (record-object-suite)
   (with-image nil
     (let ((o (make-instance 'test2)))
-      (assert-equal '(42 t "hello" #\A) (sub-objects o)))))
+      (assert-equal '(42 t "hello" #\A)
+          (mapcar #'dereference (sub-objects o))))))

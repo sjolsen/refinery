@@ -1,6 +1,7 @@
 (uiop:define-package :borax-virtual-machine/image
   (:nicknames :borax-vm/image)
   (:mix :closer-mop :uiop/common-lisp :borax-virtual-machine/common-lisp)
+  (:use :cl-locatives)
   (:export ;; memory-model
            #:memory-model #:+32-bit+ #:+64-bit+
            #:page-bytes #:word-bits #:word-bytes #:word-type
@@ -100,7 +101,7 @@
       ;; Scan sub-objects then mark black
       (do ((object (pop grey-list) (pop grey-list)))
           ((null object))
-        (mark-grey (sub-objects object))
+        (mark-grey (mapcar #'dereference (sub-objects object)))
         (mark-black object))
       ;; Compact
       (with-slots (objects) *image*
@@ -161,7 +162,8 @@
   (make-instance 'borax-vm/cl:cons :car car :cdr cdr))
 
 (defmethod sub-objects ((object borax-vm/cl:cons))
-  (list (borax-vm/cl:car object) (borax-vm/cl:cdr object)))
+  (list (locative-for (borax-vm/cl:car object))
+        (locative-for (borax-vm/cl:cdr object))))
 
 (defmacro borax-vm/cl:push (obj place &environment env)
   (multiple-value-bind (vars vals store-vars set get)
@@ -239,7 +241,7 @@
 (defmethod sub-objects ((object record-object))
   (let ((result nil))
     (do-record-slots (value) object
-      (push value result))
+      (push (locative-for value) result))
     (nreverse result)))
 
 (defclass record-vector ()
@@ -249,4 +251,6 @@
   (:metaclass borax-vm/cl:class))
 
 (defmethod sub-objects ((object record-vector))
-  (concatenate 'list (vector-data object)))
+  (loop with vector-data = (vector-data object)
+        for i from 0 below (length vector-data)
+        collect (locative-for (aref vector-data i))))

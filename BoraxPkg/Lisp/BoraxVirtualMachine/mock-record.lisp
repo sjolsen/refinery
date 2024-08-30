@@ -1,5 +1,5 @@
 (uiop:define-package :borax-virtual-machine/mock-record
-  (:use :uiop/common-lisp :clunit :flexi-streams
+  (:use :uiop/common-lisp :clunit :cl-locatives :flexi-streams
         :borax-virtual-machine/image
         :borax-virtual-machine/object-file)
   (:export #:record #:object-record #:word-record
@@ -17,8 +17,10 @@
          :initarg :data)))
 
 (defmethod sub-objects ((object record))
-  (list* (record-class object)
-         (concatenate 'list (record-data object))))
+  (list* (locative-for (record-class object))
+         (loop with record-data = (record-data object)
+               for i from 0 below (length record-data)
+               collect (locative-for (aref record-data i)))))
 
 (defclass object-record (record)
   ((widetag :type fixnum

@@ -1,6 +1,6 @@
 (uiop:define-package :borax-virtual-machine/initial-image
   (:mix :closer-mop :uiop/common-lisp :borax-virtual-machine/common-lisp)
-  (:use :borax-virtual-machine/image)
+  (:use :cl-locatives :borax-virtual-machine/image)
   (:export #:make-initial-image))
 
 (in-package :borax-virtual-machine/initial-image)
@@ -23,20 +23,9 @@
 (define-modify-macro reify-place ()
   reify)
 
-(defmethod reify ((object borax-vm/cl:cons))
-  (reify-place (borax-vm/cl:car object))
-  (reify-place (borax-vm/cl:cdr object))
-  object)
-
-(defmethod reify ((object record-object))
-  (do-record-slots (place) object
-    (reify-place place))
-  object)
-
-(defmethod reify ((object record-vector))
-  (with-slots (vector-data) object
-    (loop for i from 0 below (length vector-data)
-          do (reify-place (aref vector-data i))))
+(defmethod reify ((object object))
+  (dolist (loc (sub-objects object))
+    (reify-place (dereference loc)))
   object)
 
 (defmethod reify ((object null))
