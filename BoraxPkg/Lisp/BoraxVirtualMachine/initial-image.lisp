@@ -17,6 +17,9 @@
    string)
   (:metaclass record-class))
 
+;; TODO: If we ever end up with multiple instances of image generation code,
+;; reify methods for CL classes will clash. This could be solved by adding a
+;; root parameter for specialization.
 (defmethod reify ((object null))
   (slot-value (root *image*) 'borax-vm/cl:nil))
 
