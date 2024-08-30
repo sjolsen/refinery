@@ -17,6 +17,7 @@ typedef struct {
   BORAX_OBJECT    Numbers;
   BORAX_OBJECT    Stuff;
   BORAX_OBJECT    Vector;
+  BORAX_OBJECT    String;
 } ROOT;
 
 STATIC BORAX_OBJECT
@@ -215,6 +216,10 @@ DemoFillContent (
 
   (VOID)BufferWrite (Content, L"VECTOR = ");
   (VOID)FormatRecursive (Content, Root, Root->Vector);
+  (VOID)BufferWriteChar (Content, L'\n');
+
+  (VOID)BufferWrite (Content, L"STRING = ");
+  (VOID)FormatRecursive (Content, Root, Root->String);
   (VOID)BufferWriteChar (Content, L'\n');
 
   return EFI_SUCCESS;

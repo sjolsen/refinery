@@ -13,7 +13,8 @@
   (borax-vm/cl:nil
    numbers
    stuff
-   vector)
+   vector
+   string)
   (:metaclass record-class))
 
 (defvar *root* nil)
@@ -47,9 +48,10 @@
 
 (defun make-initial-image ()
   (let ((*root* (make-instance 'root)))
-    (with-slots (borax-vm/cl:nil numbers stuff vector) *root*
+    (with-slots (borax-vm/cl:nil numbers stuff vector string) *root*
       (setf borax-vm/cl:nil (make-instance 'borax-vm/cl:null))
       (setf numbers '(-100 -3 0 1 2 3 4 5 43 343 8675309))
       (setf stuff '((1 2 3) (nil . nil) (4 5 6 . 7)))
       (setf vector #(#\A #\B #\C #\D))
+      (setf string "Hellorld!")
       (reify *root*))))
