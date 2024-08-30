@@ -9,8 +9,10 @@
            #:image #:with-image #:*image* #:objects #:collect
            ;; object
            #:object #:index #:sub-objects
+           ;; borax-vm/cl:class
+           #:+classes+ #:default-direct-superclass
            ;; record-object
-           #:record-object #:record-class #:+record-classes+
+           #:record-object #:record-class
            #:record-slots #:do-record-slots
            ;; record-vector
            #:record-vector #:vector-data))
@@ -115,11 +117,45 @@
                (setf (color object) 'white)
                (incf destination)))))))))
 
-(defclass borax-vm/cl:cons (object)
+(defclass borax-vm/cl:class (standard-class)
+  ((classes :type (vector *)
+            :allocation :class
+            :initform (make-space 10))
+   (index :type fixnum
+          :accessor index)))
+
+(define-symbol-macro +classes+
+  (slot-value (class-prototype (find-class 'borax-vm/cl:class)) 'classes))
+
+(defmethod initialize-instance :after ((class borax-vm/cl:class) &key &allow-other-keys)
+  (setf (index class) (vector-push-extend class +classes+)))
+
+(defgeneric default-direct-superclass (class)
+  (:method ((class borax-vm/cl:class)) (find-class 'object)))
+
+(defun default-initialize-instance (call-next-method class initargs)
+  (destructuring-bind (&rest initargs &key direct-superclasses &allow-other-keys)
+      initargs
+    (apply call-next-method class
+           :direct-superclasses (or direct-superclasses
+                                    (list (default-direct-superclass class)))
+           initargs)))
+
+(defmethod initialize-instance :around ((class borax-vm/cl:class) &rest initargs)
+  (default-initialize-instance #'call-next-method class initargs))
+
+(defmethod reinitialize-instance :around ((class borax-vm/cl:class) &rest initargs)
+  (default-initialize-instance #'call-next-method class initargs))
+
+(defmethod validate-superclass ((class borax-vm/cl:class) superclass)
+  (subclassp superclass (default-direct-superclass class)))
+
+(defclass borax-vm/cl:cons ()
   ((borax-vm/cl:car :accessor borax-vm/cl:car
                     :initarg :car)
    (borax-vm/cl:cdr :accessor borax-vm/cl:cdr
-                    :initarg :cdr)))
+                    :initarg :cdr))
+  (:metaclass borax-vm/cl:class))
 
 (defun borax-vm/cl:cons (car cdr)
   (make-instance 'borax-vm/cl:cons :car car :cdr cdr))
@@ -135,42 +171,14 @@
               (,store-var (borax-vm/cl:cons ,obj ,get)))
          ,set))))
 
-(defclass borax-vm/cl:class (standard-class)
-  ((classes :type (vector *)
-            :allocation :class
-            :initform (make-space 10))
-   (index :type fixnum
-          :accessor index)))
-
-(define-symbol-macro +classes+
-  (slot-value (class-prototype (find-class 'borax-vm/cl:class)) 'classes))
-
-(defmethod initialize-instance :after ((class borax-vm/cl:class) &key &allow-other-keys)
-  (setf (index class) (vector-push-extend class +classes+)))
-
 (defclass record-object (object) ())
 
 (defclass record-class (borax-vm/cl:class)
   ((record-slots :type list
                  :accessor record-slots)))
 
-(defun default-direct-superclasses (direct-superclasses)
-  (or direct-superclasses (list (find-class 'record-object))))
-
-(defmethod initialize-instance :around
-    ((class record-class) &rest initargs &key direct-superclasses &allow-other-keys)
-  (apply #'call-next-method class
-         :direct-superclasses (default-direct-superclasses direct-superclasses)
-         initargs))
-
-(defmethod reinitialize-instance :around
-    ((class record-class) &rest initargs &key direct-superclasses &allow-other-keys)
-  (apply #'call-next-method class
-         :direct-superclasses (default-direct-superclasses direct-superclasses)
-         initargs))
-
-(defmethod validate-superclass ((class record-class) superclass)
-  (subclassp superclass (find-class 'record-object)))
+(defmethod default-direct-superclass ((class record-class))
+  (find-class 'record-object))
 
 (defclass record-direct-slot-definition (standard-direct-slot-definition) ())
 
@@ -234,10 +242,11 @@
       (push value result))
     (nreverse result)))
 
-(defclass record-vector (object)
+(defclass record-vector ()
   ((vector-data :type vector
                 :accessor vector-data
-                :initarg :data)))
+                :initarg :data))
+  (:metaclass borax-vm/cl:class))
 
 (defmethod sub-objects ((object record-vector))
   (concatenate 'list (vector-data object)))
