@@ -602,8 +602,12 @@ TranslateObject (
         BXO_DEBUG_ERROR ("bad reference tag");
         return EFI_LOAD_ERROR;
     }
-  } else {
+  } else if (BORAX_IS_IMMEDIATE (*Object)) {
+    // Nothing to do
     return EFI_SUCCESS;
+  } else {
+    BXO_DEBUG_ERROR ("illegal immediate representation");
+    return EFI_LOAD_ERROR;
   }
 }
 
