@@ -28,9 +28,8 @@
   object)
 
 (defmethod reify ((object record-object))
-  (let ((class (class-of object)))
-    (loop for slot in (record-slots class)
-          do (reify-place (slot-value-using-class class object slot))))
+  (do-record-slots (place) object
+    (reify-place place))
   object)
 
 (defmethod reify ((object null))

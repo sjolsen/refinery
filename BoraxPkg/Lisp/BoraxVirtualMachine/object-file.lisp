@@ -183,9 +183,8 @@
     (write-word #x07)  ; widetag object-record
     (write-word (length (record-slots class)))
     (write-word #x07)  ; unbound
-    (loop for slot in (record-slots class)
-          for value = (slot-value-using-class class object slot)
-          do (write-translation value))))
+    (do-record-slots (value) object
+      (write-translation value))))
 
 (defun write-file (root)
   (with-slots (cons-section object-section) *allocator*

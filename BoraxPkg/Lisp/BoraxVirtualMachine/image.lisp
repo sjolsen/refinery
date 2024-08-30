@@ -10,7 +10,8 @@
            ;; object
            #:object #:index #:sub-objects
            ;; record-object
-           #:record-object #:record-class #:+record-classes+ #:record-slots))
+           #:record-object #:record-class #:+record-classes+
+           #:record-slots #:do-record-slots))
 
 (in-package :borax-virtual-machine/image)
 
@@ -211,7 +212,21 @@
           finally (setf (record-slots class) record-slots))
     effective-slots))
 
+(defmacro do-record-slots (lambda-list object &body body)
+  (destructuring-bind (place-name &optional slot-name) lambda-list
+    (let ((object-name (gensym))
+          (class-name (gensym))
+          (slot-name (or slot-name (gensym))))
+      `(let* ((,object-name ,object)
+              (,class-name (class-of ,object-name)))
+         (dolist (,slot-name (record-slots ,class-name))
+           (symbol-macrolet ((,place-name (slot-value-using-class ,class-name
+                                                                  ,object-name
+                                                                  ,slot-name)))
+             ,@body))))))
+
 (defmethod sub-objects ((object record-object))
-  (let ((class (class-of object)))
-    (loop for slot in (record-slots class)
-          collecting (slot-value-using-class class object slot))))
+  (let ((result nil))
+    (do-record-slots (value) object
+      (push value result))
+    (nreverse result)))
