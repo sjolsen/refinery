@@ -70,6 +70,9 @@
   (let ((class (class-of object)))
     (values 'object-section :size (+ 3 (length (record-slots class))))))
 
+(defmethod get-object-section ((object record-vector))
+  (values 'object-section :size (+ 3 (length (vector-data object)))))
+
 (defgeneric allocate-in-section (section object &key &allow-other-keys))
 
 (defmethod allocate-in-section ((section cons-section) (object borax-vm/cl:cons) &key &allow-other-keys)
@@ -123,6 +126,9 @@
     (assert (>= object (borax-vm/cl:most-negative-fixnum memory-model)))
     (assert (<= object (borax-vm/cl:most-positive-fixnum memory-model)))
     (ash object 1)))
+
+(defmethod translate ((object character))
+  (logior #x7FD (ash (char-code object) 11)))
 
 (defvar *stream* nil)
 
@@ -185,6 +191,12 @@
     (write-word #x07)  ; unbound
     (do-record-slots (value) object
       (write-translation value))))
+
+(defmethod write-object ((object record-vector))
+  (write-word #x07)  ; widetag object-record
+  (write-word (length (vector-data object)))
+  (write-word #x07)  ; unbound
+  (map nil #'write-translation (vector-data object)))
 
 (defun write-file (root)
   (with-slots (cons-section object-section) *allocator*

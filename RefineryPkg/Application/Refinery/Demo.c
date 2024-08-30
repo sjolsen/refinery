@@ -16,6 +16,7 @@ typedef struct {
   BORAX_OBJECT    Nil;
   BORAX_OBJECT    Numbers;
   BORAX_OBJECT    Stuff;
+  BORAX_OBJECT    Vector;
 } ROOT;
 
 STATIC BORAX_OBJECT
@@ -68,7 +69,17 @@ FormatRecursive (
       return BufferWrite (Content, L"<UNBOUND>");
 
     case BORAX_DISCRIM_CHARACTER:
+    {
+      EFI_STATUS  Status;
+
+      Status = BufferWrite (Content, L"#\\");
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      // TODO: Non-printable characters
       return BufferWriteChar (Content, BORAX_GET_CHARACTER (Object));
+    }
 
     case BORAX_DISCRIM_CONS:
     {
@@ -114,8 +125,7 @@ FormatRecursive (
         }
       }
 
-      Status = BufferWriteChar (Content, L')');
-      return Status;
+      return BufferWriteChar (Content, L')');
     }
 
     case BORAX_DISCRIM_WORD_RECORD:
@@ -125,7 +135,37 @@ FormatRecursive (
       if (Object == Root->Nil) {
         return BufferWrite (Content, L"NIL");
       } else {
-        return BufferWrite (Content, L"<OBJECT RECORD>");
+        EFI_STATUS    Status;
+        BORAX_RECORD  *Record;
+        UINTN         I;
+        BOOLEAN       Start = TRUE;
+
+        Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
+
+        Status = BufferWrite (Content, L"<OBJECT RECORD #(");
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        for (I = 0; I < Record->Length; ++I) {
+          BORAX_OBJECT  Value = Record->Data[I];
+
+          if (Start) {
+            Start = FALSE;
+          } else {
+            Status = BufferWriteChar (Content, L' ');
+            if (EFI_ERROR (Status)) {
+              return Status;
+            }
+          }
+
+          Status = FormatRecursive (Content, Root, Value);
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
+        }
+
+        return BufferWrite (Content, L")>");
       }
 
     case BORAX_DISCRIM_WEAK_POINTER:
@@ -171,6 +211,10 @@ DemoFillContent (
 
   (VOID)BufferWrite (Content, L"STUFF = ");
   (VOID)FormatRecursive (Content, Root, Root->Stuff);
+  (VOID)BufferWriteChar (Content, L'\n');
+
+  (VOID)BufferWrite (Content, L"VECTOR = ");
+  (VOID)FormatRecursive (Content, Root, Root->Vector);
   (VOID)BufferWriteChar (Content, L'\n');
 
   return EFI_SUCCESS;

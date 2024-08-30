@@ -12,7 +12,8 @@
 (defclass root ()
   (borax-vm/cl:nil
    numbers
-   stuff)
+   stuff
+   vector)
   (:metaclass record-class))
 
 (defvar *root* nil)
@@ -32,6 +33,12 @@
     (reify-place place))
   object)
 
+(defmethod reify ((object record-vector))
+  (with-slots (vector-data) object
+    (loop for i from 0 below (length vector-data)
+          do (reify-place (aref vector-data i))))
+  object)
+
 (defmethod reify ((object null))
   (slot-value *root* 'borax-vm/cl:nil))
 
@@ -39,14 +46,21 @@
   (borax-vm/cl:cons (reify (car object))
                     (reify (cdr object))))
 
+(defmethod reify ((object vector))
+  (make-instance 'record-vector :data (map 'vector #'reify object)))
+
 (defmethod reify ((object integer))
   ;; TODO: Arbitrary-precision integers
   object)
 
+(defmethod reify ((object character))
+  object)
+
 (defun make-initial-image ()
   (let ((*root* (make-instance 'root)))
-    (with-slots (borax-vm/cl:nil numbers stuff) *root*
+    (with-slots (borax-vm/cl:nil numbers stuff vector) *root*
       (setf borax-vm/cl:nil (make-instance 'borax-vm/cl:null))
       (setf numbers '(-100 -3 0 1 2 3 4 5 43 343 8675309))
       (setf stuff '((1 2 3) (nil . nil) (4 5 6 . 7)))
+      (setf vector #(#\A #\B #\C #\D))
       (reify *root*))))

@@ -11,7 +11,9 @@
            #:object #:index #:sub-objects
            ;; record-object
            #:record-object #:record-class #:+record-classes+
-           #:record-slots #:do-record-slots))
+           #:record-slots #:do-record-slots
+           ;; record-vector
+           #:record-vector #:vector-data))
 
 (in-package :borax-virtual-machine/image)
 
@@ -231,3 +233,11 @@
     (do-record-slots (value) object
       (push value result))
     (nreverse result)))
+
+(defclass record-vector (object)
+  ((vector-data :type vector
+                :accessor vector-data
+                :initarg :data)))
+
+(defmethod sub-objects ((object record-vector))
+  (concatenate 'list (vector-data object)))
