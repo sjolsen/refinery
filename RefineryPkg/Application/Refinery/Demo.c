@@ -72,6 +72,8 @@ DemoFillContent (
     return EFI_INVALID_PARAMETER;
   }
 
+  (VOID)BufferWriteChar (Content, L'(');
+
   for (List = Root->Numbers; List != Root->Nil; List = Cdr (Root, List)) {
     BORAX_OBJECT  Object = Car (Root, List);
     INTN          Value;
@@ -81,10 +83,15 @@ DemoFillContent (
       return EFI_INVALID_PARAMETER;
     }
 
+    if (List != Root->Numbers) {
+      (VOID)BufferWriteChar (Content, L' ');
+    }
+
     Value = BORAX_GET_FIXNUM (Object);
     (VOID)BufferWriteInt (Content, Value);
-    (VOID)BufferWriteChar (Content, L'\n');
   }
+
+  (VOID)BufferWriteChar (Content, L')');
 
   return EFI_SUCCESS;
 }
