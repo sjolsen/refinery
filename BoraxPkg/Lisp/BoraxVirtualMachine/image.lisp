@@ -6,8 +6,11 @@
            #:memory-model #:+32-bit+ #:+64-bit+
            #:page-bytes #:word-bits #:word-bytes #:word-type
            #:cons-first-word #:object-first-word
+           ;; immediate
+           #:immediate #:immediate-value #:+unbound+
            ;; image
-           #:image #:with-image #:*image* #:objects #:collect
+           #:image #:with-image #:*image* #:objects #:root
+           #:reify #:reify-place #:reify-image
            ;; object
            #:object #:index #:sub-objects
            ;; borax-vm/cl:class
@@ -57,13 +60,25 @@
 (defun make-space (&optional (initial-size +initial-space-size+))
   (make-array initial-size :fill-pointer 0 :adjustable t))
 
+(defclass immediate ()
+  ((value :type integer
+          :reader immediate-value
+          :initarg :value)))
+
+(defvar +unbound+ (make-instance 'immediate :value #x5))
+
 (defclass image ()
   ((memory-model :type memory-model
                  :reader memory-model
                  :initarg :memory-model)
    (objects :type (vector *)
             :reader objects
-            :initform (make-space))))
+            :initform (make-space))
+   (classes :type (vector *)
+            :accessor classes
+            :initform (make-space 10))
+   (root :accessor root
+         :initform +unbound+)))
 
 (defvar *image* nil)
 
@@ -86,37 +101,50 @@
 
 (defgeneric sub-objects (object))
 
-(defun collect (roots)
-  (let ((grey-list nil))
-    (flet ((mark-grey (objects)
-             (dolist (object objects)
+(defgeneric reify (object)
+  (:method ((object immediate)) object)
+  (:method ((object object)) object)
+  ;; TODO: Arbitrary-precision integers
+  (:method ((object integer)) object)
+  (:method ((object character)) object))
+
+(define-modify-macro reify-place ()
+  reify)
+
+(defun reify-image ()
+  (with-slots (objects root) *image*
+    ;; Mark
+    (let ((grey-list nil))
+      (flet ((mark-grey (object)
                (when (typep object 'object)
                  (when (eq (color object) 'white)
                    (setf (color object) 'grey)
-                   (push object grey-list)))))
-           (mark-black (object)
-             (setf (color object) 'black)))
-      ;; Mark roots grey
-      (mark-grey roots)
-      ;; Scan sub-objects then mark black
-      (do ((object (pop grey-list) (pop grey-list)))
-          ((null object))
-        (mark-grey (mapcar #'dereference (sub-objects object)))
-        (mark-black object))
-      ;; Compact
-      (with-slots (objects) *image*
-        (do* ((source 0 (1+ source))
-              (destination 0))
-             ((= source (length objects))
-              (setf (fill-pointer objects) destination))
-          (let ((object (aref objects source)))
-            (ecase (color object)
-              (white)
-              (black
-               (setf (aref objects destination) object)
-               (setf (index object) destination)
-               (setf (color object) 'white)
-               (incf destination)))))))))
+                   (push object grey-list))))
+             (mark-black (object)
+               (setf (color object) 'black)))
+        ;; Mark roots grey
+        (reify-place root)
+        (mark-grey root)
+        ;; Scan sub-objects then mark black
+        (do ((object (pop grey-list) (pop grey-list)))
+            ((null object))
+          (dolist (loc (sub-objects object))
+            (reify-place (dereference loc))
+            (mark-grey (dereference loc)))
+          (mark-black object))))
+    ;; Compact
+    (do* ((source 0 (1+ source))
+          (destination 0))
+         ((= source (length objects))
+          (setf (fill-pointer objects) destination))
+      (let ((object (aref objects source)))
+        (ecase (color object)
+          (white)
+          (black
+           (setf (aref objects destination) object)
+           (setf (index object) destination)
+           (setf (color object) 'white)
+           (incf destination)))))))
 
 (defclass borax-vm/cl:class (standard-class)
   ((classes :type (vector *)
@@ -164,6 +192,9 @@
 (defmethod sub-objects ((object borax-vm/cl:cons))
   (list (locative-for (borax-vm/cl:car object))
         (locative-for (borax-vm/cl:cdr object))))
+
+(defmethod reify ((object cons))
+  (borax-vm/cl:cons (car object) (cdr object)))
 
 (defmacro borax-vm/cl:push (obj place &environment env)
   (multiple-value-bind (vars vals store-vars set get)
@@ -254,3 +285,11 @@
   (loop with vector-data = (vector-data object)
         for i from 0 below (length vector-data)
         collect (locative-for (aref vector-data i))))
+
+(defmethod reify ((object vector))
+  ;; Copy the vector so we can reify its contents.
+  ;;
+  ;; TODO: COPY-SEQ may be a more appropriate implementation for specialized
+  ;; vector types.
+  (make-instance 'record-vector :data (make-array (length object)
+                                                  :initial-contents object)))

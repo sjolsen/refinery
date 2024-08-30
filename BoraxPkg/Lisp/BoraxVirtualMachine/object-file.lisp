@@ -109,6 +109,9 @@
 
 (defgeneric translate (object))
 
+(defmethod translate ((object immediate))
+  (immediate-value object))
+
 (defmethod translate ((object object))
   (let ((word-index (object-offset object))
         (tag (ecase (get-object-section object)

@@ -24,28 +24,29 @@
 (deftest test-cons-discard (collect-suite)
   (with-image nil
     (borax-vm/cl:cons 1 2)
-    (collect nil)
+    (reify-image)
     (assert-equal 0 (length (objects *image*)))))
 
 (deftest test-cons-keep (collect-suite)
   (with-image nil
-    (collect (list (borax-vm/cl:cons 1 2)))
+    (setf (root *image*) (borax-vm/cl:cons 1 2))
+    (reify-image)
     (assert-equal 1 (length (objects *image*)))))
 
 (deftest test-cons-keep-some (collect-suite)
   (with-image nil
-    (let ((roots nil))
+    (with-slots (root) *image*
       (dotimes (n 5)
         (borax-vm/cl:cons 1 2)
-        (push (borax-vm/cl:cons 3 4) roots))
-      (collect roots))
-    (assert-equal 5 (length (objects *image*)))
+        (push (borax-vm/cl:cons 3 4) root))
+      (reify-image))
+    (assert-equal 10 (length (objects *image*)))
     (loop for i upfrom 0
           for object across (objects *image*)
           do (assert-equal i (index object)))))
 
 (defun make-circular (n)
-  (let* ((last (borax-vm/cl:cons 0 nil))
+  (let* ((last (borax-vm/cl:cons 0 +unbound+))
          (first last))
     (dotimes (i n)
       (setf first (borax-vm/cl:cons (1+ i) first)))
@@ -54,30 +55,32 @@
 (deftest test-circular-discard (collect-suite)
   (with-image nil
     (make-circular 5)
-    (collect nil)
+    (reify-image)
     (assert-equal 0 (length (objects *image*)))))
 
 (deftest test-circular-keep (collect-suite)
   (with-image nil
-    (collect (list (make-circular 5)))
+    (setf (root *image*) (make-circular 5))
+    (reify-image)
     (assert-equal 6 (length (objects *image*)))))
 
 (defun make-funny-record ()
-  (let ((class (make-word-record nil #())))
+  (let ((class (make-word-record +unbound+ #())))
     (setf (record-class class) class)
     (let* ((nested (make-word-record class #(1 2 3)))
-           (data (make-array 3 :initial-contents (list nested nested nil))))
+           (data (make-array 3 :initial-contents (list nested nested +unbound+))))
       (make-object-record class data))))
 
 (deftest test-record-discard (collect-suite)
   (with-image nil
     (make-funny-record)
-    (collect nil)
+    (reify-image)
     (assert-equal 0 (length (objects *image*)))))
 
 (deftest test-record-keep (collect-suite)
   (with-image nil
-    (collect (list (make-funny-record)))
+    (setf (root *image*) (make-funny-record))
+    (reify-image)
     (assert-equal 3 (length (objects *image*)))))
 
 (defsuite record-object-suite ())
