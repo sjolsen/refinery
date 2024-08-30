@@ -213,10 +213,9 @@
     effective-slots))
 
 (defmacro do-record-slots (lambda-list object &body body)
-  (destructuring-bind (place-name &optional slot-name) lambda-list
+  (destructuring-bind (place-name &optional (slot-name (gensym))) lambda-list
     (let ((object-name (gensym))
-          (class-name (gensym))
-          (slot-name (or slot-name (gensym))))
+          (class-name (gensym)))
       `(let* ((,object-name ,object)
               (,class-name (class-of ,object-name)))
          (dolist (,slot-name (record-slots ,class-name))
