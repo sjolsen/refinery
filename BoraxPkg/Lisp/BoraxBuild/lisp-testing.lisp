@@ -1,5 +1,6 @@
 (uiop:define-package :borax-build/lisp-testing
-  (:use :uiop/common-lisp :uiop :clunit :borax-build/asdf-extensions)
+  (:use :uiop/common-lisp :uiop :clunit
+        :borax-build/asdf-extensions)
   (:export #:test-failure #:suite-report #:run-tests))
 
 (in-package :borax-build/lisp-testing)
@@ -26,7 +27,7 @@
 
 (defun run-tests (component)
   (loop :for suite :in (get-test-suites component)
-        :for suite-report := (run-suite suite)
+        :for suite-report := (run-suite suite :use-debugger t)
         :when (get-test-failures suite-report)
           :do (progn
                 (print suite-report)

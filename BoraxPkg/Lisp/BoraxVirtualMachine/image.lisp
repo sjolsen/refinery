@@ -1,18 +1,14 @@
 (uiop:define-package :borax-virtual-machine/image
   (:nicknames :borax-vm/image)
-  (:mix :closer-mop :uiop/common-lisp)
-  (:shadow #:most-positive-fixnum #:most-negative-fixnum
-           #:cons #:car #:cdr #:push)
+  (:mix :closer-mop :uiop/common-lisp :borax-virtual-machine/common-lisp)
   (:export ;; memory-model
            #:memory-model #:+32-bit+ #:+64-bit+
            #:page-bytes #:word-bits #:word-bytes #:word-type
-           #:most-positive-fixnum #:most-negative-fixnum
            #:cons-first-word #:object-first-word
            ;; image
            #:image #:with-image #:*image* #:objects #:collect
            ;; object
            #:object #:index #:sub-objects
-           #:cons #:car #:cdr #:push
            ;; record-object
            #:record-object #:record-class #:+record-classes+ #:record-slots))
 
@@ -23,8 +19,10 @@
   (word-bits            0 :type (member 32 64) :read-only t)
   (word-bytes           0 :type (member 4 8)   :read-only t)
   (word-type            t                      :read-only t)
-  (most-positive-fixnum 0 :type integer        :read-only t)
-  (most-negative-fixnum 0 :type integer        :read-only t)
+  (borax-vm/cl:most-positive-fixnum
+                        0 :type integer        :read-only t)
+  (borax-vm/cl:most-negative-fixnum
+                        0 :type integer        :read-only t)
   (cons-first-word      0 :type fixnum         :read-only t)
   (object-first-word    0 :type fixnum         :read-only t))
 
@@ -77,6 +75,7 @@
           :accessor index)))
 
 (defmethod initialize-instance :after ((instance object) &key)
+  (assert (not (null *image*)))
   (setf (index instance) (vector-push-extend instance (objects *image*))))
 
 (defgeneric sub-objects (object))
@@ -88,7 +87,7 @@
                (when (typep object 'object)
                  (when (eq (color object) 'white)
                    (setf (color object) 'grey)
-                   (cl:push object grey-list)))))
+                   (push object grey-list)))))
            (mark-black (object)
              (setf (color object) 'black)))
       ;; Mark roots grey
@@ -113,22 +112,24 @@
                (setf (color object) 'white)
                (incf destination)))))))))
 
-(defclass cons (object)
-  ((car :accessor car :initarg :car)
-   (cdr :accessor cdr :initarg :cdr)))
+(defclass borax-vm/cl:cons (object)
+  ((borax-vm/cl:car :accessor borax-vm/cl:car
+                    :initarg :car)
+   (borax-vm/cl:cdr :accessor borax-vm/cl:cdr
+                    :initarg :cdr)))
 
-(defun cons (car cdr)
-  (make-instance 'cons :car car :cdr cdr))
+(defun borax-vm/cl:cons (car cdr)
+  (make-instance 'borax-vm/cl:cons :car car :cdr cdr))
 
-(defmethod sub-objects ((object cons))
-  (list (car object) (cdr object)))
+(defmethod sub-objects ((object borax-vm/cl:cons))
+  (list (borax-vm/cl:car object) (borax-vm/cl:cdr object)))
 
-(defmacro push (obj place &environment env)
+(defmacro borax-vm/cl:push (obj place &environment env)
   (multiple-value-bind (vars vals store-vars set get)
       (get-setf-expansion place env)
     (destructuring-bind (store-var) store-vars
       `(let* (,@(mapcar #'list vars vals)
-              (,store-var (cons ,obj ,get)))
+              (,store-var (borax-vm/cl:cons ,obj ,get)))
          ,set))))
 
 (defclass record-object (object) ())

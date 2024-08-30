@@ -1,5 +1,6 @@
 (uiop:define-package :borax-virtual-machine/object-file
-  (:mix :closer-mop :uiop/common-lisp :borax-virtual-machine/image)
+  (:mix :closer-mop :uiop/common-lisp)
+  (:use :borax-virtual-machine/image)
   (:export ;; Allocation protocol
            #:cons-section #:object-section
            #:get-object-section #:allocate-in-section
@@ -62,7 +63,7 @@
 
 (defgeneric get-object-section (object))
 
-(defmethod get-object-section ((object borax-vm/image:cons))
+(defmethod get-object-section ((object borax-vm/cl:cons))
   (values 'cons-section))
 
 (defmethod get-object-section ((object record-object))
@@ -71,7 +72,7 @@
 
 (defgeneric allocate-in-section (section object &key &allow-other-keys))
 
-(defmethod allocate-in-section ((section cons-section) (object borax-vm/image:cons) &key &allow-other-keys)
+(defmethod allocate-in-section ((section cons-section) (object borax-vm/cl:cons) &key &allow-other-keys)
   (with-slots (memory-model) *image*
     (with-slots (page-bytes word-bytes cons-first-word) memory-model
       (with-slots (cursor) section
@@ -119,8 +120,8 @@
 (defmethod translate ((object integer))
   (with-slots (memory-model) *image*
     ;; TODO: arbitrary integers
-    (assert (>= object (borax-vm/image:most-negative-fixnum memory-model)))
-    (assert (<= object (borax-vm/image:most-positive-fixnum memory-model)))
+    (assert (>= object (borax-vm/cl:most-negative-fixnum memory-model)))
+    (assert (<= object (borax-vm/cl:most-positive-fixnum memory-model)))
     (ash object 1)))
 
 (defvar *stream* nil)
@@ -173,9 +174,9 @@
 
 (defgeneric write-object (object))
 
-(defmethod write-object ((object borax-vm/image:cons))
-  (write-translation (borax-vm/image:car object))
-  (write-translation (borax-vm/image:cdr object)))
+(defmethod write-object ((object borax-vm/cl:cons))
+  (write-translation (borax-vm/cl:car object))
+  (write-translation (borax-vm/cl:cdr object)))
 
 (defmethod write-object ((object record-object))
   (let ((class (class-of object)))

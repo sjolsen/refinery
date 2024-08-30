@@ -1,6 +1,7 @@
 (uiop:define-package :borax-virtual-machine/mock-record
-  (:mix :uiop/common-lisp :borax-virtual-machine/image)
-  (:use :borax-virtual-machine/object-file :clunit :flexi-streams)
+  (:use :uiop/common-lisp :clunit :flexi-streams
+        :borax-virtual-machine/image
+        :borax-virtual-machine/object-file)
   (:export #:record #:object-record #:word-record
            #:make-object-record #:make-word-record
            #:widetag #:length-aux #:record-class #:record-data #:data))
