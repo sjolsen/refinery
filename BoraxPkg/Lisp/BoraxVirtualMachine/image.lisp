@@ -133,19 +133,24 @@
               (,store-var (borax-vm/cl:cons ,obj ,get)))
          ,set))))
 
-(defclass record-object (object) ())
-
-(defclass record-class (standard-class)
+(defclass borax-vm/cl:class (standard-class)
   ((classes :type (vector *)
             :allocation :class
             :initform (make-space 10))
    (index :type fixnum
-          :accessor index)
-   (record-slots :type list
-                 :accessor record-slots)))
+          :accessor index)))
 
-(define-symbol-macro +record-classes+
-  (slot-value (class-prototype (find-class 'record-class)) 'classes))
+(define-symbol-macro +classes+
+  (slot-value (class-prototype (find-class 'borax-vm/cl:class)) 'classes))
+
+(defmethod initialize-instance :after ((class borax-vm/cl:class) &key &allow-other-keys)
+  (setf (index class) (vector-push-extend class +classes+)))
+
+(defclass record-object (object) ())
+
+(defclass record-class (borax-vm/cl:class)
+  ((record-slots :type list
+                 :accessor record-slots)))
 
 (defun default-direct-superclasses (direct-superclasses)
   (or direct-superclasses (list (find-class 'record-object))))
@@ -155,9 +160,6 @@
   (apply #'call-next-method class
          :direct-superclasses (default-direct-superclasses direct-superclasses)
          initargs))
-
-(defmethod initialize-instance :after ((class record-class) &key &allow-other-keys)
-  (setf (index class) (vector-push-extend class +record-classes+)))
 
 (defmethod reinitialize-instance :around
     ((class record-class) &rest initargs &key direct-superclasses &allow-other-keys)

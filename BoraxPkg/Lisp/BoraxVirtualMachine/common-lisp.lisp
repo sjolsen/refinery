@@ -3,9 +3,11 @@
   (:use :uiop/common-lisp)
   (:shadow #:most-positive-fixnum #:most-negative-fixnum
            #:cons #:car #:cdr #:push
-           #:null #:nil #:list #:list*)
+           #:null #:nil
+           #:class)
   (:export #:most-positive-fixnum #:most-negative-fixnum
            #:cons #:car #:cdr #:push
-           #:null #:nil #:list #:list*))
+           #:null #:nil
+           #:class))
 
 (in-package :borax-virtual-machine/common-lisp)
