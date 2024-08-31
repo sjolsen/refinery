@@ -225,6 +225,35 @@ FormatRecursive (
 
 STATIC EFI_STATUS
 EFIAPI
+PrintLabelled (
+  IN OUT BUFFER    *Content,
+  IN ROOT          *Root,
+  IN CONST CHAR16  *Label,
+  IN BORAX_OBJECT  Object
+  )
+{
+  EFI_STATUS  Status;
+
+  Status = BufferWrite (Content, Label);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = BufferWrite (Content, L" = ");
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = FormatRecursive (Content, Root, Object);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  return BufferWriteChar (Content, L'\n');
+}
+
+STATIC EFI_STATUS
+EFIAPI
 DemoFillContent (
   IN OUT BUFFER    *Content,
   IN BORAX_OBJECT  RootObject
@@ -243,21 +272,10 @@ DemoFillContent (
     return EFI_INVALID_PARAMETER;
   }
 
-  (VOID)BufferWrite (Content, L"NUMBERS = ");
-  (VOID)FormatRecursive (Content, Root, Root->Numbers);
-  (VOID)BufferWriteChar (Content, L'\n');
-
-  (VOID)BufferWrite (Content, L"STUFF = ");
-  (VOID)FormatRecursive (Content, Root, Root->Stuff);
-  (VOID)BufferWriteChar (Content, L'\n');
-
-  (VOID)BufferWrite (Content, L"VECTOR = ");
-  (VOID)FormatRecursive (Content, Root, Root->Vector);
-  (VOID)BufferWriteChar (Content, L'\n');
-
-  (VOID)BufferWrite (Content, L"STRING = ");
-  (VOID)FormatRecursive (Content, Root, Root->String);
-  (VOID)BufferWriteChar (Content, L'\n');
+  (VOID)PrintLabelled (Content, Root, L"NUMBERS", Root->Numbers);
+  (VOID)PrintLabelled (Content, Root, L"STUFF", Root->Stuff);
+  (VOID)PrintLabelled (Content, Root, L"VECTOR", Root->Vector);
+  (VOID)PrintLabelled (Content, Root, L"STRING", Root->String);
 
   return EFI_SUCCESS;
 }
