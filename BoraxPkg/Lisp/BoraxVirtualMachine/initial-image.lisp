@@ -29,6 +29,7 @@
   (borax-vm/cl:standard-class
    borax-vm/cl:package
    borax-vm/cl:symbol
+   borax-vm/cl:simple-vector
    borax-vm/cl:string)
   (:metaclass record-class))
 

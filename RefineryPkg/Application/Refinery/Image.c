@@ -30,6 +30,7 @@ typedef struct {
   BORAX_OBJECT    StandardClass;
   BORAX_OBJECT    Package;
   BORAX_OBJECT    Symbol;
+  BORAX_OBJECT    SimpleVector;
   BORAX_OBJECT    String;
 } CLASSES;
 
@@ -109,6 +110,24 @@ Cdr (
 
   Cons = (BORAX_CONS *)BORAX_GET_POINTER (Object);
   return Cons->Cdr;
+}
+
+STATIC BORAX_OBJECT
+EFIAPI
+GetClassName (
+  IN LISP_CONTEXT  *Ctx,
+  IN BORAX_OBJECT  Object
+  )
+{
+  EFI_STATUS      Status;
+  STANDARD_CLASS  *Class;
+
+  Status = GET_RECORD (Ctx, Object, &Class);
+  if (EFI_ERROR (Status)) {
+    return Ctx->Globals->Nil;
+  }
+
+  return Class->Name;
 }
 
 STATIC EFI_STATUS
@@ -244,17 +263,32 @@ FormatRecursive (
 
         return BufferWriteChar (Ctx->Content, L'>');
       } else {
-        UINTN    I;
-        BOOLEAN  Start = TRUE;
+        BORAX_OBJECT  ClassName;
+        UINTN         I;
+        BOOLEAN       Start = TRUE;
 
-        Status = BufferWrite (Ctx->Content, L"<OBJECT-RECORD ");
-        if (EFI_ERROR (Status)) {
-          return Status;
-        }
+        ClassName = GetClassName (Ctx, Record->Class);
 
-        Status = FormatRecursive (Ctx, Record->Class);
-        if (EFI_ERROR (Status)) {
-          return Status;
+        if (ClassName == Ctx->Globals->Nil) {
+          Status = BufferWrite (Ctx->Content, L"<OBJECT-RECORD ");
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
+
+          Status = FormatRecursive (Ctx, Record->Class);
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
+        } else {
+          Status = BufferWriteChar (Ctx->Content, L'<');
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
+
+          Status = FormatRecursive (Ctx, ClassName);
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
         }
 
         Status = BufferWrite (Ctx->Content, L" #(");
