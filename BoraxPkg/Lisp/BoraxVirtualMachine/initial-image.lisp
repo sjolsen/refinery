@@ -57,10 +57,13 @@
   (eq object borax-vm/cl:nil))
 
 (defun borax-vm/cl:string= (a b)
-  (string= (vector-data a) (vector-data b)))
+  (flet ((get-string (s)
+           (etypecase s
+             (string s)
+             (borax-vm/cl:string (vector-data s)))))
+    (string= (get-string a) (get-string b))))
 
 (defun borax-vm/cl:find-package (name)
-  (reify-place name)
   (loop for l = (packages (root *image*))
           then (borax-vm/cl:cdr l)
         until (borax-vm/cl:null l)
