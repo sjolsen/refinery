@@ -9,10 +9,38 @@
   ()
   (:metaclass record-class))
 
+(defclass borax-vm/cl:package ()
+  ((name :reader borax-vm/cl:package-name
+         :initarg :name))
+  (:metaclass record-class))
+
+(defclass borax-vm/cl:symbol ()
+  ((package :reader borax-vm/cl:symbol-package
+            :initarg :package)
+   (name :reader borax-vm/cl:symbol-name
+         :initarg :name))
+  (:metaclass record-class))
+
+(defclass globals ()
+  ((borax-vm/cl:nil :initform (make-instance 'borax-vm/cl:null)))
+  (:metaclass record-class))
+
+(defclass classes ()
+  (borax-vm/cl:standard-class
+   borax-vm/cl:package
+   borax-vm/cl:symbol
+   borax-vm/cl:string)
+  (:metaclass record-class))
+
+(defmethod initialize-instance :after ((instance classes) &key)
+  (do-record-slots (place slot) instance
+    (setf place (find-class (slot-definition-name slot)))))
+
 (defclass root ()
-  ((borax-vm/cl:nil :initform (make-instance 'borax-vm/cl:null))
-   (borax-vm/cl:standard-class :initform (find-class 'borax-vm/cl:standard-class))
-   (borax-vm/cl:string :initform (find-class 'borax-vm/cl:string))
+  ((globals :accessor globals
+            :initform (make-instance 'globals))
+   (classes :accessor classes
+            :initform (make-instance 'classes))
    numbers
    stuff
    vector
@@ -23,7 +51,7 @@
 ;; reify methods for CL classes will clash. This could be solved by adding a
 ;; root parameter for specialization.
 (defmethod reify ((object null))
-  (slot-value (root *image*) 'borax-vm/cl:nil))
+  (slot-value (globals (root *image*)) 'borax-vm/cl:nil))
 
 (defun make-initial-image ()
   (with-slots (numbers stuff vector hello)

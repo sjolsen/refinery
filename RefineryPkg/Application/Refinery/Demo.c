@@ -13,9 +13,8 @@ STATIC BORAX_ALLOCATOR  gAlloc;
 
 typedef struct {
   BORAX_RECORD    Record;
-  BORAX_OBJECT    Nil;
-  BORAX_OBJECT    StandardClass;
-  BORAX_OBJECT    String;
+  BORAX_OBJECT    Globals;
+  BORAX_OBJECT    Classes;
   BORAX_OBJECT    Numbers;
   BORAX_OBJECT    Stuff;
   BORAX_OBJECT    Vector;
@@ -24,20 +23,72 @@ typedef struct {
 
 typedef struct {
   BORAX_RECORD    Record;
+  BORAX_OBJECT    Nil;
+} GLOBALS;
+
+typedef struct {
+  BORAX_RECORD    Record;
+  BORAX_OBJECT    StandardClass;
+  BORAX_OBJECT    Package;
+  BORAX_OBJECT    Symbol;
+  BORAX_OBJECT    String;
+} CLASSES;
+
+typedef struct {
+  BORAX_RECORD    Record;
   BORAX_OBJECT    Name;
 } STANDARD_CLASS;
+
+typedef struct {
+  BUFFER     *Content;
+  GLOBALS    *Globals;
+  CLASSES    *Classes;
+} LISP_CONTEXT;
+
+STATIC BORAX_OBJECT
+EFIAPI
+GetRecord (
+  IN LISP_CONTEXT   *Ctx,
+  IN BORAX_OBJECT   Object,
+  IN UINTN          MinLength,
+  OUT BORAX_RECORD  **Record
+  )
+{
+  BORAX_RECORD  *TheRecord;
+
+  if (BORAX_DISCRIMINATE (Object) != BORAX_DISCRIM_OBJECT_RECORD) {
+    (VOID)BufferWrite (Ctx->Content, L"Not an object record\n");
+    return EFI_INVALID_PARAMETER;
+  }
+
+  TheRecord = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
+  if (TheRecord->Length < MinLength) {
+    (VOID)BufferWrite (Ctx->Content, L"Record too small (");
+    (VOID)BufferWriteInt (Ctx->Content, TheRecord->Length);
+    (VOID)BufferWrite (Ctx->Content, L" < ");
+    (VOID)BufferWriteInt (Ctx->Content, MinLength);
+    (VOID)BufferWrite (Ctx->Content, L")\n");
+    return EFI_INVALID_PARAMETER;
+  }
+
+  *Record = TheRecord;
+  return EFI_SUCCESS;
+}
+
+#define GET_RECORD(_ctx, _obj, _ptr) \
+(GetRecord ((_ctx), (_obj), BORAX_RECORD_LENGTH (**(_ptr)), (BORAX_RECORD **)(_ptr)))
 
 STATIC BORAX_OBJECT
 EFIAPI
 Car (
-  ROOT          *Root,
+  LISP_CONTEXT  *Ctx,
   BORAX_OBJECT  Object
   )
 {
   BORAX_CONS  *Cons;
 
   if (BORAX_DISCRIMINATE (Object) != BORAX_DISCRIM_CONS) {
-    return Root->Nil;
+    return Ctx->Globals->Nil;
   }
 
   Cons = (BORAX_CONS *)BORAX_GET_POINTER (Object);
@@ -47,14 +98,14 @@ Car (
 STATIC BORAX_OBJECT
 EFIAPI
 Cdr (
-  ROOT          *Root,
+  LISP_CONTEXT  *Ctx,
   BORAX_OBJECT  Object
   )
 {
   BORAX_CONS  *Cons;
 
   if (BORAX_DISCRIMINATE (Object) != BORAX_DISCRIM_CONS) {
-    return Root->Nil;
+    return Ctx->Globals->Nil;
   }
 
   Cons = (BORAX_CONS *)BORAX_GET_POINTER (Object);
@@ -64,29 +115,28 @@ Cdr (
 STATIC EFI_STATUS
 EFIAPI
 FormatRecursive (
-  IN OUT BUFFER    *Content,
-  IN ROOT          *Root,
+  LISP_CONTEXT     *Ctx,
   IN BORAX_OBJECT  Object
   )
 {
   switch (BORAX_DISCRIMINATE (Object)) {
     case BORAX_DISCRIM_FIXNUM:
-      return BufferWriteInt (Content, BORAX_GET_FIXNUM (Object));
+      return BufferWriteInt (Ctx->Content, BORAX_GET_FIXNUM (Object));
 
     case BORAX_DISCRIM_UNBOUND:
-      return BufferWrite (Content, L"<UNBOUND>");
+      return BufferWrite (Ctx->Content, L"<UNBOUND>");
 
     case BORAX_DISCRIM_CHARACTER:
     {
       EFI_STATUS  Status;
 
-      Status = BufferWrite (Content, L"#\\");
+      Status = BufferWrite (Ctx->Content, L"#\\");
       if (EFI_ERROR (Status)) {
         return Status;
       }
 
       // TODO: Non-printable characters
-      return BufferWriteChar (Content, BORAX_GET_CHARACTER (Object));
+      return BufferWriteChar (Ctx->Content, BORAX_GET_CHARACTER (Object));
     }
 
     case BORAX_DISCRIM_CONS:
@@ -95,45 +145,45 @@ FormatRecursive (
       BORAX_OBJECT  List;
       BOOLEAN       Start = TRUE;
 
-      Status = BufferWriteChar (Content, L'(');
+      Status = BufferWriteChar (Ctx->Content, L'(');
       if (EFI_ERROR (Status)) {
         return Status;
       }
 
       for (List = Object;
            BORAX_DISCRIMINATE (List) == BORAX_DISCRIM_CONS;
-           List = Cdr (Root, List))
+           List = Cdr (Ctx, List))
       {
-        BORAX_OBJECT  Value = Car (Root, List);
+        BORAX_OBJECT  Value = Car (Ctx, List);
 
         if (Start) {
           Start = FALSE;
         } else {
-          Status = BufferWriteChar (Content, L' ');
+          Status = BufferWriteChar (Ctx->Content, L' ');
           if (EFI_ERROR (Status)) {
             return Status;
           }
         }
 
-        Status = FormatRecursive (Content, Root, Value);
+        Status = FormatRecursive (Ctx, Value);
         if (EFI_ERROR (Status)) {
           return Status;
         }
       }
 
-      if (List != Root->Nil) {
-        Status = BufferWrite (Content, L" . ");
+      if (List != Ctx->Globals->Nil) {
+        Status = BufferWrite (Ctx->Content, L" . ");
         if (EFI_ERROR (Status)) {
           return Status;
         }
 
-        Status = FormatRecursive (Content, Root, List);
+        Status = FormatRecursive (Ctx, List);
         if (EFI_ERROR (Status)) {
           return Status;
         }
       }
 
-      return BufferWriteChar (Content, L')');
+      return BufferWriteChar (Ctx->Content, L')');
     }
 
     case BORAX_DISCRIM_WORD_RECORD:
@@ -143,25 +193,25 @@ FormatRecursive (
 
       Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
 
-      if (Record->Class == Root->String) {
+      if (Record->Class == Ctx->Classes->String) {
         UINTN  Length;
 
         Length = (Record->Length * sizeof (UINTN)) / sizeof (CHAR16) - Record->LengthAux;
 
-        Status = BufferWriteChar (Content, L'"');
+        Status = BufferWriteChar (Ctx->Content, L'"');
         if (EFI_ERROR (Status)) {
           return Status;
         }
 
         // TODO: Non-printable characters
-        Status = BufferWriteChars (Content, (CHAR16 *)Record->Data, Length);
+        Status = BufferWriteChars (Ctx->Content, (CHAR16 *)Record->Data, Length);
         if (EFI_ERROR (Status)) {
           return Status;
         }
 
-        return BufferWriteChar (Content, L'"');
+        return BufferWriteChar (Ctx->Content, L'"');
       } else {
-        return BufferWrite (Content, L"<WORD-RECORD>");
+        return BufferWrite (Ctx->Content, L"<WORD-RECORD>");
       }
     }
 
@@ -172,43 +222,43 @@ FormatRecursive (
 
       Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
 
-      if (Object == Root->Nil) {
-        return BufferWrite (Content, L"NIL");
-      } else if (Record->Class == Root->StandardClass) {
+      if (Object == Ctx->Globals->Nil) {
+        return BufferWrite (Ctx->Content, L"NIL");
+      } else if (Record->Class == Ctx->Classes->StandardClass) {
         STANDARD_CLASS  *Class;
 
-        Class = (STANDARD_CLASS *)BORAX_GET_POINTER (Object);
-        if (Class->Record.Length < BORAX_RECORD_LENGTH (STANDARD_CLASS)) {
-          (VOID)BufferWrite (Content, L"Record not large enough\n");
+        Status = GET_RECORD (Ctx, Object, &Class);
+        if (EFI_ERROR (Status)) {
+          (VOID)BufferWrite (Ctx->Content, L"Malformed class object\n");
           return EFI_INVALID_PARAMETER;
         }
 
-        Status = BufferWrite (Content, L"<STANDARD-CLASS ");
+        Status = BufferWrite (Ctx->Content, L"<STANDARD-CLASS ");
         if (EFI_ERROR (Status)) {
           return Status;
         }
 
-        Status = FormatRecursive (Content, Root, Class->Name);
+        Status = FormatRecursive (Ctx, Class->Name);
         if (EFI_ERROR (Status)) {
           return Status;
         }
 
-        return BufferWriteChar (Content, L'>');
+        return BufferWriteChar (Ctx->Content, L'>');
       } else {
         UINTN    I;
         BOOLEAN  Start = TRUE;
 
-        Status = BufferWrite (Content, L"<OBJECT-RECORD ");
+        Status = BufferWrite (Ctx->Content, L"<OBJECT-RECORD ");
         if (EFI_ERROR (Status)) {
           return Status;
         }
 
-        Status = FormatRecursive (Content, Root, Record->Class);
+        Status = FormatRecursive (Ctx, Record->Class);
         if (EFI_ERROR (Status)) {
           return Status;
         }
 
-        Status = BufferWrite (Content, L" #(");
+        Status = BufferWrite (Ctx->Content, L" #(");
         if (EFI_ERROR (Status)) {
           return Status;
         }
@@ -219,66 +269,65 @@ FormatRecursive (
           if (Start) {
             Start = FALSE;
           } else {
-            Status = BufferWriteChar (Content, L' ');
+            Status = BufferWriteChar (Ctx->Content, L' ');
             if (EFI_ERROR (Status)) {
               return Status;
             }
           }
 
-          Status = FormatRecursive (Content, Root, Value);
+          Status = FormatRecursive (Ctx, Value);
           if (EFI_ERROR (Status)) {
             return Status;
           }
         }
 
-        return BufferWrite (Content, L")>");
+        return BufferWrite (Ctx->Content, L")>");
       }
     }
 
     case BORAX_DISCRIM_WEAK_POINTER:
-      return BufferWrite (Content, L"<WEAK-POINTER>");
+      return BufferWrite (Ctx->Content, L"<WEAK-POINTER>");
 
     case BORAX_DISCRIM_PIN:
-      return BufferWrite (Content, L"<PIN>");
+      return BufferWrite (Ctx->Content, L"<PIN>");
 
     case BORAX_DISCRIM_MOVED:
-      return BufferWrite (Content, L"<MOVED>");
+      return BufferWrite (Ctx->Content, L"<MOVED>");
 
     case BORAX_DISCRIM_UNINITIALIZED:
-      return BufferWrite (Content, L"<UNINITIALIZED>");
+      return BufferWrite (Ctx->Content, L"<UNINITIALIZED>");
 
     default:
-      return BufferWrite (Content, L"<ILLEGAL>");
+      return BufferWrite (Ctx->Content, L"<ILLEGAL>");
   }
 }
 
 STATIC EFI_STATUS
 EFIAPI
 PrintLabelled (
-  IN OUT BUFFER    *Content,
-  IN ROOT          *Root,
+  IN LISP_CONTEXT  *Ctx,
   IN CONST CHAR16  *Label,
   IN BORAX_OBJECT  Object
   )
 {
   EFI_STATUS  Status;
 
-  Status = BufferWrite (Content, Label);
+  Status = BufferWrite (Ctx->Content, Label);
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
-  Status = BufferWrite (Content, L" = ");
+  Status = BufferWrite (Ctx->Content, L" = ");
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
-  Status = FormatRecursive (Content, Root, Object);
+  Status = FormatRecursive (Ctx, Object);
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
-  return BufferWriteChar (Content, L'\n');
+  return BufferWriteChar (Ctx->Content, L'\n');
 }
 
 STATIC EFI_STATUS
@@ -288,26 +337,36 @@ DemoFillContent (
   IN BORAX_OBJECT  RootObject
   )
 {
-  ROOT  *Root;
+  EFI_STATUS    Status;
+  LISP_CONTEXT  Ctx;
+  ROOT          *Root;
 
-  if (BORAX_DISCRIMINATE (RootObject) != BORAX_DISCRIM_OBJECT_RECORD) {
-    (VOID)BufferWrite (Content, L"Not an object record\n");
+  Ctx.Content = Content;
+
+  Status = GET_RECORD (&Ctx, RootObject, &Root);
+  if (EFI_ERROR (Status)) {
+    (VOID)BufferWrite (Content, L"Malformed root object\n");
     return EFI_INVALID_PARAMETER;
   }
 
-  Root = (ROOT *)BORAX_GET_POINTER (RootObject);
-  if (Root->Record.Length < BORAX_RECORD_LENGTH (ROOT)) {
-    (VOID)BufferWrite (Content, L"Record not large enough\n");
+  Status = GET_RECORD (&Ctx, Root->Globals, &Ctx.Globals);
+  if (EFI_ERROR (Status)) {
+    (VOID)BufferWrite (Content, L"Malformed globals object\n");
     return EFI_INVALID_PARAMETER;
   }
 
-  (VOID)PrintLabelled (Content, Root, L"NIL", Root->Nil);
-  (VOID)PrintLabelled (Content, Root, L"STANDARD-CLASS", Root->StandardClass);
-  (VOID)PrintLabelled (Content, Root, L"STRING", Root->String);
-  (VOID)PrintLabelled (Content, Root, L"NUMBERS", Root->Numbers);
-  (VOID)PrintLabelled (Content, Root, L"STUFF", Root->Stuff);
-  (VOID)PrintLabelled (Content, Root, L"VECTOR", Root->Vector);
-  (VOID)PrintLabelled (Content, Root, L"HELLO", Root->Hello);
+  Status = GET_RECORD (&Ctx, Root->Classes, &Ctx.Classes);
+  if (EFI_ERROR (Status)) {
+    (VOID)BufferWrite (Content, L"Malformed classes object\n");
+    return EFI_INVALID_PARAMETER;
+  }
+
+  (VOID)PrintLabelled (&Ctx, L"GLOBALS", Root->Globals);
+  (VOID)PrintLabelled (&Ctx, L"CLASSES", Root->Classes);
+  (VOID)PrintLabelled (&Ctx, L"NUMBERS", Root->Numbers);
+  (VOID)PrintLabelled (&Ctx, L"STUFF", Root->Stuff);
+  (VOID)PrintLabelled (&Ctx, L"VECTOR", Root->Vector);
+  (VOID)PrintLabelled (&Ctx, L"HELLO", Root->Hello);
 
   return EFI_SUCCESS;
 }
