@@ -54,6 +54,14 @@
 (defmethod reify ((object null))
   (slot-value (globals (root *image*)) 'borax-vm/cl:nil))
 
+(defmethod reify ((object package))
+  (make-instance 'borax-vm/cl:package :name (package-name object)))
+
+(defmethod reify ((object symbol))
+  (make-instance 'borax-vm/cl:symbol
+                 :package (symbol-package object)
+                 :name (symbol-name object)))
+
 (defun make-initial-image ()
   (with-slots (numbers stuff vector hello)
       (setf (root *image*) (make-instance 'root))

@@ -193,7 +193,7 @@
       (when (null (aref classes index))
         (setf (aref classes index)
               (make-instance 'borax-vm/cl:standard-class
-                             :name (symbol-name (class-name class)))))
+                             :name (class-name class))))
       (values classes index))))
 
 (defun image-class (class)

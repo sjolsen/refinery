@@ -40,6 +40,17 @@ typedef struct {
 } STANDARD_CLASS;
 
 typedef struct {
+  BORAX_RECORD    Record;
+  BORAX_OBJECT    Name;
+} PACKAGE;
+
+typedef struct {
+  BORAX_RECORD    Record;
+  BORAX_OBJECT    Package;
+  BORAX_OBJECT    Name;
+} SYMBOL;
+
+typedef struct {
   BUFFER     *Content;
   GLOBALS    *Globals;
   CLASSES    *Classes;
@@ -127,7 +138,60 @@ GetClassName (
     return Ctx->Globals->Nil;
   }
 
+  if (Class->Record.Class != Ctx->Classes->StandardClass) {
+    return Ctx->Globals->Nil;
+  }
+
   return Class->Name;
+}
+
+STATIC BORAX_OBJECT
+EFIAPI
+GetPackageName (
+  IN LISP_CONTEXT  *Ctx,
+  IN BORAX_OBJECT  Object
+  )
+{
+  EFI_STATUS  Status;
+  PACKAGE     *Package;
+
+  Status = GET_RECORD (Ctx, Object, &Package);
+  if (EFI_ERROR (Status)) {
+    return Ctx->Globals->Nil;
+  }
+
+  if (Package->Record.Class != Ctx->Classes->Package) {
+    return Ctx->Globals->Nil;
+  }
+
+  return Package->Name;
+}
+
+STATIC EFI_STATUS
+EFIAPI
+WriteString (
+  LISP_CONTEXT     *Ctx,
+  IN BORAX_OBJECT  Object
+  )
+{
+  BORAX_RECORD  *Record;
+  UINTN         Length;
+
+  if (BORAX_DISCRIMINATE (Object) != BORAX_DISCRIM_WORD_RECORD) {
+    (VOID)BufferWrite (Ctx->Content, L"Not a string\n");
+    return EFI_INVALID_PARAMETER;
+  }
+
+  Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
+  if (Record->Class != Ctx->Classes->String) {
+    (VOID)BufferWrite (Ctx->Content, L"Not a string\n");
+    return EFI_INVALID_PARAMETER;
+  }
+
+  Length = (Record->Length * sizeof (UINTN)) / sizeof (CHAR16) - Record->LengthAux;
+
+  // TODO: Non-printable characters
+  return BufferWriteChars (Ctx->Content, (CHAR16 *)Record->Data, Length);
 }
 
 STATIC EFI_STATUS
@@ -212,17 +276,12 @@ FormatRecursive (
       Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
 
       if (Record->Class == Ctx->Classes->String) {
-        UINTN  Length;
-
-        Length = (Record->Length * sizeof (UINTN)) / sizeof (CHAR16) - Record->LengthAux;
-
         Status = BufferWriteChar (Ctx->Content, L'"');
         if (EFI_ERROR (Status)) {
           return Status;
         }
 
-        // TODO: Non-printable characters
-        Status = BufferWriteChars (Ctx->Content, (CHAR16 *)Record->Data, Length);
+        Status = WriteString (Ctx, Object);
         if (EFI_ERROR (Status)) {
           return Status;
         }
@@ -242,6 +301,29 @@ FormatRecursive (
 
       if (Object == Ctx->Globals->Nil) {
         return BufferWrite (Ctx->Content, L"NIL");
+      } else if (Record->Class == Ctx->Classes->Symbol) {
+        SYMBOL        *Symbol;
+        BORAX_OBJECT  PackageName;
+
+        Status = GET_RECORD (Ctx, Object, &Symbol);
+        if (EFI_ERROR (Status)) {
+          (VOID)BufferWrite (Ctx->Content, L"Malformed symbol object\n");
+          return EFI_INVALID_PARAMETER;
+        }
+
+        PackageName = GetPackageName (Ctx, Symbol->Package);
+
+        Status = WriteString (Ctx, PackageName);
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        Status = BufferWriteChar (Ctx->Content, L':');
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        return WriteString (Ctx, Symbol->Name);
       } else if (Record->Class == Ctx->Classes->StandardClass) {
         STANDARD_CLASS  *Class;
 
