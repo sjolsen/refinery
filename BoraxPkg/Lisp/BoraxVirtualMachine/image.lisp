@@ -191,7 +191,9 @@
       (unless (> (length classes) index)
         (adjust-array classes (1+ index) :initial-element nil))
       (when (null (aref classes index))
-        (setf (aref classes index) class))
+        (setf (aref classes index)
+              ;; TODO: Class object
+              (reify (symbol-name (class-name class)))))
       (values classes index))))
 
 (defun image-class (class)
@@ -212,8 +214,7 @@
       (call-next-method)))
 
 (defmethod reify ((object borax-vm/cl:class))
-  ;; TODO: Class object
-  +unbound+)
+  (image-class object))
 
 (defclass borax-vm/cl:cons ()
   ((borax-vm/cl:car :accessor borax-vm/cl:car

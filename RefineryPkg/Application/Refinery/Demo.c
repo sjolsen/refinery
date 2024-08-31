@@ -153,7 +153,7 @@ FormatRecursive (
           return Status;
         }
 
-        return BufferWrite (Content, L"\"\n");
+        return BufferWriteChar (Content, L'"');
       } else {
         return BufferWrite (Content, L"<WORD-RECORD>");
       }
