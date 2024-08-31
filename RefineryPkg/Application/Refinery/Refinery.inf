@@ -30,6 +30,8 @@
   Flow.h
   Geometry.c
   Geometry.h
+  Image.c
+  Image.h
   Input.c
   Input.h
   Refinery.c
