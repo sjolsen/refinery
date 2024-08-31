@@ -4,12 +4,12 @@
   (:shadow #:most-positive-fixnum #:most-negative-fixnum
            #:cons #:car #:cdr #:push
            #:null #:nil
-           #:class
+           #:class #:standard-class
            #:string)
   (:export #:most-positive-fixnum #:most-negative-fixnum
            #:cons #:car #:cdr #:push
            #:null #:nil
-           #:class
+           #:class #:standard-class
            #:string))
 
 (in-package :borax-virtual-machine/common-lisp)

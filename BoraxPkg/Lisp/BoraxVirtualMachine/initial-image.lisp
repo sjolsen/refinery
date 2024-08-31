@@ -11,11 +11,12 @@
 
 (defclass root ()
   ((borax-vm/cl:nil :initform (make-instance 'borax-vm/cl:null))
-   (string-class :initform (find-class 'borax-vm/cl:string))
+   (borax-vm/cl:standard-class :initform (find-class 'borax-vm/cl:standard-class))
+   (borax-vm/cl:string :initform (find-class 'borax-vm/cl:string))
    numbers
    stuff
    vector
-   string)
+   hello)
   (:metaclass record-class))
 
 ;; TODO: If we ever end up with multiple instances of image generation code,
@@ -25,10 +26,10 @@
   (slot-value (root *image*) 'borax-vm/cl:nil))
 
 (defun make-initial-image ()
-  (with-slots (numbers stuff vector string)
+  (with-slots (numbers stuff vector hello)
       (setf (root *image*) (make-instance 'root))
     (setf numbers '(-100 -3 0 1 2 3 4 5 43 343 8675309))
     (setf stuff '((1 2 3) (nil . nil) (4 5 6 . 7)))
     (setf vector #(#\A #\B #\C #\D))
-    (setf string "Hellorld!")
+    (setf hello "Hellorld!")
     (reify-image)))

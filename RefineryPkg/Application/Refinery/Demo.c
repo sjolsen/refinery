@@ -14,12 +14,18 @@ STATIC BORAX_ALLOCATOR  gAlloc;
 typedef struct {
   BORAX_RECORD    Record;
   BORAX_OBJECT    Nil;
-  BORAX_OBJECT    StringClass;
+  BORAX_OBJECT    StandardClass;
+  BORAX_OBJECT    String;
   BORAX_OBJECT    Numbers;
   BORAX_OBJECT    Stuff;
   BORAX_OBJECT    Vector;
-  BORAX_OBJECT    String;
+  BORAX_OBJECT    Hello;
 } ROOT;
+
+typedef struct {
+  BORAX_RECORD    Record;
+  BORAX_OBJECT    Name;
+} STANDARD_CLASS;
 
 STATIC BORAX_OBJECT
 EFIAPI
@@ -137,7 +143,7 @@ FormatRecursive (
 
       Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
 
-      if (Record->Class == Root->StringClass) {
+      if (Record->Class == Root->String) {
         UINTN  Length;
 
         Length = (Record->Length * sizeof (UINTN)) / sizeof (CHAR16) - Record->LengthAux;
@@ -160,15 +166,37 @@ FormatRecursive (
     }
 
     case BORAX_DISCRIM_OBJECT_RECORD:
+    {
+      EFI_STATUS    Status;
+      BORAX_RECORD  *Record;
+
+      Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
+
       if (Object == Root->Nil) {
         return BufferWrite (Content, L"NIL");
-      } else {
-        EFI_STATUS    Status;
-        BORAX_RECORD  *Record;
-        UINTN         I;
-        BOOLEAN       Start = TRUE;
+      } else if (Record->Class == Root->StandardClass) {
+        STANDARD_CLASS  *Class;
 
-        Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
+        Class = (STANDARD_CLASS *)BORAX_GET_POINTER (Object);
+        if (Class->Record.Length < BORAX_RECORD_LENGTH (STANDARD_CLASS)) {
+          (VOID)BufferWrite (Content, L"Record not large enough\n");
+          return EFI_INVALID_PARAMETER;
+        }
+
+        Status = BufferWrite (Content, L"<STANDARD-CLASS ");
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        Status = FormatRecursive (Content, Root, Class->Name);
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        return BufferWriteChar (Content, L'>');
+      } else {
+        UINTN    I;
+        BOOLEAN  Start = TRUE;
 
         Status = BufferWrite (Content, L"<OBJECT-RECORD ");
         if (EFI_ERROR (Status)) {
@@ -205,6 +233,7 @@ FormatRecursive (
 
         return BufferWrite (Content, L")>");
       }
+    }
 
     case BORAX_DISCRIM_WEAK_POINTER:
       return BufferWrite (Content, L"<WEAK-POINTER>");
@@ -272,10 +301,13 @@ DemoFillContent (
     return EFI_INVALID_PARAMETER;
   }
 
+  (VOID)PrintLabelled (Content, Root, L"NIL", Root->Nil);
+  (VOID)PrintLabelled (Content, Root, L"STANDARD-CLASS", Root->StandardClass);
+  (VOID)PrintLabelled (Content, Root, L"STRING", Root->String);
   (VOID)PrintLabelled (Content, Root, L"NUMBERS", Root->Numbers);
   (VOID)PrintLabelled (Content, Root, L"STUFF", Root->Stuff);
   (VOID)PrintLabelled (Content, Root, L"VECTOR", Root->Vector);
-  (VOID)PrintLabelled (Content, Root, L"STRING", Root->String);
+  (VOID)PrintLabelled (Content, Root, L"HELLO", Root->Hello);
 
   return EFI_SUCCESS;
 }

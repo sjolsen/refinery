@@ -192,8 +192,8 @@
         (adjust-array classes (1+ index) :initial-element nil))
       (when (null (aref classes index))
         (setf (aref classes index)
-              ;; TODO: Class object
-              (reify (symbol-name (class-name class)))))
+              (make-instance 'borax-vm/cl:standard-class
+                             :name (symbol-name (class-name class)))))
       (values classes index))))
 
 (defun image-class (class)
@@ -311,6 +311,10 @@
     (do-record-slots (value) object
       (push (locative-for value) result))
     (nreverse result)))
+
+(defclass borax-vm/cl:standard-class ()
+  ((name :initarg :name))
+  (:metaclass record-class))
 
 (defclass record-vector ()
   ((vector-data :type vector
