@@ -327,6 +327,34 @@ FormatRecursive (
         }
 
         return WriteString (Ctx, Symbol->Name);
+      } else if (Record->Class == Ctx->Classes->SimpleVector) {
+        UINTN    I;
+        BOOLEAN  Start = TRUE;
+
+        Status = BufferWrite (Ctx->Content, L"#(");
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        for (I = 0; I < Record->Length; ++I) {
+          BORAX_OBJECT  Value = Record->Data[I];
+
+          if (Start) {
+            Start = FALSE;
+          } else {
+            Status = BufferWriteChar (Ctx->Content, L' ');
+            if (EFI_ERROR (Status)) {
+              return Status;
+            }
+          }
+
+          Status = FormatRecursive (Ctx, Value);
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
+        }
+
+        return BufferWriteChar (Ctx->Content, L')');
       } else if (Record->Class == Ctx->Classes->StandardClass) {
         STANDARD_CLASS  *Class;
 
@@ -350,7 +378,6 @@ FormatRecursive (
       } else {
         BORAX_OBJECT  ClassName;
         UINTN         I;
-        BOOLEAN       Start = TRUE;
 
         ClassName = GetClassName (Ctx, Record->Class);
 
@@ -376,21 +403,22 @@ FormatRecursive (
           }
         }
 
-        Status = BufferWrite (Ctx->Content, L" #(");
-        if (EFI_ERROR (Status)) {
-          return Status;
-        }
-
         for (I = 0; I < Record->Length; ++I) {
           BORAX_OBJECT  Value = Record->Data[I];
 
-          if (Start) {
-            Start = FALSE;
-          } else {
-            Status = BufferWriteChar (Ctx->Content, L' ');
-            if (EFI_ERROR (Status)) {
-              return Status;
-            }
+          Status = BufferWriteChar (Ctx->Content, L' ');
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
+
+          Status = BufferWriteInt (Ctx->Content, I);
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
+
+          Status = BufferWriteChar (Ctx->Content, L'=');
+          if (EFI_ERROR (Status)) {
+            return Status;
           }
 
           Status = FormatRecursive (Ctx, Value);
@@ -399,7 +427,7 @@ FormatRecursive (
           }
         }
 
-        return BufferWrite (Ctx->Content, L")>");
+        return BufferWriteChar (Ctx->Content, L'>');
       }
     }
 
