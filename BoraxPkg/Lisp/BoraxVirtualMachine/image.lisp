@@ -154,7 +154,7 @@
                           (length objects))
             until (= before after)
             do (unmark)
-            finally (format t "INFO: reification took ~A iteration~:P" count)))
+            finally (format t "INFO: reification took ~A iteration~:P~%" count)))
     ;; Compact
     (do* ((source 0 (1+ source))
           (destination 0))
@@ -167,7 +167,14 @@
            (setf (aref objects destination) object)
            (setf (index object) destination)
            (setf (color object) 'white)
-           (incf destination)))))))
+           (incf destination)))))
+    ;; Report statistics
+    (loop for i from (length objects) below (array-total-size objects)
+          for object = (aref objects i)
+          when (typep object 'object)
+            count (= i (index object)) into dead
+            and do (setf (aref objects i) 0)
+          finally (format t "INFO: collected ~A dead object~:P~%" dead))))
 
 (defclass borax-vm/cl:class (standard-class)
   ((classes :type (vector *)
