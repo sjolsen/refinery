@@ -22,7 +22,8 @@
   (:metaclass record-class))
 
 (defclass globals ()
-  ((borax-vm/cl:nil :initform (make-instance 'borax-vm/cl:null)))
+  ((borax-vm/cl:nil :initform (make-instance 'borax-vm/cl:null))
+   (common-lisp))
   (:metaclass record-class))
 
 (defclass classes ()
@@ -42,20 +43,48 @@
             :initform (make-instance 'globals))
    (classes :accessor classes
             :initform (make-instance 'classes))
+   (packages :accessor packages)
    numbers
    stuff
    vector
    hello)
   (:metaclass record-class))
 
+(define-symbol-macro borax-vm/cl:nil
+    (slot-value (globals (root *image*)) 'borax-vm/cl:nil))
+
+(defun borax-vm/cl:null (object)
+  (eq object borax-vm/cl:nil))
+
+(defun borax-vm/cl:string= (a b)
+  (string= (vector-data a) (vector-data b)))
+
+(defun borax-vm/cl:find-package (name)
+  (reify-place name)
+  (loop for l = (packages (root *image*))
+          then (borax-vm/cl:cdr l)
+        until (borax-vm/cl:null l)
+        for package = (borax-vm/cl:car l)
+        when (borax-vm/cl:string= (borax-vm/cl:package-name package) name)
+          return package))
+
+(defun ensure-package (package)
+  (let ((name (cond
+                ((eq (find-package :borax-vm/cl) package) "COMMON-LISP")
+                (t (package-name package)))))
+    (or (borax-vm/cl:find-package name)
+        (borax-vm/cl:car
+         (borax-vm/cl:push (make-instance 'borax-vm/cl:package :name (reify name))
+                           (packages (root *image*)))))))
+
 ;; TODO: If we ever end up with multiple instances of image generation code,
 ;; reify methods for CL classes will clash. This could be solved by adding a
 ;; root parameter for specialization.
 (defmethod reify ((object null))
-  (slot-value (globals (root *image*)) 'borax-vm/cl:nil))
+  borax-vm/cl:nil)
 
 (defmethod reify ((object package))
-  (make-instance 'borax-vm/cl:package :name (package-name object)))
+  (ensure-package object))
 
 (defmethod reify ((object symbol))
   (make-instance 'borax-vm/cl:symbol
@@ -63,8 +92,11 @@
                  :name (symbol-name object)))
 
 (defun make-initial-image ()
-  (with-slots (numbers stuff vector hello)
+  (with-slots (globals packages numbers stuff vector hello)
       (setf (root *image*) (make-instance 'root))
+    (setf packages borax-vm/cl:nil)
+    (with-slots (common-lisp) globals
+      (setf common-lisp (ensure-package (find-package :borax-vm/cl))))
     (setf numbers '(-100 -3 0 1 2 3 4 5 43 343 8675309))
     (setf stuff '((1 2 3) (nil . nil) (4 5 6 . 7)))
     (setf vector #(#\A #\B #\C #\D))

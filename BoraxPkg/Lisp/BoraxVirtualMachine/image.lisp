@@ -123,24 +123,38 @@
 (defun reify-image ()
   (with-slots (objects root) *image*
     ;; Mark
-    (let ((grey-list nil))
-      (flet ((mark-grey (object)
-               (when (typep object 'object)
-                 (when (eq (color object) 'white)
-                   (setf (color object) 'grey)
-                   (push object grey-list))))
-             (mark-black (object)
-               (setf (color object) 'black)))
-        ;; Mark roots grey
-        (reify-place root)
-        (mark-grey root)
-        ;; Scan sub-objects then mark black
-        (do ((object (pop grey-list) (pop grey-list)))
-            ((null object))
-          (dolist (loc (sub-objects object))
-            (reify-place (dereference loc))
-            (mark-grey (dereference loc)))
-          (mark-black object))))
+    (flet ((mark ()
+             (let ((grey-list nil))
+               (flet ((mark-grey (object)
+                        (when (typep object 'object)
+                          (when (eq (color object) 'white)
+                            (setf (color object) 'grey)
+                            (push object grey-list))))
+                      (mark-black (object)
+                        (setf (color object) 'black)))
+                 ;; Mark roots grey
+                 (reify-place root)
+                 (mark-grey root)
+                 ;; Scan sub-objects then mark black
+                 (do ((object (pop grey-list) (pop grey-list)))
+                     ((null object))
+                   (dolist (loc (sub-objects object))
+                     (reify-place (dereference loc))
+                     (mark-grey (dereference loc)))
+                   (mark-black object)))))
+           (unmark ()
+             (loop for object across objects
+                   do (setf (color object) 'white))))
+      ;; Reification may create objects and store them in locations we've
+      ;; already processed. Iterate until no new objects are created.
+      (loop for count upfrom 1
+            for before = 0 then (length objects)
+            for after = (progn
+                          (mark)
+                          (length objects))
+            until (= before after)
+            do (unmark)
+            finally (format t "INFO: reification took ~A iteration~:P" count)))
     ;; Compact
     (do* ((source 0 (1+ source))
           (destination 0))

@@ -14,6 +14,7 @@ typedef struct {
   BORAX_RECORD    Record;
   BORAX_OBJECT    Globals;
   BORAX_OBJECT    Classes;
+  BORAX_OBJECT    Packages;
   BORAX_OBJECT    Numbers;
   BORAX_OBJECT    Stuff;
   BORAX_OBJECT    Vector;
@@ -23,6 +24,7 @@ typedef struct {
 typedef struct {
   BORAX_RECORD    Record;
   BORAX_OBJECT    Nil;
+  BORAX_OBJECT    CommonLisp;
 } GLOBALS;
 
 typedef struct {
@@ -302,8 +304,7 @@ FormatRecursive (
       if (Object == Ctx->Globals->Nil) {
         return BufferWrite (Ctx->Content, L"NIL");
       } else if (Record->Class == Ctx->Classes->Symbol) {
-        SYMBOL        *Symbol;
-        BORAX_OBJECT  PackageName;
+        SYMBOL  *Symbol;
 
         Status = GET_RECORD (Ctx, Object, &Symbol);
         if (EFI_ERROR (Status)) {
@@ -311,16 +312,18 @@ FormatRecursive (
           return EFI_INVALID_PARAMETER;
         }
 
-        PackageName = GetPackageName (Ctx, Symbol->Package);
+        if (Symbol->Package != Ctx->Globals->CommonLisp) {
+          BORAX_OBJECT  PackageName = GetPackageName (Ctx, Symbol->Package);
 
-        Status = WriteString (Ctx, PackageName);
-        if (EFI_ERROR (Status)) {
-          return Status;
-        }
+          Status = WriteString (Ctx, PackageName);
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
 
-        Status = BufferWriteChar (Ctx->Content, L':');
-        if (EFI_ERROR (Status)) {
-          return Status;
+          Status = BufferWriteChar (Ctx->Content, L':');
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
         }
 
         return WriteString (Ctx, Symbol->Name);
@@ -478,6 +481,7 @@ FillContent (
 
   (VOID)PrintLabelled (&Ctx, L"GLOBALS", Root->Globals);
   (VOID)PrintLabelled (&Ctx, L"CLASSES", Root->Classes);
+  (VOID)PrintLabelled (&Ctx, L"PACKAGES", Root->Packages);
   (VOID)PrintLabelled (&Ctx, L"NUMBERS", Root->Numbers);
   (VOID)PrintLabelled (&Ctx, L"STUFF", Root->Stuff);
   (VOID)PrintLabelled (&Ctx, L"VECTOR", Root->Vector);

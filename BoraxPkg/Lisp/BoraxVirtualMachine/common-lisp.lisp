@@ -5,17 +5,17 @@
            #:cons #:car #:cdr #:push
            #:null #:nil
            #:class #:standard-class
-           #:package #:package-name
+           #:package #:package-name #:find-package
            #:symbol #:symbol-package #:symbol-name
            #:simple-vector
-           #:string)
+           #:string #:string=)
   (:export #:most-positive-fixnum #:most-negative-fixnum
            #:cons #:car #:cdr #:push
            #:null #:nil
            #:class #:standard-class
-           #:package #:package-name
+           #:package #:package-name #:find-package
            #:symbol #:symbol-package #:symbol-name
            #:simple-vector
-           #:string))
+           #:string #:string=))
 
 (in-package :borax-virtual-machine/common-lisp)
