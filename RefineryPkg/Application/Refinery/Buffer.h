@@ -28,6 +28,14 @@ BufferWrite (
 
 EFI_STATUS
 EFIAPI
+BufferWriteChars (
+  IN BUFFER        *Buffer,
+  IN CONST CHAR16  *Chars,
+  IN UINTN         Length
+  );
+
+EFI_STATUS
+EFIAPI
 BufferWriteChar (
   IN BUFFER  *Buffer,
   IN CHAR16  Char

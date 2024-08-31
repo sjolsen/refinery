@@ -14,6 +14,7 @@ STATIC BORAX_ALLOCATOR  gAlloc;
 typedef struct {
   BORAX_RECORD    Record;
   BORAX_OBJECT    Nil;
+  BORAX_OBJECT    StringClass;
   BORAX_OBJECT    Numbers;
   BORAX_OBJECT    Stuff;
   BORAX_OBJECT    Vector;
@@ -130,7 +131,33 @@ FormatRecursive (
     }
 
     case BORAX_DISCRIM_WORD_RECORD:
-      return BufferWrite (Content, L"<WORD-RECORD>");
+    {
+      EFI_STATUS    Status;
+      BORAX_RECORD  *Record;
+
+      Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
+
+      if (Record->Class == Root->StringClass) {
+        UINTN  Length;
+
+        Length = (Record->Length * sizeof (UINTN)) / sizeof (CHAR16) - Record->LengthAux;
+
+        Status = BufferWriteChar (Content, L'"');
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        // TODO: Non-printable characters
+        Status = BufferWriteChars (Content, (CHAR16 *)Record->Data, Length);
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        return BufferWrite (Content, L"\"\n");
+      } else {
+        return BufferWrite (Content, L"<WORD-RECORD>");
+      }
+    }
 
     case BORAX_DISCRIM_OBJECT_RECORD:
       if (Object == Root->Nil) {

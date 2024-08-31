@@ -1,6 +1,7 @@
 #include "Buffer.h"
 
 #include <Library/BaseLib.h>
+#include <Library/BaseMemoryLib.h>
 #include <Library/MemoryAllocationLib.h>
 
 #define INITIAL_BUFFER_SIZE  10
@@ -40,12 +41,20 @@ BufferWrite (
   IN CONST CHAR16  *String
   )
 {
-  EFI_STATUS  Status;
-  UINTN       Length;
-  UINTN       RequiredCapacity;
+  return BufferWriteChars (Buffer, String, StrLen (String));
+}
+
+EFI_STATUS
+EFIAPI
+BufferWriteChars (
+  IN BUFFER        *Buffer,
+  IN CONST CHAR16  *Chars,
+  IN UINTN         Length
+  )
+{
+  UINTN  RequiredCapacity;
 
   // TODO: Safe arithmetic?
-  Length           = StrLen (String);
   RequiredCapacity = Buffer->Terminator + Length + 1;
 
   if (RequiredCapacity > Buffer->Capacity) {
@@ -67,16 +76,14 @@ BufferWrite (
     Buffer->Capacity = NewCapacity;
   }
 
-  Status = StrCpyS (
-             Buffer->Data + Buffer->Terminator,
-             Buffer->Capacity - Buffer->Terminator,
-             String
-             );
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
+  (VOID)CopyMem (
+          Buffer->Data + Buffer->Terminator,
+          Chars,
+          Length * sizeof (CHAR16)
+          );
 
-  Buffer->Terminator += Length;
+  Buffer->Terminator              += Length;
+  Buffer->Data[Buffer->Terminator] = L'\0';
   return EFI_SUCCESS;
 }
 
@@ -87,9 +94,7 @@ BufferWriteChar (
   IN CHAR16  Char
   )
 {
-  CHAR16  String[2] = { Char, L'\0' };
-
-  return BufferWrite (Buffer, String);
+  return BufferWriteChars (Buffer, &Char, 1);
 }
 
 EFI_STATUS

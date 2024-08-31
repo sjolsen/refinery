@@ -73,6 +73,14 @@
 (defmethod get-object-section ((object record-vector))
   (values 'object-section :size (+ 3 (length (vector-data object)))))
 
+(defmethod get-object-section ((object borax-vm/cl:string))
+  (with-slots (memory-model) *image*
+    (with-slots (word-bytes) memory-model
+      (let* ((chars (length (vector-data object)))
+             (bytes (* 2 chars))
+             (words (ceiling bytes word-bytes)))
+        (values 'object-section :size (+ 3 words))))))
+
 (defgeneric allocate-in-section (section object &key &allow-other-keys))
 
 (defmethod allocate-in-section ((section cons-section) (object borax-vm/cl:cons) &key &allow-other-keys)
@@ -181,6 +189,9 @@
                      (write-object object)))
         (advance-to (+ base size))))))
 
+(defconstant +word-record-widetag+ #x03)
+(defconstant +object-record-widetag+ #x07)
+
 (defgeneric write-object (object))
 
 (defmethod write-object ((object borax-vm/cl:cons))
@@ -189,17 +200,33 @@
 
 (defmethod write-object ((object record-object))
   (let ((class (class-of object)))
-    (write-word #x07)  ; widetag object-record
+    (write-word +object-record-widetag+)
     (write-word (length (record-slots class)))
     (write-translation (image-class (class-of object)))
     (do-record-slots (value) object
       (write-translation value))))
 
 (defmethod write-object ((object record-vector))
-  (write-word #x07)  ; widetag object-record
+  (write-word +object-record-widetag+)
   (write-word (length (vector-data object)))
   (write-translation (image-class (class-of object)))
   (map nil #'write-translation (vector-data object)))
+
+(defmethod write-object ((object borax-vm/cl:string))
+  (write-halfword +word-record-widetag+)
+  (with-slots (memory-model) *image*
+    (with-slots (word-bytes) memory-model
+      (let* ((chars (length (vector-data object)))
+             (bytes (* 2 chars)))
+        (multiple-value-bind (words remainder)
+            (ceiling bytes word-bytes)
+          ;; length-aux
+          (write-halfword (floor (abs remainder) 2))
+          ;; length
+          (write-word words)))))
+  (write-translation (image-class (class-of object)))
+  (loop for char across (vector-data object)
+        do (write-integer (char-code char) 2)))
 
 (defun write-file (root)
   (with-slots (cons-section object-section) *allocator*

@@ -68,6 +68,9 @@
 
 (defvar +unbound+ (make-instance 'immediate :value #x5))
 
+(define-symbol-macro +classes+
+  (slot-value (class-prototype (find-class 'borax-vm/cl:class)) 'classes))
+
 (defclass image ()
   ((memory-model :type memory-model
                  :reader memory-model
@@ -158,9 +161,6 @@
             :initform (make-space 10))
    (index :type fixnum
           :accessor index)))
-
-(define-symbol-macro +classes+
-  (slot-value (class-prototype (find-class 'borax-vm/cl:class)) 'classes))
 
 (defmethod initialize-instance :after ((class borax-vm/cl:class) &key &allow-other-keys)
   (setf (index class) (vector-push-extend class +classes+)))
@@ -329,3 +329,13 @@
   ;; vector types.
   (make-instance 'record-vector :data (make-array (length object)
                                                   :initial-contents object)))
+
+(defclass borax-vm/cl:string (record-vector)
+  ()
+  (:metaclass borax-vm/cl:class))
+
+(defmethod sub-objects ((object borax-vm/cl:string))
+  nil)
+
+(defmethod reify ((object string))
+  (make-instance 'borax-vm/cl:string :data object))
