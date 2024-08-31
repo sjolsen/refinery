@@ -7,6 +7,7 @@
            #:class #:standard-class
            #:package #:package-name
            #:symbol #:symbol-package #:symbol-name
+           #:simple-vector
            #:string)
   (:export #:most-positive-fixnum #:most-negative-fixnum
            #:cons #:car #:cdr #:push
@@ -14,6 +15,7 @@
            #:class #:standard-class
            #:package #:package-name
            #:symbol #:symbol-package #:symbol-name
+           #:simple-vector
            #:string))
 
 (in-package :borax-virtual-machine/common-lisp)

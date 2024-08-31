@@ -70,7 +70,7 @@
   (let ((class (class-of object)))
     (values 'object-section :size (+ 3 (length (record-slots class))))))
 
-(defmethod get-object-section ((object record-vector))
+(defmethod get-object-section ((object borax-vm/cl:simple-vector))
   (values 'object-section :size (+ 3 (length (vector-data object)))))
 
 (defmethod get-object-section ((object borax-vm/cl:string))
@@ -206,7 +206,7 @@
     (do-record-slots (value) object
       (write-translation value))))
 
-(defmethod write-object ((object record-vector))
+(defmethod write-object ((object borax-vm/cl:simple-vector))
   (write-word +object-record-widetag+)
   (write-word (length (vector-data object)))
   (write-translation (image-class (class-of object)))

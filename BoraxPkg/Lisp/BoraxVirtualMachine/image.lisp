@@ -19,8 +19,8 @@
            ;; record-object
            #:record-object #:record-class
            #:record-slots #:do-record-slots
-           ;; record-vector
-           #:record-vector #:vector-data))
+           ;; borax-vm/cl:simple-vector
+           #:vector-data))
 
 (in-package :borax-virtual-machine/image)
 
@@ -316,13 +316,13 @@
   ((name :initarg :name))
   (:metaclass record-class))
 
-(defclass record-vector ()
+(defclass borax-vm/cl:simple-vector ()
   ((vector-data :type vector
                 :accessor vector-data
                 :initarg :data))
   (:metaclass borax-vm/cl:class))
 
-(defmethod sub-objects ((object record-vector))
+(defmethod sub-objects ((object borax-vm/cl:simple-vector))
   (loop with vector-data = (vector-data object)
         for i from 0 below (length vector-data)
         collect (locative-for (aref vector-data i))))
@@ -332,10 +332,11 @@
   ;;
   ;; TODO: COPY-SEQ may be a more appropriate implementation for specialized
   ;; vector types.
-  (make-instance 'record-vector :data (make-array (length object)
-                                                  :initial-contents object)))
+  (make-instance 'borax-vm/cl:simple-vector
+                 :data (make-array (length object)
+                                   :initial-contents object)))
 
-(defclass borax-vm/cl:string (record-vector)
+(defclass borax-vm/cl:string (borax-vm/cl:simple-vector)
   ()
   (:metaclass borax-vm/cl:class))
 
