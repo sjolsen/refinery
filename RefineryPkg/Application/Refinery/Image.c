@@ -19,6 +19,7 @@ typedef struct {
   BORAX_OBJECT    Stuff;
   BORAX_OBJECT    Vector;
   BORAX_OBJECT    Hello;
+  BORAX_OBJECT    Test;
 } ROOT;
 
 typedef struct {
@@ -35,6 +36,7 @@ typedef struct {
   BORAX_OBJECT    Symbol;
   BORAX_OBJECT    SimpleVector;
   BORAX_OBJECT    String;
+  BORAX_OBJECT    BytecodeFunction;
 } CLASSES;
 
 typedef struct {
@@ -510,13 +512,14 @@ FillContent (
     return EFI_INVALID_PARAMETER;
   }
 
-  (VOID)PrintLabelled (&Ctx, L"GLOBALS", Root->Globals);
-  (VOID)PrintLabelled (&Ctx, L"CLASSES", Root->Classes);
-  (VOID)PrintLabelled (&Ctx, L"PACKAGES", Root->Packages);
+  /* (VOID)PrintLabelled (&Ctx, L"GLOBALS", Root->Globals); */
+  /* (VOID)PrintLabelled (&Ctx, L"CLASSES", Root->Classes); */
+  /* (VOID)PrintLabelled (&Ctx, L"PACKAGES", Root->Packages); */
   (VOID)PrintLabelled (&Ctx, L"NUMBERS", Root->Numbers);
   (VOID)PrintLabelled (&Ctx, L"STUFF", Root->Stuff);
   (VOID)PrintLabelled (&Ctx, L"VECTOR", Root->Vector);
   (VOID)PrintLabelled (&Ctx, L"HELLO", Root->Hello);
+  (VOID)PrintLabelled (&Ctx, L"TEST", Root->Test);
 
   return EFI_SUCCESS;
 }

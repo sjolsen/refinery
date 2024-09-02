@@ -32,7 +32,8 @@
    borax-vm/cl:package
    borax-vm/cl:symbol
    borax-vm/cl:simple-vector
-   borax-vm/cl:string)
+   borax-vm/cl:string
+   bytecode-function)
   (:metaclass record-class))
 
 (defmethod initialize-instance :after ((instance classes) &key)
@@ -48,7 +49,8 @@
    numbers
    stuff
    vector
-   hello)
+   hello
+   test)
   (:metaclass record-class))
 
 (define-symbol-macro borax-vm/cl:nil
@@ -96,7 +98,7 @@
                  :name (symbol-name object)))
 
 (defun make-initial-image ()
-  (with-slots (globals packages numbers stuff vector hello)
+  (with-slots (globals packages numbers stuff vector hello test)
       (setf (root *image*) (make-instance 'root))
     (setf packages borax-vm/cl:nil)
     (with-slots (common-lisp keyword) globals
@@ -106,4 +108,5 @@
     (setf stuff '((1 2 3) (nil . nil) (4 5 6 . 7) :z))
     (setf vector #(#\A #\B #\C #\D))
     (setf hello "Hellorld!")
+    (setf test (break))
     (reify-image)))
