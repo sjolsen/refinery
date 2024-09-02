@@ -25,6 +25,7 @@ typedef struct {
   BORAX_RECORD    Record;
   BORAX_OBJECT    Nil;
   BORAX_OBJECT    CommonLisp;
+  BORAX_OBJECT    Keyword;
 } GLOBALS;
 
 typedef struct {
@@ -313,11 +314,13 @@ FormatRecursive (
         }
 
         if (Symbol->Package != Ctx->Globals->CommonLisp) {
-          BORAX_OBJECT  PackageName = GetPackageName (Ctx, Symbol->Package);
+          if (Symbol->Package != Ctx->Globals->Keyword) {
+            BORAX_OBJECT  PackageName = GetPackageName (Ctx, Symbol->Package);
 
-          Status = WriteString (Ctx, PackageName);
-          if (EFI_ERROR (Status)) {
-            return Status;
+            Status = WriteString (Ctx, PackageName);
+            if (EFI_ERROR (Status)) {
+              return Status;
+            }
           }
 
           Status = BufferWriteChar (Ctx->Content, L':');

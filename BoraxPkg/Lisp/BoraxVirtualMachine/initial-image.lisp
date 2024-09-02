@@ -23,7 +23,8 @@
 
 (defclass globals ()
   ((borax-vm/cl:nil :initform (make-instance 'borax-vm/cl:null))
-   (common-lisp))
+   common-lisp
+   keyword)
   (:metaclass record-class))
 
 (defclass classes ()
@@ -98,10 +99,11 @@
   (with-slots (globals packages numbers stuff vector hello)
       (setf (root *image*) (make-instance 'root))
     (setf packages borax-vm/cl:nil)
-    (with-slots (common-lisp) globals
-      (setf common-lisp (ensure-package (find-package :borax-vm/cl))))
+    (with-slots (common-lisp keyword) globals
+      (setf common-lisp (ensure-package (find-package :borax-vm/cl)))
+      (setf keyword (ensure-package (find-package :keyword))))
     (setf numbers '(-100 -3 0 1 2 3 4 5 43 343 8675309))
-    (setf stuff '((1 2 3) (nil . nil) (4 5 6 . 7)))
+    (setf stuff '((1 2 3) (nil . nil) (4 5 6 . 7) :z))
     (setf vector #(#\A #\B #\C #\D))
     (setf hello "Hellorld!")
     (reify-image)))
