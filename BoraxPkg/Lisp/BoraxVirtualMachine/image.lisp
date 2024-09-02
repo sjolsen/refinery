@@ -295,6 +295,9 @@
                  'record-direct-slot-definition))
     effective-slot))
 
+(defmethod slot-unbound ((class record-class) instance slot-name)
+  +unbound+)
+
 (defun compute-slot-order (class)
   (let ((names ()))
     (dolist (c (reverse (class-precedence-list class)))
