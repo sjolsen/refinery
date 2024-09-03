@@ -3,20 +3,30 @@
   (:use :borax-virtual-machine/image)
   (:export #:bytecode-function
            #:define-bytecode-function
+           #:bytecode #:bytecode-constants #:bytecode-locals #:bytecode-shared
+           #:bytecode-closure #:bytecode-name #:bytecode-arglist #:bytecode-entry
            #:local #:shared #:closure
            #:call #:jump #:bind #:move))
 
 (in-package :borax-virtual-machine/bytecode)
 
 (defclass bytecode-function ()
-  ((code      :initarg  :code)
-   (constants :initarg  :constants)
-   (locals    :initarg  :local)
-   (shared    :initarg  :shared)
-   (closure   :initarg  :closure)
-   (name      :initarg  :name)
-   (arglist   :initarg  :arglist)
-   (entry     :initform 0))
+  ((code :initarg :code
+         :reader bytecode)
+   (constants :initarg :constants
+              :reader bytecode-constants)
+   (locals :initarg :local
+           :reader bytecode-locals)
+   (shared :initarg :shared
+           :reader bytecode-shared)
+   (closure :initarg :closure
+            :reader bytecode-closure)
+   (name :initarg :name
+         :reader bytecode-name)
+   (arglist :initarg :arglist
+            :reader bytecode-arglist)
+   (entry :initform 0
+          :reader bytecode-entry))
   (:metaclass record-class))
 
 (defstruct storage-block

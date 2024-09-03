@@ -108,7 +108,8 @@
     (call 'car-cdr (l))
     (bind (val l))
     (call '+ (acc val))
-    (jump :if (not l) loop)
+    (bind (acc))
+    (jump :if l loop)
   end
     (return (acc)))
 
