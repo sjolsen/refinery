@@ -1,6 +1,8 @@
 (uiop:define-package :borax-virtual-machine/initial-image
   (:mix :closer-mop :uiop/common-lisp :borax-virtual-machine/common-lisp)
-  (:use :cl-locatives :borax-virtual-machine/image)
+  (:use :cl-locatives
+        :borax-virtual-machine/bytecode
+        :borax-virtual-machine/image)
   (:export #:make-initial-image))
 
 (in-package :borax-virtual-machine/initial-image)
@@ -50,7 +52,7 @@
    stuff
    vector
    hello
-   test)
+   sum-list)
   (:metaclass record-class))
 
 (define-symbol-macro borax-vm/cl:nil
@@ -97,8 +99,21 @@
                  :package (symbol-package object)
                  :name (symbol-name object)))
 
+(define-bytecode-function sum-list (&rest l)
+  (declare (local l acc val))
+    (bind (l))
+    (move acc 0)
+    (jump :if (not l) end)
+  loop
+    (call 'car-cdr (l))
+    (bind (val l))
+    (call '+ (acc val))
+    (jump :if (not l) loop)
+  end
+    (return (acc)))
+
 (defun make-initial-image ()
-  (with-slots (globals packages numbers stuff vector hello test)
+  (with-slots (globals packages numbers stuff vector hello sum-list)
       (setf (root *image*) (make-instance 'root))
     (setf packages borax-vm/cl:nil)
     (with-slots (common-lisp keyword) globals
@@ -108,5 +123,5 @@
     (setf stuff '((1 2 3) (nil . nil) (4 5 6 . 7) :z))
     (setf vector #(#\A #\B #\C #\D))
     (setf hello "Hellorld!")
-    (setf test (break))
+    (setf sum-list (bytecode-function 'sum-list))
     (reify-image)))

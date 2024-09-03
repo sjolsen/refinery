@@ -3,25 +3,29 @@
   (:use :borax-virtual-machine/image)
   (:export #:bytecode-function
            #:define-bytecode-function
+           #:local #:shared #:closure
            #:call #:jump #:bind #:move))
 
 (in-package :borax-virtual-machine/bytecode)
 
 (defclass bytecode-function ()
-  ((name :initarg :name)
-   (arglist :initarg :arglist)
-   (locals :accessor local)
-   (shared :accessor shared)
-   (constants :accessor constants)
-   (entry :initform 0)
-   (code :accessor code))
+  ((code      :initarg  :code)
+   (constants :initarg  :constants)
+   (locals    :initarg  :local)
+   (shared    :initarg  :shared)
+   (closure   :initarg  :closure)
+   (name      :initarg  :name)
+   (arglist   :initarg  :arglist)
+   (entry     :initform 0))
   (:metaclass record-class))
 
 (defstruct storage-block
   (count 0))
 
 (defclass bytecode-parser ()
-  ((constant-table :initform (make-hash-table))
+  ((name :initarg :name)
+   (lambda-list :initarg :lambda-list)
+   (constant-table :initform (make-hash-table))
    (symbol-table :initform (make-hash-table))
    (constants :initform (make-storage-block))
    (locals :initform (make-storage-block))
@@ -161,6 +165,13 @@
     (emit-field offset (byte 4 0) (operand-count values))
     offset))
 
+(defun flatten-storage-blocks (sbs)
+  (loop with a = (make-array (length sbs) :element-type 'fixnum)
+        for sb across sbs
+        for i upfrom 0
+        do (setf (aref a i) (storage-block-count sb))
+        finally (return a)))
+
 (define-nonterminal bytecode-function ()
   (sequence (* (nested declaration))
             (+ labelled-instruction)))
@@ -280,27 +291,25 @@
 
 (defun (setf bytecode-function) (value name)
   (assert (symbolp name))
-  ;; (assert (typep value 'bytecode-function))
+  (assert (typep value 'bytecode-parser))
   (setf (gethash name *bytecode-functions*) value))
 
 (defmacro define-bytecode-function (name lambda-list &body body)
-  ;; TODO: Parse lambda-lists
-  (declare (ignore lambda-list))
-  `(let ((*parser-state* (make-instance 'bytecode-parser)))
+  `(let ((*parser-state* (make-instance 'bytecode-parser
+                                        :name ',name
+                                        :lambda-list ',lambda-list)))
      (parse-all 'bytecode-function (make-input ',body))
      (resolve-relocations)
      (setf (bytecode-function ',name) *parser-state*)))
 
-(defun test()
-  (define-bytecode-function test (&rest l)
-    (declare (local l acc val))
-      (bind (l))
-      (move acc 0)
-      (jump :if (not l) end)
-    loop
-      (call 'car-cdr (l))
-      (bind (val l))
-      (call '+ (acc val))
-      (jump :if (not l) loop)
-    end
-      (return (acc))))
+(defmethod reify ((object bytecode-parser))
+  (with-slots (name lambda-list code constants locals shared closure)
+      object
+    (make-instance 'bytecode-function
+                   :code (copy-seq code)
+                   :constants (storage-block-count constants)
+                   :local (storage-block-count locals)
+                   :shared (flatten-storage-blocks shared)
+                   :closure (flatten-storage-blocks closure)
+                   :name name
+                   :arglist lambda-list)))

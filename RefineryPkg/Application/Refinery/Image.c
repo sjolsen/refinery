@@ -19,7 +19,7 @@ typedef struct {
   BORAX_OBJECT    Stuff;
   BORAX_OBJECT    Vector;
   BORAX_OBJECT    Hello;
-  BORAX_OBJECT    Test;
+  BORAX_OBJECT    SumList;
 } ROOT;
 
 typedef struct {
@@ -512,14 +512,11 @@ FillContent (
     return EFI_INVALID_PARAMETER;
   }
 
-  /* (VOID)PrintLabelled (&Ctx, L"GLOBALS", Root->Globals); */
-  /* (VOID)PrintLabelled (&Ctx, L"CLASSES", Root->Classes); */
-  /* (VOID)PrintLabelled (&Ctx, L"PACKAGES", Root->Packages); */
   (VOID)PrintLabelled (&Ctx, L"NUMBERS", Root->Numbers);
   (VOID)PrintLabelled (&Ctx, L"STUFF", Root->Stuff);
   (VOID)PrintLabelled (&Ctx, L"VECTOR", Root->Vector);
   (VOID)PrintLabelled (&Ctx, L"HELLO", Root->Hello);
-  (VOID)PrintLabelled (&Ctx, L"TEST", Root->Test);
+  (VOID)PrintLabelled (&Ctx, L"SUM-LIST", Root->SumList);
 
   return EFI_SUCCESS;
 }
