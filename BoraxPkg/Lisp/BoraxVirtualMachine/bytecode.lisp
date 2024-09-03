@@ -27,7 +27,10 @@
    (locals :initform (make-storage-block))
    (shared :initform (make-array 0 :adjustable t))
    (closure :initform (make-array 0 :adjustable t))
-   (instructions :initform (make-array 0 :adjustable t :fill-pointer 0))))
+   (code :initform (make-array 0 :element-type '(unsigned-byte 8)
+                                 :adjustable t :fill-pointer 0))
+   (label-table :initform (make-hash-table))
+   (relocations :initform (make-array 0 :adjustable t :fill-pointer 0))))
 
 (defvar *parser-state* nil)
 
@@ -54,8 +57,109 @@
               (list type index count))
         (incf count)))))
 
-(defun emit-instruction (&rest data)
-  (list* 'instruction data))
+(defun declare-label (label offset)
+  (assert (typep offset '(unsigned-byte 16)))
+  (with-slots (label-table) *parser-state*
+    (when (gethash label label-table)
+      (error "Label ~S already defined" label))
+    (setf (gethash label label-table) offset)))
+
+(defun emit-byte (value)
+  (assert (typep value '(unsigned-byte 8)))
+  (with-slots (code) *parser-state*
+    (vector-push-extend value code)))
+
+(defun emit-index (value &key overwrite)
+  (assert (typep value '(unsigned-byte 16)))
+  (with-slots (code) *parser-state*
+    (let ((low-byte (ldb (byte 8 0) value))
+          (high-byte (ldb (byte 8 8) value)))
+      (if overwrite
+          (prog1 (setf (aref code overwrite) low-byte)
+            (setf (aref code (1+ overwrite)) high-byte))
+          (prog1 (vector-push-extend low-byte code)
+            (vector-push-extend high-byte code))))))
+
+(defun emit-field (offset bytespec value)
+  (with-slots (code) *parser-state*
+    (let ((limit (1- (ash 1 (byte-size bytespec)))))
+      (setf (ldb bytespec (aref code offset))
+            (min value limit))
+      (when (>= value limit)
+        (emit-byte value)))))
+
+(defun emit-location (location)
+  (destructuring-bind (type block-index var-index) location
+    (let* ((tag (ecase type
+                  (constant 0)
+                  (local    1)
+                  (shared   2)
+                  (closure  3)))
+           (offset (emit-byte (ash tag 6))))
+      (ecase type
+        ((constant local)
+         (assert (null block-index))
+         (emit-field offset (byte 6 0) var-index))
+        ((shared closure)
+         (assert block-index)
+         (emit-field offset (byte 3 3) block-index)
+         (emit-field offset (byte 3 0) var-index))))))
+
+(defun emit-values (values)
+  (dolist (value (cdr values))
+    (emit-location value)))
+
+(defun emit-jump-target (label)
+  (with-slots (relocations) *parser-state*
+    (let ((offset (emit-index 0)))
+      (vector-push-extend (cons label offset)
+                          relocations))))
+
+(defun resolve-relocations ()
+  (with-slots (label-table relocations) *parser-state*
+    (loop for (label . offset) across relocations
+          for target = (gethash label label-table)
+          when (null target)
+            do (error "Jump to undefined label ~S" label)
+          do (emit-index target :overwrite offset))))
+
+(defun operand-count (values)
+  (ecase (car values)
+    ((nil)            0)
+    (:multiple-values 1)
+    (:values          (+ 2 (length (cdr values))))))
+
+(defun condition-code (condition)
+  (case (car condition)
+    ((nil)    (values 0 nil))
+    (identity (values 1 (cdr condition)))
+    (not      (values 2 (cdr condition)))))
+
+(defun emit-condition (offset bytespec condition)
+  (with-slots (code) *parser-state*
+    (multiple-value-bind (flag operands)
+        (condition-code condition)
+      (when (> (integer-length flag) (byte-size bytespec))
+        (error "Condition ~S cannot be encoded" condition))
+      (setf (ldb bytespec (aref code offset)) flag)
+      (dolist (operand operands)
+        (emit-location operand)))))
+
+(defun emit-c-opcode (code condition values)
+  (let ((offset (emit-byte (ash code 4))))
+    (emit-field offset (byte 3 0) (operand-count values))
+    (emit-condition offset (byte 1 3) condition)
+    offset))
+
+(defun emit-j-opcode (code condition)
+  (let ((offset (emit-byte (ash code 4))))
+    (emit-condition offset (byte 4 0) condition)
+    offset))
+
+(defun emit-b-opcode (code values)
+  (let ((offset (emit-byte (ash code 4))))
+    (emit-field offset (byte 4 0) (operand-count values))
+    offset))
 
 (define-nonterminal bytecode-function ()
   (sequence (* (nested declaration))
@@ -75,25 +179,26 @@
     (declare-variables vars type index)))
 
 (define-nonterminal labelled-instruction ()
-  (let ((labels      (* symbol))
-        (instruction (nested instruction)))
-    (with-slots (instructions) *parser-state*
-      (vector-push-extend (cons labels instruction) instructions))))
+  (let ((labels (* symbol))
+        (offset (nested instruction)))
+    (dolist (label labels)
+      (declare-label label offset))))
 
 (define-nonterminal condition ()
-  (sequence :if condition-expr))
+  (let ((nil :if)
+        (result condition-expr))
+    result))
 
 (define-nonterminal condition-expr ()
   (let ((location location))
-    (list t location))
+    (list 'identity location))
   (nested (sequence 'not location)))
 
 (define-nonterminal values ()
-  location
+  (let ((location location))
+    (list :multiple-values location))
   (let ((locations (nested (* location))))
-    ;; (optional values) will return nil when no value list is specified, which
-    ;; is semantically distinct from an explicitly-specified empty list.
-    (or locations :explicitly-empty)))
+    (list* :values locations)))
 
 ;; TODO: Numeric locations
 (define-nonterminal location ()
@@ -128,44 +233,44 @@
         (condition (optional condition))
         (location  location)
         (values    (optional values)))
-    (emit-instruction :op 'call
-                      :tail (when tail t)
-                      :fast (when fast t)
-                      :condition condition
-                      :location location
-                      :values values)))
+    (prog1
+        (let ((code 0))
+          (when fast
+            (setf code (logior code 1)))
+          (when tail
+            (setf code (logior code 2)))
+          (emit-c-opcode code condition values))
+      (emit-location location)
+      (emit-values values))))
 
 (define-nonterminal jump-instruction ()
   (let ((nil       'jump)
         (condition (optional condition))
-        (index     symbol))
-    (emit-instruction :op 'jump
-                      :condition condition
-                      :index index)))
+        (target    symbol))
+    (prog1 (emit-j-opcode 4 condition)
+      (emit-jump-target target))))
 
 (define-nonterminal return-instruction ()
   (let ((nil       'return)
         (condition (optional condition))
         (values    (optional values)))
-    (emit-instruction :op 'return
-                      :condition condition
-                      :values values)))
+    (prog1 (emit-c-opcode 5 condition values)
+      (emit-values values))))
 
 (define-nonterminal bind-instruction ()
   (let ((nil    'bind)
         (values values))
-    (emit-instruction :op 'bind
-                      :values values)))
+    (prog1 (emit-b-opcode 13 values)
+      (emit-values values))))
 
 (define-nonterminal move-instruction ()
   (let ((nil         'move)
         (condition   (optional condition))
         (destination location)
         (source      location))
-    (emit-instruction :op 'move
-                      :condition condition
-                      :destination destination
-                      :source source)))
+    (prog1 (emit-j-opcode 15 condition)
+      (emit-location destination)
+      (emit-location source))))
 
 (defvar *bytecode-functions* (make-hash-table))
 
@@ -183,6 +288,7 @@
   (declare (ignore lambda-list))
   `(let ((*parser-state* (make-instance 'bytecode-parser)))
      (parse-all 'bytecode-function (make-input ',body))
+     (resolve-relocations)
      (setf (bytecode-function ',name) *parser-state*)))
 
 (defun test()
