@@ -27,7 +27,7 @@
    (lambda-list :initarg :lambda-list)
    (constant-table :initform (make-hash-table))
    (symbol-table :initform (make-hash-table))
-   (constants :initform (make-storage-block))
+   (constants :initform (make-array 0 :adjustable t :fill-pointer 0))
    (locals :initform (make-storage-block))
    (shared :initform (make-array 0 :adjustable t))
    (closure :initform (make-array 0 :adjustable t))
@@ -219,11 +219,10 @@
           (error "Variable ~S not defined" var))))
   (let ((value constant))
     (with-slots (constant-table constants) *parser-state*
-      (with-slots (count) constants
-        (or (gethash value constant-table)
-            (prog1 (setf (gethash value constant-table)
-                         (list 'constant nil count))
-              (incf count)))))))
+      (or (gethash value constant-table)
+          (prog1 (setf (gethash value constant-table)
+                       (list 'constant nil (length constants)))
+            (vector-push-extend value constants))))))
 
 (define-nonterminal constant ()
   number
@@ -307,7 +306,7 @@
       object
     (make-instance 'bytecode-function
                    :code (copy-seq code)
-                   :constants (storage-block-count constants)
+                   :constants (copy-seq constants)
                    :local (storage-block-count locals)
                    :shared (flatten-storage-blocks shared)
                    :closure (flatten-storage-blocks closure)
