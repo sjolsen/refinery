@@ -220,6 +220,30 @@ STATIC_ASSERT (
   "Object header must be two words"
   );
 
+typedef enum {
+  BORAX_OBJECT_GCDATA_SPACEBIT = 1 << 0,
+  BORAX_OBJECT_GCDATA_GREYBIT  = 1 << 1,
+  BORAX_OBJECT_GCDATA_LOCKED   = 1 << 2,
+} BORAX_OBJECT_GCDATA;
+
+STATIC inline VOID
+EFIAPI
+BoraxLockObject (
+  IN BORAX_OBJECT_HEADER  *Object
+  )
+{
+  Object->GcData |= BORAX_OBJECT_GCDATA_LOCKED;
+}
+
+STATIC inline VOID
+EFIAPI
+BoraxUnlockObject (
+  IN BORAX_OBJECT_HEADER  *Object
+  )
+{
+  Object->GcData &= ~BORAX_OBJECT_GCDATA_LOCKED;
+}
+
 /*
  * Cons cell management
  * ====================
@@ -358,11 +382,6 @@ typedef struct {
  * by pointer assignment.
  */
 
-typedef enum {
-  BORAX_OBJECT_GCDATA_SPACEBIT = 1,
-  BORAX_OBJECT_GCDATA_GREYBIT  = 2,
-} BORAX_OBJECT_GCDATA;
-
 typedef struct _BORAX_OBJECT_CHUNK BORAX_OBJECT_CHUNK;
 
 struct _BORAX_OBJECT_CHUNK {
@@ -488,8 +507,40 @@ typedef union {
   };
 } BORAX_RECORD;
 
+EFI_STATUS
+EFIAPI
+BoraxGetRecord (
+  IN CONST CHAR8    *DebugFunc,
+  IN INTN           DebugLine,
+  IN BORAX_OBJECT   Object,
+  IN UINTN          WideTag,
+  IN UINTN          MinLength,
+  OUT BORAX_RECORD  **Record
+  );
+
+// TODO: How can we make these macros type-safe?
 #define BORAX_RECORD_LENGTH(_type) \
 ((sizeof (_type) - sizeof (BORAX_RECORD)) / sizeof (BORAX_OBJECT))
+
+#define BORAX_GET_OBJECT_RECORD(_obj, _ptr) \
+(BoraxGetRecord (                           \
+  __func__,                                 \
+  __LINE__,                                 \
+  (_obj),                                   \
+  BORAX_WIDETAG_OBJECT_RECORD,              \
+  BORAX_RECORD_LENGTH (**(_ptr)),           \
+  (BORAX_RECORD **)(_ptr)                   \
+  ))
+
+#define BORAX_GET_WORD_RECORD(_obj, _ptr) \
+(BoraxGetRecord (                         \
+  __func__,                               \
+  __LINE__,                               \
+  (_obj),                                 \
+  BORAX_WIDETAG_WORD_RECORD,              \
+  BORAX_RECORD_LENGTH (**(_ptr)),         \
+  (BORAX_RECORD **)(_ptr)                 \
+  ))
 
 /*
  * Triggering garbage collection

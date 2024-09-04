@@ -936,6 +936,10 @@ BoraxAllocatePin (
   Alloc->Pins            = NewPin;
   NewPin->Object         = Object;
 
+  // Pins are designed to be handles for C into Lisp, so it's convenient for
+  // them to be locked by default.
+  BoraxLockObject (&NewPin->Header);
+
   *Pin = NewPin;
   return EFI_SUCCESS;
 }
@@ -1050,5 +1054,49 @@ BoraxAllocateRecordUninitialized (
   NewRecord->Class          = Class;
 
   *Record = NewRecord;
+  return EFI_SUCCESS;
+}
+
+EFI_STATUS
+EFIAPI
+BoraxGetRecord (
+  IN CONST CHAR8    *DebugFunc,
+  IN INTN           DebugLine,
+  IN BORAX_OBJECT   Object,
+  IN UINTN          WideTag,
+  IN UINTN          MinLength,
+  OUT BORAX_RECORD  **Record
+  )
+{
+  UINTN         Discrim;
+  BORAX_RECORD  *TheRecord;
+
+  Discrim = BORAX_DISCRIMINATE (Object);
+  if (Discrim != WideTag) {
+    DEBUG ((
+      DEBUG_ERROR,
+      "%a:%d: incorrect object type (%u != %u)\n",
+      DebugFunc,
+      DebugLine,
+      Discrim,
+      WideTag
+      ));
+    return EFI_INVALID_PARAMETER;
+  }
+
+  TheRecord = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
+  if (TheRecord->Length < MinLength) {
+    DEBUG ((
+      DEBUG_ERROR,
+      "%a:%d: invalid object length (%u < %u)\n",
+      DebugFunc,
+      DebugLine,
+      TheRecord->Length,
+      MinLength
+      ));
+    return EFI_INVALID_PARAMETER;
+  }
+
+  *Record = TheRecord;
   return EFI_SUCCESS;
 }

@@ -63,39 +63,6 @@ typedef struct {
 
 STATIC BORAX_OBJECT
 EFIAPI
-GetRecord (
-  IN LISP_CONTEXT   *Ctx,
-  IN BORAX_OBJECT   Object,
-  IN UINTN          MinLength,
-  OUT BORAX_RECORD  **Record
-  )
-{
-  BORAX_RECORD  *TheRecord;
-
-  if (BORAX_DISCRIMINATE (Object) != BORAX_DISCRIM_OBJECT_RECORD) {
-    (VOID)BufferWrite (Ctx->Content, L"Not an object record\n");
-    return EFI_INVALID_PARAMETER;
-  }
-
-  TheRecord = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
-  if (TheRecord->Length < MinLength) {
-    (VOID)BufferWrite (Ctx->Content, L"Record too small (");
-    (VOID)BufferWriteInt (Ctx->Content, TheRecord->Length);
-    (VOID)BufferWrite (Ctx->Content, L" < ");
-    (VOID)BufferWriteInt (Ctx->Content, MinLength);
-    (VOID)BufferWrite (Ctx->Content, L")\n");
-    return EFI_INVALID_PARAMETER;
-  }
-
-  *Record = TheRecord;
-  return EFI_SUCCESS;
-}
-
-#define GET_RECORD(_ctx, _obj, _ptr) \
-(GetRecord ((_ctx), (_obj), BORAX_RECORD_LENGTH (**(_ptr)), (BORAX_RECORD **)(_ptr)))
-
-STATIC BORAX_OBJECT
-EFIAPI
 Car (
   LISP_CONTEXT  *Ctx,
   BORAX_OBJECT  Object
@@ -138,7 +105,7 @@ GetClassName (
   EFI_STATUS      Status;
   STANDARD_CLASS  *Class;
 
-  Status = GET_RECORD (Ctx, Object, &Class);
+  Status = BORAX_GET_OBJECT_RECORD (Object, &Class);
   if (EFI_ERROR (Status)) {
     return Ctx->Globals->Nil;
   }
@@ -160,7 +127,7 @@ GetPackageName (
   EFI_STATUS  Status;
   PACKAGE     *Package;
 
-  Status = GET_RECORD (Ctx, Object, &Package);
+  Status = BORAX_GET_OBJECT_RECORD (Object, &Package);
   if (EFI_ERROR (Status)) {
     return Ctx->Globals->Nil;
   }
@@ -309,7 +276,7 @@ FormatRecursive (
       } else if (Record->Class == Ctx->Classes->Symbol) {
         SYMBOL  *Symbol;
 
-        Status = GET_RECORD (Ctx, Object, &Symbol);
+        Status = BORAX_GET_OBJECT_RECORD (Object, &Symbol);
         if (EFI_ERROR (Status)) {
           (VOID)BufferWrite (Ctx->Content, L"Malformed symbol object\n");
           return EFI_INVALID_PARAMETER;
@@ -363,7 +330,7 @@ FormatRecursive (
       } else if (Record->Class == Ctx->Classes->StandardClass) {
         STANDARD_CLASS  *Class;
 
-        Status = GET_RECORD (Ctx, Object, &Class);
+        Status = BORAX_GET_OBJECT_RECORD (Object, &Class);
         if (EFI_ERROR (Status)) {
           (VOID)BufferWrite (Ctx->Content, L"Malformed class object\n");
           return EFI_INVALID_PARAMETER;
@@ -494,19 +461,19 @@ FillContent (
 
   Ctx.Content = Content;
 
-  Status = GET_RECORD (&Ctx, RootObject, &Root);
+  Status = BORAX_GET_OBJECT_RECORD (RootObject, &Root);
   if (EFI_ERROR (Status)) {
     (VOID)BufferWrite (Content, L"Malformed root object\n");
     return EFI_INVALID_PARAMETER;
   }
 
-  Status = GET_RECORD (&Ctx, Root->Globals, &Ctx.Globals);
+  Status = BORAX_GET_OBJECT_RECORD (Root->Globals, &Ctx.Globals);
   if (EFI_ERROR (Status)) {
     (VOID)BufferWrite (Content, L"Malformed globals object\n");
     return EFI_INVALID_PARAMETER;
   }
 
-  Status = GET_RECORD (&Ctx, Root->Classes, &Ctx.Classes);
+  Status = BORAX_GET_OBJECT_RECORD (Root->Classes, &Ctx.Classes);
   if (EFI_ERROR (Status)) {
     (VOID)BufferWrite (Content, L"Malformed classes object\n");
     return EFI_INVALID_PARAMETER;
