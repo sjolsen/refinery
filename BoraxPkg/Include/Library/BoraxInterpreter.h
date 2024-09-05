@@ -189,6 +189,7 @@ typedef struct {
 typedef struct {
   UINTN    BP;
   UINTN    SP;
+  UINTN    PC;
 } BORAX_TASK_REGISTERS;
 
 typedef struct {

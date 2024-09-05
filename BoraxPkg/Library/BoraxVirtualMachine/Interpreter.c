@@ -2,6 +2,7 @@
 
 #include <Library/BaseLib.h>
 #include <Library/BoraxMemory.h>
+#include <Library/DebugLib.h>
 #include <Library/MemoryAllocationLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 
@@ -117,6 +118,137 @@ BoraxInterpreterCleanup (
   }
 }
 
+STATIC EFI_STATUS
+EFIAPI
+TaskStackEnsureCapacity (
+  IN BORAX_TASK_STACK  *Stack,
+  IN UINTN             Words
+  )
+{
+  EFI_STATUS  Status;
+  UINTN       Pages          = (Words + BORAX_WORDS_PER_PAGE - 1) / BORAX_WORDS_PER_PAGE;
+  UINTN       NewPagesLength = Stack->PagesLength;
+  UINTN       I;
+
+  // Allocate space for the page pointers
+  if (Stack->PagesCapacity < Pages) {
+    UINTN  NewPagesCapacity = MAX (
+                                Stack->PagesCapacity * STACK_PAGE_FACTOR,
+                                Pages
+                                );
+    BORAX_OBJECT  **NewPages = ReallocatePool (
+                                 Stack->PagesCapacity,
+                                 NewPagesCapacity,
+                                 Stack->Pages
+                                 );
+
+    if (NewPages == NULL) {
+      Status = EFI_OUT_OF_RESOURCES;
+      goto cleanup;
+    }
+
+    Stack->Pages         = NewPages;
+    Stack->PagesCapacity = NewPagesCapacity;
+  }
+
+  // Allocate pages
+  for ( ; NewPagesLength < Pages; ++NewPagesLength) {
+    Stack->Pages[NewPagesLength] = AllocatePages (1);
+    if (Stack->Pages[NewPagesLength] == NULL) {
+      Status = EFI_OUT_OF_RESOURCES;
+      goto cleanup;
+    }
+  }
+
+  Stack->PagesLength = NewPagesLength;
+  Status             = EFI_SUCCESS;
+
+cleanup:
+  // On error, any newly allocated pages will lie between PagesLength and
+  // NewPagesLength. On success, these indices are equal. We could undo the
+  // capacity increase as well, but this is less important (and not required for
+  // correctness).
+  for (I = Stack->PagesLength; I < NewPagesLength; ++I) {
+    FreePages (Stack->Pages[I], 1);
+    Stack->Pages[I] = NULL;
+  }
+
+  return Status;
+}
+
+STATIC VOID
+EFIAPI
+TaskStackWrite (
+  IN BORAX_TASK_STACK  *Stack,
+  IN UINTN             Index,
+  IN BORAX_OBJECT      Value
+  )
+{
+  UINTN  PageIndex  = Index / BORAX_WORDS_PER_PAGE;
+  UINTN  PageOffset = Index % BORAX_WORDS_PER_PAGE;
+
+  ASSERT (PageIndex < Stack->PagesLength);
+  Stack->Pages[PageIndex][PageOffset] = Value;
+}
+
+STATIC EFI_STATUS
+EFIAPI
+TaskEnterFunction (
+  BORAX_TASK    *Task,
+  BORAX_OBJECT  Function
+  )
+{
+  EFI_STATUS               Status;
+  BORAX_BUILT_IN_FUNCTION  *F;
+  UINTN                    Locals, Entry;
+  UINTN                    NewBP, NewSP;
+  UINTN                    I;
+
+  // TODO: Non-built-ins
+  if (BORAX_DISCRIMINATE (Function) != BORAX_DISCRIM_BUILT_IN_FUNCTION) {
+    // TODO: Error reporting
+    return EFI_INVALID_PARAMETER;
+  }
+
+  F = (BORAX_BUILT_IN_FUNCTION *)BORAX_GET_POINTER (Function);
+
+  if (!BORAX_IS_FIXNUM (F->Locals)) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  Locals = BORAX_GET_FIXNUM (F->Locals);
+
+  if (!BORAX_IS_FIXNUM (F->Entry)) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  Entry = BORAX_GET_FIXNUM (F->Entry);
+
+  // TODO: Shared bindings
+  NewBP = Task->Registers.SP;
+  NewSP = NewBP + 4 + Locals;
+
+  Status = TaskStackEnsureCapacity (&Task->Stack, NewSP);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  TaskStackWrite (&Task->Stack, NewBP, BORAX_MAKE_FIXNUM (Task->Registers.BP));
+  TaskStackWrite (&Task->Stack, NewBP + 1, BORAX_MAKE_FIXNUM (Task->Registers.PC));
+  TaskStackWrite (&Task->Stack, NewBP + 2, Function);
+  TaskStackWrite (&Task->Stack, NewBP + 3, BORAX_IMMEDIATE_UNBOUND);
+
+  for (I = 0; I < Locals; ++I) {
+    TaskStackWrite (&Task->Stack, NewBP + 4 + I, BORAX_IMMEDIATE_UNBOUND);
+  }
+
+  Task->Registers.SP = NewSP;
+  Task->Registers.BP = NewBP;
+  Task->Registers.PC = Entry;
+
+  return EFI_SUCCESS;
+}
+
 EFI_STATUS
 EFIAPI
 BoraxInterpreterSpawn (
@@ -127,8 +259,9 @@ BoraxInterpreterSpawn (
   IN BORAX_OBJECT       Args
   )
 {
-  EFI_STATUS  Status;
-  BORAX_TASK  *Task = NULL;
+  EFI_STATUS        Status;
+  BORAX_TASK        *Task  = NULL;
+  BORAX_TASK_STACK  *Stack = NULL;
 
   if ((Completion == NULL) && (Result != NULL)) {
     return EFI_INVALID_PARAMETER;
@@ -149,17 +282,30 @@ BoraxInterpreterSpawn (
     goto cleanup;
   }
 
+  Stack = &Task->Stack;
+
   Task->State        = BORAX_TASK_RUNNING;
   Task->Registers.BP = 0;
   Task->Registers.SP = 0;
   Task->Completion   = Completion;
   Task->Result       = Result;
 
+  // TODO: args
+  Status = TaskEnterFunction (Task, EntryPoint);
+  if (EFI_ERROR (Status)) {
+    goto cleanup;
+  }
+
   InsertTailList (&Interp->TaskList, &Task->TaskList);
   Task   = NULL;
+  Stack  = NULL;
   Status = EFI_SUCCESS;
 
 cleanup:
+  if (Stack != NULL) {
+    TaskStackCleanup (Stack);
+  }
+
   if (Task != NULL) {
     BoraxReleasePinRecord (&Task->Record);
   }
