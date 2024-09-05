@@ -166,12 +166,11 @@ TaskRun (
 STATIC VOID
 EFIAPI
 TaskEnd (
-  IN BORAX_TASK    *Task,
-  IN BORAX_OBJECT  Result
+  IN BORAX_TASK  *Task
   )
 {
   if (Task->Result != NULL) {
-    Task->Result->Object = Result;
+    Task->Result->Object = Task->Registers.VR;
   }
 
   if (Task->Completion != NULL) {
@@ -213,8 +212,7 @@ BoraxInterpreterCleanup (
   BASE_LIST_FOR_EACH_SAFE (Entry, NextEntry, &Interp->TaskList) {
     BORAX_TASK  *Task = BASE_CR (Entry, BORAX_TASK, TaskList);
 
-    // TODO: Return a meaningful value indicating abnormal exit
-    TaskEnd (Task, BORAX_IMMEDIATE_UNBOUND);
+    TaskEnd (Task);
   }
 }
 
@@ -292,12 +290,13 @@ BoraxInterpreterRun (
   )
 {
   EFI_STATUS  Status;
-  LIST_ENTRY  *Entry;
+  LIST_ENTRY  *Entry, *NextEntry;
   BOOLEAN     WorkDone;
 
   do {
     WorkDone = FALSE;
-    BASE_LIST_FOR_EACH (Entry, &Interp->TaskList) {
+
+    BASE_LIST_FOR_EACH_SAFE (Entry, NextEntry, &Interp->TaskList) {
       BORAX_TASK  *Task = BASE_CR (Entry, BORAX_TASK, TaskList);
 
       if (Task->State == BORAX_TASK_RUNNING) {
@@ -307,6 +306,10 @@ BoraxInterpreterRun (
           // TODO: principled error handling
           return Status;
         }
+      }
+
+      if (Task->State == BORAX_TASK_EXITED) {
+        TaskEnd (Task);
       }
     }
   } while (WorkDone);
@@ -410,6 +413,21 @@ BoraxTaskEnterFunction (
   Task->Registers.PC = Entry;
 
   return EFI_SUCCESS;
+}
+
+VOID
+EFIAPI
+BoraxTaskExitFunction (
+  IN BORAX_TASK  *Task
+  )
+{
+  UINTN  NewSP = Task->Registers.BP;
+
+  Task->Registers.SP = NewSP;
+  Task->Registers.BP = BORAX_GET_FIXNUM (BoraxTaskStackRead (Task, NewSP));
+  Task->Registers.PC = BORAX_GET_FIXNUM (BoraxTaskStackRead (Task, NewSP + 1));
+
+  // TODO: Shrink the stack if appropriate
 }
 
 STATIC EFI_STATUS

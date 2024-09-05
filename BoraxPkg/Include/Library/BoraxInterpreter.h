@@ -271,6 +271,12 @@ BoraxTaskEnterFunction (
   IN BORAX_OBJECT  Function
   );
 
+VOID
+EFIAPI
+BoraxTaskExitFunction (
+  IN BORAX_TASK  *Task
+  );
+
 typedef struct {
   BORAX_RECORD    Record;
   BORAX_OBJECT    ValuesLength;
