@@ -181,13 +181,24 @@ typedef enum {
 } BORAX_TASK_STATE;
 
 typedef struct {
-  BORAX_PIN_RECORD    Record;
-  LIST_ENTRY          TaskList;
-  BORAX_TASK_STATE    State;
-  EFI_EVENT           Completion;
-  BORAX_PIN           *Result;
-  BORAX_OBJECT        EntryPoint;
-  BORAX_OBJECT        Args;
+  BORAX_OBJECT    **Pages;
+  UINTN           PagesLength;
+  UINTN           PagesCapacity;
+} BORAX_TASK_STACK;
+
+typedef struct {
+  UINTN    BP;
+  UINTN    SP;
+} BORAX_TASK_REGISTERS;
+
+typedef struct {
+  BORAX_PIN_RECORD        Record;
+  LIST_ENTRY              TaskList;
+  BORAX_TASK_STATE        State;
+  BORAX_TASK_STACK        Stack;
+  BORAX_TASK_REGISTERS    Registers;
+  EFI_EVENT               Completion;
+  BORAX_PIN               *Result;
 } BORAX_TASK;
 
 typedef struct {

@@ -263,7 +263,9 @@ STATIC_ASSERT (
   "Cons cell must be two words"
   );
 
-#define BORAX_PAGE_SIZE          4096
+#define BORAX_PAGE_SIZE       4096
+#define BORAX_WORDS_PER_PAGE  (BORAX_PAGE_SIZE / sizeof(UINTN))
+
 #define BORAX_WORD_BITS          (CHAR_BIT * sizeof(UINTN))
 #define BORAX_CONS_PER_PAGE      (BORAX_PAGE_SIZE / sizeof(BORAX_CONS))
 #define BORAX_CONS_BITMAP_WORDS  (BORAX_CONS_PER_PAGE / BORAX_WORD_BITS)
