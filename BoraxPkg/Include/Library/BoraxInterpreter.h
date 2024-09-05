@@ -181,18 +181,14 @@ typedef enum {
 } BORAX_TASK_STATE;
 
 typedef struct {
+  BORAX_PIN_RECORD    Record;
   LIST_ENTRY          TaskList;
   BORAX_TASK_STATE    State;
   EFI_EVENT           Completion;
   BORAX_PIN           *Result;
-  BORAX_PIN           *Data;
+  BORAX_OBJECT        EntryPoint;
+  BORAX_OBJECT        Args;
 } BORAX_TASK;
-
-typedef struct {
-  BORAX_RECORD    Record;
-  BORAX_OBJECT    EntryPoint;
-  BORAX_OBJECT    Args;
-} BORAX_TASK_DATA;
 
 typedef struct {
   BORAX_ALLOCATOR    *Alloc;

@@ -47,9 +47,7 @@ BoraxInterpreterCleanup (
       gBS->SignalEvent (Task->Completion);
     }
 
-    // TODO: The memory module uses the SystemAllocator abstraction to
-    // facilitate unit testing. Should the interpreter do the same?
-    FreePool (Task);
+    BoraxReleasePinRecord (&Task->Record);
   }
 }
 
@@ -63,63 +61,30 @@ BoraxInterpreterSpawn (
   IN BORAX_OBJECT       Args
   )
 {
-  EFI_STATUS       Status;
-  BORAX_TASK       *Task = NULL;
-  BORAX_TASK_DATA  *TaskData;
-  BORAX_PIN        *TaskDataPin = NULL;
+  EFI_STATUS  Status;
+  BORAX_TASK  *Task;
 
   if ((Completion == NULL) && (Result != NULL)) {
     return EFI_INVALID_PARAMETER;
   }
 
-  Task = AllocatePool (sizeof (BORAX_TASK));
-  if (Task == NULL) {
-    Status = EFI_OUT_OF_RESOURCES;
-    goto cleanup;
-  }
-
-  Status = BoraxAllocateRecord (
+  Status = BoraxAllocatePinRecord (
              Interp->Alloc,
-             BORAX_WIDETAG_OBJECT_RECORD,
-             BORAX_IMMEDIATE_UNBOUND, // Class
-             BORAX_RECORD_LENGTH (BORAX_TASK_DATA),
-             0,                       // LengthAux
-             BORAX_IMMEDIATE_UNBOUND, // InitialElement
-             (BORAX_RECORD **)&TaskData
+             BORAX_WIDETAG_TASK,
+             sizeof (BORAX_TASK),
+             (BORAX_PIN_RECORD **)&Task
              );
   if (EFI_ERROR (Status)) {
-    goto cleanup;
+    return Status;
   }
 
-  Status = BoraxAllocatePin (
-             Interp->Alloc,
-             BORAX_MAKE_POINTER (TaskData),
-             &TaskDataPin
-             );
-  if (EFI_ERROR (Status)) {
-    goto cleanup;
-  }
-
-  Task->State          = BORAX_TASK_RUNNING;
-  Task->Completion     = Completion;
-  Task->Result         = Result;
-  Task->Data           = TaskDataPin;
-  TaskData->EntryPoint = EntryPoint;
-  TaskData->Args       = Args;
+  Task->State      = BORAX_TASK_RUNNING;
+  Task->Completion = Completion;
+  Task->Result     = Result;
+  Task->EntryPoint = EntryPoint;
+  Task->Args       = Args;
 
   InsertTailList (&Interp->TaskList, &Task->TaskList);
-  Task        = NULL;
-  TaskDataPin = NULL;
-
-cleanup:
-  if (Task != NULL) {
-    FreePool (Task);
-  }
-
-  if (TaskDataPin != NULL) {
-    BoraxReleasePin (TaskDataPin);
-  }
-
   return Status;
 }
 
@@ -143,6 +108,30 @@ BoraxInterpreterShutdown (
 {
   // TODO
 }
+
+STATIC EFI_STATUS
+EFIAPI
+TaskSubObjects (
+  IN BORAX_OBJECT_HEADER          *Object,
+  IN VOID                         *Ctx,
+  IN BORAX_GC_SUBOBJECT_CALLBACK  Callback
+  )
+{
+  EFI_STATUS  Status;
+  BORAX_TASK  *Task = (BORAX_TASK *)Object;
+
+  Status = Callback (Ctx, &Task->EntryPoint);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  return Callback (Ctx, &Task->Args);
+}
+
+CONST BORAX_GC_HOOKS  gTaskGcHooks = {
+  .Copy       = &BoraxGcHookNoCopy,  // pin record
+  .SubObjects = &TaskSubObjects,
+};
 
 EFI_STATUS
 EFIAPI

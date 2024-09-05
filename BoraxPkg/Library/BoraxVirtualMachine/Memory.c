@@ -1241,6 +1241,9 @@ GcHooks (
     case BORAX_DISCRIM_BUILT_IN_FUNCTION:
       *Hooks = &gBuiltInFunctionGcHooks;
       return EFI_SUCCESS;
+    case BORAX_DISCRIM_TASK:
+      *Hooks = &gTaskGcHooks;
+      return EFI_SUCCESS;
     case BORAX_DISCRIM_WEAK_POINTER:
       *Hooks = &gWeakPointerGcHooks;
       return EFI_SUCCESS;
