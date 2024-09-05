@@ -176,35 +176,6 @@ typedef struct {
   BORAX_OBJECT    ClassSymbol;
 } BORAX_GLOBAL_ENVIRONMENT;
 
-typedef enum {
-  BORAX_TASK_RUNNING,
-  BORAX_TASK_PENDING,
-  BORAX_TASK_EXITED,
-} BORAX_TASK_STATE;
-
-typedef struct {
-  BORAX_OBJECT    **Pages;
-  UINTN           PagesLength;
-  UINTN           PagesCapacity;
-} BORAX_TASK_STACK;
-
-typedef struct {
-  UINTN           BP;
-  UINTN           SP;
-  UINTN           PC;
-  BORAX_OBJECT    VR;
-} BORAX_TASK_REGISTERS;
-
-typedef struct {
-  BORAX_PIN_RECORD        Record;
-  LIST_ENTRY              TaskList;
-  BORAX_TASK_STATE        State;
-  BORAX_TASK_STACK        Stack;
-  BORAX_TASK_REGISTERS    Registers;
-  EFI_EVENT               Completion;
-  BORAX_PIN               *Result;
-} BORAX_TASK;
-
 typedef struct {
   BORAX_ALLOCATOR    *Alloc;
   BORAX_PIN          *GlobalEnvironment;
@@ -247,6 +218,57 @@ VOID
 EFIAPI
 BoraxInterpreterShutdown (
   IN BORAX_INTERPRETER  *Interp
+  );
+
+typedef enum {
+  BORAX_TASK_RUNNING,
+  BORAX_TASK_PENDING,
+  BORAX_TASK_EXITED,
+} BORAX_TASK_STATE;
+
+typedef struct {
+  BORAX_OBJECT    **Pages;
+  UINTN           PagesLength;
+  UINTN           PagesCapacity;
+} BORAX_TASK_STACK;
+
+typedef struct {
+  UINTN           BP;
+  UINTN           SP;
+  UINTN           PC;
+  BORAX_OBJECT    VR;
+} BORAX_TASK_REGISTERS;
+
+typedef struct {
+  BORAX_PIN_RECORD        Record;
+  LIST_ENTRY              TaskList;
+  BORAX_TASK_STATE        State;
+  BORAX_TASK_STACK        Stack;
+  BORAX_TASK_REGISTERS    Registers;
+  EFI_EVENT               Completion;
+  BORAX_PIN               *Result;
+} BORAX_TASK;
+
+BORAX_OBJECT
+EFIAPI
+BoraxTaskStackRead (
+  IN BORAX_TASK  *Task,
+  IN UINTN       Index
+  );
+
+VOID
+EFIAPI
+BoraxTaskStackWrite (
+  IN BORAX_TASK    *Task,
+  IN UINTN         Index,
+  IN BORAX_OBJECT  Value
+  );
+
+EFI_STATUS
+EFIAPI
+BoraxTaskEnterFunction (
+  IN BORAX_TASK    *Task,
+  IN BORAX_OBJECT  Function
   );
 
 typedef struct {
