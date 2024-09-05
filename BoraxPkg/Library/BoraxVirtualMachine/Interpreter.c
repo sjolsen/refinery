@@ -12,6 +12,8 @@
 #define STACK_PAGE_MIN     1
 #define STACK_PAGE_FACTOR  2
 
+#define MULTIPLE_VALUES_MIN  8
+
 EFI_STATUS
 EFIAPI
 BoraxInterpreterInit (
@@ -194,8 +196,8 @@ TaskStackWrite (
 STATIC EFI_STATUS
 EFIAPI
 TaskEnterFunction (
-  BORAX_TASK    *Task,
-  BORAX_OBJECT  Function
+  IN BORAX_TASK    *Task,
+  IN BORAX_OBJECT  Function
   )
 {
   EFI_STATUS               Status;
@@ -284,13 +286,15 @@ BoraxInterpreterSpawn (
 
   Stack = &Task->Stack;
 
-  Task->State        = BORAX_TASK_RUNNING;
+  Task->State      = BORAX_TASK_RUNNING;
+  Task->Completion = Completion;
+  Task->Result     = Result;
+
   Task->Registers.BP = 0;
   Task->Registers.SP = 0;
-  Task->Completion   = Completion;
-  Task->Result       = Result;
+  Task->Registers.PC = 0;
+  Task->Registers.VR = Args;
 
-  // TODO: args
   Status = TaskEnterFunction (Task, EntryPoint);
   if (EFI_ERROR (Status)) {
     goto cleanup;
@@ -366,27 +370,45 @@ BoraxInterpreterShutdown (
 
 EFI_STATUS
 EFIAPI
-BoraxSetSymbolFunction (
-  IN BORAX_INTERPRETER  *Interp,
-  IN BORAX_OBJECT       Symbol,
-  IN BORAX_OBJECT       Function
+BoraxMakeMultipleValues (
+  IN BORAX_INTERPRETER       *Interp,
+  IN UINTN                   ValuesLength,
+  OUT BORAX_MULTIPLE_VALUES  **Values
   )
 {
-  EFI_STATUS    Status;
-  BORAX_SYMBOL  *TheSymbol;
+  EFI_STATUS                Status;
+  UINTN                     Capacity;
+  BORAX_MULTIPLE_VALUES     *NewMV;
+  BORAX_GLOBAL_ENVIRONMENT  *Env;
 
-  Status = BORAX_GET_OBJECT_RECORD (Symbol, &TheSymbol);
+  Capacity = MAX (MULTIPLE_VALUES_MIN, ValuesLength);
+
+  Status = BORAX_GET_OBJECT_RECORD (Interp->GlobalEnvironment->Object, &Env);
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
-  TheSymbol->Function = Function;
+  Status = BoraxAllocateRecord (
+             Interp->Alloc,
+             BORAX_WIDETAG_OBJECT_RECORD,
+             Env->ClassMultipleValues,
+             BORAX_RECORD_LENGTH (BORAX_MULTIPLE_VALUES) + Capacity,
+             0, // LengthAux
+             BORAX_IMMEDIATE_UNBOUND,
+             (BORAX_RECORD **)&NewMV
+             );
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  NewMV->ValuesLength = BORAX_MAKE_FIXNUM (ValuesLength);
+  *Values             = NewMV;
   return EFI_SUCCESS;
 }
 
 EFI_STATUS
 EFIAPI
-BoraxAllocateBuiltInFunction (
+BoraxMakeBuiltInFunction (
   IN BORAX_ALLOCATOR           *Alloc,
   IN CONST CHAR16              *Name,
   IN BORAX_OBJECT              Arglist,
@@ -486,3 +508,23 @@ CONST BORAX_GC_HOOKS  gBuiltInFunctionGcHooks = {
   .Copy       = &CopyBuiltInFunction,
   .SubObjects = &BuiltInFunctionSubObjects,
 };
+
+EFI_STATUS
+EFIAPI
+BoraxSetSymbolFunction (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Symbol,
+  IN BORAX_OBJECT       Function
+  )
+{
+  EFI_STATUS    Status;
+  BORAX_SYMBOL  *TheSymbol;
+
+  Status = BORAX_GET_OBJECT_RECORD (Symbol, &TheSymbol);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  TheSymbol->Function = Function;
+  return EFI_SUCCESS;
+}

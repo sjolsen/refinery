@@ -172,6 +172,7 @@
 
 typedef struct {
   BORAX_RECORD    Record;
+  BORAX_OBJECT    ClassMultipleValues;
   BORAX_OBJECT    ClassSymbol;
 } BORAX_GLOBAL_ENVIRONMENT;
 
@@ -187,9 +188,10 @@ typedef struct {
 } BORAX_TASK_STACK;
 
 typedef struct {
-  UINTN    BP;
-  UINTN    SP;
-  UINTN    PC;
+  UINTN           BP;
+  UINTN           SP;
+  UINTN           PC;
+  BORAX_OBJECT    VR;
 } BORAX_TASK_REGISTERS;
 
 typedef struct {
@@ -248,18 +250,16 @@ BoraxInterpreterShutdown (
 
 typedef struct {
   BORAX_RECORD    Record;
-  BORAX_OBJECT    Package;
-  BORAX_OBJECT    Name;
-  BORAX_OBJECT    Value;
-  BORAX_OBJECT    Function;
-} BORAX_SYMBOL;
+  BORAX_OBJECT    ValuesLength;
+  BORAX_OBJECT    Values[];
+} BORAX_MULTIPLE_VALUES;
 
 EFI_STATUS
 EFIAPI
-BoraxSetSymbolFunction (
-  IN BORAX_INTERPRETER  *Interp,
-  IN BORAX_OBJECT       Symbol,
-  IN BORAX_OBJECT       Function
+BoraxMakeMultipleValues (
+  IN BORAX_INTERPRETER       *Interp,
+  IN UINTN                   ValuesLength,
+  OUT BORAX_MULTIPLE_VALUES  **Values
   );
 
 typedef
@@ -286,7 +286,7 @@ typedef union {
 
 EFI_STATUS
 EFIAPI
-BoraxAllocateBuiltInFunction (
+BoraxMakeBuiltInFunction (
   IN BORAX_ALLOCATOR           *Alloc,
   IN CONST CHAR16              *Name,
   IN BORAX_OBJECT              Arglist,
@@ -297,6 +297,22 @@ BoraxAllocateBuiltInFunction (
   IN BORAX_OBJECT              Shared,
   IN BORAX_OBJECT              Closure,
   OUT BORAX_BUILT_IN_FUNCTION  **Function
+  );
+
+typedef struct {
+  BORAX_RECORD    Record;
+  BORAX_OBJECT    Package;
+  BORAX_OBJECT    Name;
+  BORAX_OBJECT    Value;
+  BORAX_OBJECT    Function;
+} BORAX_SYMBOL;
+
+EFI_STATUS
+EFIAPI
+BoraxSetSymbolFunction (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Symbol,
+  IN BORAX_OBJECT       Function
   );
 
 #endif // BORAX_INTERPRETER_H
