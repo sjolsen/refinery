@@ -600,23 +600,3 @@ CONST BORAX_GC_HOOKS  gBuiltInFunctionGcHooks = {
   .Copy       = &CopyBuiltInFunction,
   .SubObjects = &BuiltInFunctionSubObjects,
 };
-
-EFI_STATUS
-EFIAPI
-BoraxSetSymbolFunction (
-  IN BORAX_INTERPRETER  *Interp,
-  IN BORAX_OBJECT       Symbol,
-  IN BORAX_OBJECT       Function
-  )
-{
-  EFI_STATUS    Status;
-  BORAX_SYMBOL  *TheSymbol;
-
-  Status = BORAX_GET_OBJECT_RECORD (Symbol, &TheSymbol);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  TheSymbol->Function = Function;
-  return EFI_SUCCESS;
-}

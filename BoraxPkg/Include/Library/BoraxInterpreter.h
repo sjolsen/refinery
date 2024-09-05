@@ -173,7 +173,6 @@
 typedef struct {
   BORAX_RECORD    Record;
   BORAX_OBJECT    ClassMultipleValues;
-  BORAX_OBJECT    ClassSymbol;
 } BORAX_GLOBAL_ENVIRONMENT;
 
 typedef struct {
@@ -325,23 +324,6 @@ BoraxMakeBuiltInFunction (
   IN BORAX_OBJECT              Shared,
   IN BORAX_OBJECT              Closure,
   OUT BORAX_BUILT_IN_FUNCTION  **Function
-  );
-
-typedef struct {
-  BORAX_RECORD    Record;
-  BORAX_OBJECT    Package;
-  BORAX_OBJECT    Name;
-  BORAX_OBJECT    Value;
-  BORAX_OBJECT    Function;
-} BORAX_SYMBOL;
-
-// TODO: this belongs somewhere else
-EFI_STATUS
-EFIAPI
-BoraxSetSymbolFunction (
-  IN BORAX_INTERPRETER  *Interp,
-  IN BORAX_OBJECT       Symbol,
-  IN BORAX_OBJECT       Function
   );
 
 #endif // BORAX_INTERPRETER_H
