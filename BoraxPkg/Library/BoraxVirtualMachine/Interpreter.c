@@ -152,8 +152,8 @@ BoraxSetSymbolFunction (
   IN BORAX_OBJECT       Function
   )
 {
-  EFI_STATUS Status;
-  BORAX_SYMBOL *TheSymbol;
+  EFI_STATUS    Status;
+  BORAX_SYMBOL  *TheSymbol;
 
   Status = BORAX_GET_OBJECT_RECORD (Symbol, &TheSymbol);
   if (EFI_ERROR (Status)) {
