@@ -5,34 +5,6 @@
 
 #include "Stack.h"
 
-typedef
-EFI_STATUS
-(EFIAPI *BORAX_GC_HOOK_COPY)(
-  IN BORAX_ALLOCATOR       *Alloc,
-  IN BORAX_OBJECT_HEADER   *OldObject,
-  OUT BORAX_OBJECT_HEADER  **NewObject
-  );
-
-typedef
-EFI_STATUS
-(EFIAPI *BORAX_GC_SUBOBJECT_CALLBACK)(
-  IN VOID              *Ctx,
-  IN OUT BORAX_OBJECT  *SubObject
-  );
-
-typedef
-EFI_STATUS
-(EFIAPI *BORAX_GC_HOOK_SUBOBJECTS)(
-  IN BORAX_OBJECT_HEADER          *Object,
-  IN VOID                         *Ctx,
-  IN BORAX_GC_SUBOBJECT_CALLBACK  Callback
-  );
-
-typedef struct {
-  BORAX_GC_HOOK_COPY          Copy;
-  BORAX_GC_HOOK_SUBOBJECTS    SubObjects;
-} BORAX_GC_HOOKS;
-
 STATIC EFI_STATUS
 EFIAPI
 GcHooks (
@@ -1151,113 +1123,7 @@ BoraxGetRecord (
 
 EFI_STATUS
 EFIAPI
-BoraxAllocateBuiltInFunction (
-  IN BORAX_ALLOCATOR           *Alloc,
-  IN CONST CHAR16              *Name,
-  IN BORAX_OBJECT              Arglist,
-  IN BORAX_OBJECT              Entry,
-  IN BORAX_BUILT_IN_CODE       Code,
-  IN BORAX_OBJECT              Constants,
-  IN BORAX_OBJECT              Locals,
-  IN BORAX_OBJECT              Shared,
-  IN BORAX_OBJECT              Closure,
-  OUT BORAX_BUILT_IN_FUNCTION  **Function
-  )
-{
-  EFI_STATUS               Status;
-  BORAX_BUILT_IN_FUNCTION  *NewFunction;
-
-  // Allocate a regular lisp object
-  Status = BoraxAllocateObject (
-             Alloc,
-             sizeof (BORAX_BUILT_IN_FUNCTION),
-             (BORAX_OBJECT_HEADER **)&NewFunction
-             );
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  // Initialize the record
-  NewFunction->Header.WideTag = BORAX_WIDETAG_BUILT_IN_FUNCTION;
-  NewFunction->Code           = Code;
-  NewFunction->Constants      = Constants;
-  NewFunction->Locals         = Locals;
-  NewFunction->Shared         = Shared;
-  NewFunction->Closure        = Closure;
-  NewFunction->Name           = Name;
-  NewFunction->Arglist        = Arglist;
-  NewFunction->Entry          = Entry;
-
-  *Function = NewFunction;
-  return EFI_SUCCESS;
-}
-
-STATIC EFI_STATUS
-EFIAPI
-CopyBuiltInFunction (
-  IN BORAX_ALLOCATOR       *Alloc,
-  IN BORAX_OBJECT_HEADER   *OldObject,
-  OUT BORAX_OBJECT_HEADER  **NewObject
-  )
-{
-  BORAX_BUILT_IN_FUNCTION  *Function = (BORAX_BUILT_IN_FUNCTION *)OldObject;
-
-  return BoraxAllocateBuiltInFunction (
-           Alloc,
-           Function->Name,
-           Function->Arglist,
-           Function->Entry,
-           Function->Code,
-           Function->Constants,
-           Function->Locals,
-           Function->Shared,
-           Function->Closure,
-           (BORAX_BUILT_IN_FUNCTION **)NewObject
-           );
-}
-
-STATIC EFI_STATUS
-EFIAPI
-BuiltInFunctionSubObjects (
-  IN BORAX_OBJECT_HEADER          *Object,
-  IN VOID                         *Ctx,
-  IN BORAX_GC_SUBOBJECT_CALLBACK  Callback
-  )
-{
-  EFI_STATUS               Status;
-  BORAX_BUILT_IN_FUNCTION  *Function = (BORAX_BUILT_IN_FUNCTION *)Object;
-
-  Status = Callback (Ctx, &Function->Constants);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  Status = Callback (Ctx, &Function->Locals);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  Status = Callback (Ctx, &Function->Shared);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  Status = Callback (Ctx, &Function->Closure);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  Status = Callback (Ctx, &Function->Arglist);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  return Callback (Ctx, &Function->Entry);
-}
-
-STATIC EFI_STATUS
-EFIAPI
-DoNotCopy (
+BoraxGcHookNoCopy (
   IN BORAX_ALLOCATOR       *Alloc,
   IN BORAX_OBJECT_HEADER   *OldObject,
   OUT BORAX_OBJECT_HEADER  **NewObject
@@ -1267,9 +1133,9 @@ DoNotCopy (
   return EFI_SUCCESS;
 }
 
-STATIC EFI_STATUS
+EFI_STATUS
 EFIAPI
-NoSubObjects (
+BoraxGcHookNoSubObjects (
   IN BORAX_OBJECT_HEADER          *Object,
   IN VOID                         *Ctx,
   IN BORAX_GC_SUBOBJECT_CALLBACK  Callback
@@ -1293,24 +1159,19 @@ STATIC CONST BORAX_GC_HOOKS  gObjectRecordGcHooks = {
   .SubObjects = &ObjectRecordSubObjects,
 };
 
-STATIC CONST BORAX_GC_HOOKS  gBuiltInFunctionGcHooks = {
-  .Copy       = &CopyBuiltInFunction,
-  .SubObjects = &BuiltInFunctionSubObjects,
-};
-
 STATIC CONST BORAX_GC_HOOKS  gWeakPointerGcHooks = {
   .Copy       = &CopyWeakPointer,
-  .SubObjects = &NoSubObjects,    // Handled in sweep
+  .SubObjects = &BoraxGcHookNoSubObjects, // Handled in sweep
 };
 
 STATIC CONST BORAX_GC_HOOKS  gPinGcHooks = {
-  .Copy       = &DoNotCopy,   // Don't move pins
+  .Copy       = &BoraxGcHookNoCopy, // Don't move pins
   .SubObjects = &PinSubObjects,
 };
 
 STATIC CONST BORAX_GC_HOOKS  gMovedGcHooks = {
-  .Copy       = &DoNotCopy,      // Not an object
-  .SubObjects = &NoSubObjects,   // Not an object
+  .Copy       = &BoraxGcHookNoCopy,       // Not an object
+  .SubObjects = &BoraxGcHookNoSubObjects, // Not an object
 };
 
 STATIC EFI_STATUS

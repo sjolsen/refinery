@@ -590,56 +590,62 @@ BoraxAllocateRecordUninitialized (
   );
 
 /*
- * Built-in functions
- * ==================
+ * Extensibility
+ * =============
  *
- * The design constraints on built-in functions are detailed in the interpreter
- * documentation. The structure of built-in functions is similar to that of
- * bytecode functions, except that the "code" field refers to a C function
- * pointer instead of a bytecode array.
- *
- * Built-in functions are given a dedicated memory representation to prevent
- * Lisp code from modifying or forging C pointers.
+ * The above types provide most of the functionality required by the
+ * interpreter. Specialized types can be implemented by claiming a widetag from
+ * the six-bit encoding space and defining garbage collection hooks for
+ * them. The GC hook API does not totally decouple extensions from the generic
+ * memory subsystem implementation, but is enough to prevent the entire Lisp
+ * interpreter from winding up in Memory.c.
  */
-
-typedef struct _BORAX_TASK BORAX_TASK;
 
 typedef
 EFI_STATUS
-(EFIAPI *BORAX_BUILT_IN_CODE)(
-  IN BORAX_TASK *Task,
-  IN OUT UINTN  *State
+(EFIAPI *BORAX_GC_HOOK_COPY)(
+  IN BORAX_ALLOCATOR       *Alloc,
+  IN BORAX_OBJECT_HEADER   *OldObject,
+  OUT BORAX_OBJECT_HEADER  **NewObject
   );
 
-typedef union {
-  BORAX_OBJECT_HEADER    Header;
-  struct {
-    UINTN                  Word0;
-    BORAX_BUILT_IN_CODE    Code;
-    BORAX_OBJECT           Constants;
-    BORAX_OBJECT           Locals;
-    BORAX_OBJECT           Shared;
-    BORAX_OBJECT           Closure;
-    CONST CHAR16           *Name;
-    BORAX_OBJECT           Arglist;
-    BORAX_OBJECT           Entry;
-  };
-} BORAX_BUILT_IN_FUNCTION;
+typedef
+EFI_STATUS
+(EFIAPI *BORAX_GC_SUBOBJECT_CALLBACK)(
+  IN VOID              *Ctx,
+  IN OUT BORAX_OBJECT  *SubObject
+  );
+
+typedef
+EFI_STATUS
+(EFIAPI *BORAX_GC_HOOK_SUBOBJECTS)(
+  IN BORAX_OBJECT_HEADER          *Object,
+  IN VOID                         *Ctx,
+  IN BORAX_GC_SUBOBJECT_CALLBACK  Callback
+  );
+
+typedef struct {
+  BORAX_GC_HOOK_COPY          Copy;
+  BORAX_GC_HOOK_SUBOBJECTS    SubObjects;
+} BORAX_GC_HOOKS;
 
 EFI_STATUS
 EFIAPI
-BoraxAllocateBuiltInFunction (
-  IN BORAX_ALLOCATOR           *Alloc,
-  IN CONST CHAR16              *Name,
-  IN BORAX_OBJECT              Arglist,
-  IN BORAX_OBJECT              Entry,
-  IN BORAX_BUILT_IN_CODE       Code,
-  IN BORAX_OBJECT              Constants,
-  IN BORAX_OBJECT              Locals,
-  IN BORAX_OBJECT              Shared,
-  IN BORAX_OBJECT              Closure,
-  OUT BORAX_BUILT_IN_FUNCTION  **Function
+BoraxGcHookNoCopy (
+  IN BORAX_ALLOCATOR       *Alloc,
+  IN BORAX_OBJECT_HEADER   *OldObject,
+  OUT BORAX_OBJECT_HEADER  **NewObject
   );
+
+EFI_STATUS
+EFIAPI
+BoraxGcHookNoSubObjects (
+  IN BORAX_OBJECT_HEADER          *Object,
+  IN VOID                         *Ctx,
+  IN BORAX_GC_SUBOBJECT_CALLBACK  Callback
+  );
+
+extern CONST BORAX_GC_HOOKS  gBuiltInFunctionGcHooks;
 
 /*
  * Triggering garbage collection
