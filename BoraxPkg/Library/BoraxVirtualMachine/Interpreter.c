@@ -339,7 +339,7 @@ TaskSubObjects (
     }
   }
 
-  return EFI_SUCCESS;
+  return Callback (Ctx, &Task->Registers.VR);
 }
 
 CONST BORAX_GC_HOOKS  gTaskGcHooks = {
