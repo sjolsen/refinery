@@ -195,37 +195,7 @@ STATIC_ASSERT (
   "Need a minimum alignment of 8 to accomodate 3-bit tags"
   );
 
-typedef struct {
-  BORAX_OBJECT    Car;
-  BORAX_OBJECT    Cdr;
-} BORAX_CONS;
-
-STATIC_ASSERT (
-  sizeof (BORAX_CONS) == BORAX_ALIGNMENT,
-  "Cons cell must be two words"
-  );
-
-typedef union {
-  struct {
-    UINT8    WideTag;
-    UINT8    GcData;
-  };
-
-  struct {
-    UINTN    HeaderWords[2];
-    UINTN    BodyWords[];
-  };
-} BORAX_OBJECT_HEADER;
-
-STATIC_ASSERT (
-  sizeof (BORAX_OBJECT_HEADER) == BORAX_ALIGNMENT,
-  "Object header must be two words"
-  );
-
-typedef enum {
-  BORAX_OBJECT_GCDATA_SPACEBIT = 1 << 0,
-  BORAX_OBJECT_GCDATA_GREYBIT  = 1 << 1,
-} BORAX_OBJECT_GCDATA;
+typedef struct _BORAX_ALLOCATOR BORAX_ALLOCATOR;
 
 /*
  * Cons cell management
@@ -281,6 +251,16 @@ typedef enum {
  * - Incremental garbage collection?
  */
 
+typedef struct {
+  BORAX_OBJECT    Car;
+  BORAX_OBJECT    Cdr;
+} BORAX_CONS;
+
+STATIC_ASSERT (
+  sizeof (BORAX_CONS) == BORAX_ALIGNMENT,
+  "Cons cell must be two words"
+  );
+
 #define BORAX_PAGE_SIZE          4096
 #define BORAX_WORD_BITS          (CHAR_BIT * sizeof(UINTN))
 #define BORAX_CONS_PER_PAGE      (BORAX_PAGE_SIZE / sizeof(BORAX_CONS))
@@ -301,6 +281,15 @@ typedef struct {
   BORAX_CONS_PAGE    *Pages;
   UINTN              FillIndex; // Offset into the head page
 } BORAX_CONS_ALLOCATOR;
+
+EFI_STATUS
+EFIAPI
+BoraxAllocateCons (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN BORAX_OBJECT     Car,
+  IN BORAX_OBJECT     Cdr,
+  OUT BORAX_CONS      **Cons
+  );
 
 /*
  * Variable-width objects
@@ -365,6 +354,28 @@ typedef struct {
  * by pointer assignment.
  */
 
+typedef union {
+  struct {
+    UINT8    WideTag;
+    UINT8    GcData;
+  };
+
+  struct {
+    UINTN    HeaderWords[2];
+    UINTN    BodyWords[];
+  };
+} BORAX_OBJECT_HEADER;
+
+STATIC_ASSERT (
+  sizeof (BORAX_OBJECT_HEADER) == BORAX_ALIGNMENT,
+  "Object header must be two words"
+  );
+
+typedef enum {
+  BORAX_OBJECT_GCDATA_SPACEBIT = 1 << 0,
+  BORAX_OBJECT_GCDATA_GREYBIT  = 1 << 1,
+} BORAX_OBJECT_GCDATA;
+
 typedef struct _BORAX_OBJECT_CHUNK BORAX_OBJECT_CHUNK;
 
 struct _BORAX_OBJECT_CHUNK {
@@ -390,6 +401,23 @@ enum {
 typedef struct {
   BORAX_OBJECT_CHUNK    *Chunks[BORAX_ALLOC_BIN_COUNT];
 } BORAX_OBJECT_ALLOCATOR;
+
+EFI_STATUS
+EFIAPI
+BoraxAllocateObject (
+  IN BORAX_ALLOCATOR       *Alloc,
+  IN UINTN                 Size,
+  OUT BORAX_OBJECT_HEADER  **Object
+  );
+
+EFI_STATUS
+EFIAPI
+BoraxCopyObject (
+  IN BORAX_ALLOCATOR       *Alloc,
+  IN UINTN                 Size,
+  IN BORAX_OBJECT_HEADER   *OldObject,
+  OUT BORAX_OBJECT_HEADER  **NewObject
+  );
 
 /*
  * Pinning objects
@@ -435,6 +463,20 @@ union _BORAX_PIN {
   };
 };
 
+EFI_STATUS
+EFIAPI
+BoraxAllocatePin (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN BORAX_OBJECT     Object,
+  OUT BORAX_PIN       **Pin
+  );
+
+VOID
+EFIAPI
+BoraxReleasePin (
+  IN BORAX_PIN  *Pin
+  );
+
 /*
  * Weak pointers
  * =============
@@ -461,6 +503,14 @@ union _BORAX_WEAK_POINTER {
     BORAX_OBJECT          Value;
   };
 };
+
+EFI_STATUS
+EFIAPI
+BoraxAllocateWeakPointer (
+  IN BORAX_ALLOCATOR      *Alloc,
+  IN BORAX_OBJECT         Object,
+  OUT BORAX_WEAK_POINTER  **WeakPointer
+  );
 
 /*
  * Records
@@ -525,42 +575,86 @@ BoraxGetRecord (
   (BORAX_RECORD **)(_ptr)                 \
   ))
 
-/*
- * Built-in functions
- * ==================
- *
- * The design constraints on built-in functions are detailed in the interpreter
- * documentation. The structure of built-in functions is similar to that of
- * bytecode functions, except that the "code" field refers to a C function
- * pointer instead of a bytecode array.
- *
- * Built-in functions are given a dedicated memory representation to prevent
- * Lisp code from modifying or forging C pointers.
- */
+EFI_STATUS
+EFIAPI
+BoraxAllocateRecord (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN UINTN            WideTag,  // WORD_RECORD or OBJECT_RECORD
+  IN BORAX_OBJECT     Class,
+  IN UINTN            Length,
+  IN BORAX_HALFWORD   LengthAux,
+  IN UINTN            InitialElement,
+  OUT BORAX_RECORD    **Record
+  );
 
-typedef struct _BORAX_TASK BORAX_TASK;
+EFI_STATUS
+EFIAPI
+BoraxAllocateRecordUninitialized (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN UINTN            WideTag,  // WORD_RECORD or OBJECT_RECORD
+  IN BORAX_OBJECT     Class,
+  IN UINTN            Length,
+  IN BORAX_HALFWORD   LengthAux,
+  OUT BORAX_RECORD    **Record
+  );
+
+/*
+ * Extensibility
+ * =============
+ *
+ * The above types provide most of the functionality required by the
+ * interpreter. Specialized types can be implemented by claiming a widetag from
+ * the six-bit encoding space and defining garbage collection hooks for
+ * them. The GC hook API does not totally decouple extensions from the generic
+ * memory subsystem implementation, but is enough to prevent the entire Lisp
+ * interpreter from winding up in Memory.c.
+ */
 
 typedef
 EFI_STATUS
-(EFIAPI *BORAX_BUILT_IN_CODE)(
-  IN BORAX_TASK *Task,
-  IN OUT UINTN  *State
+(EFIAPI *BORAX_GC_HOOK_COPY)(
+  IN BORAX_ALLOCATOR       *Alloc,
+  IN BORAX_OBJECT_HEADER   *OldObject,
+  OUT BORAX_OBJECT_HEADER  **NewObject
   );
 
-typedef union {
-  BORAX_OBJECT_HEADER    Header;
-  struct {
-    UINTN                  Word0;
-    BORAX_BUILT_IN_CODE    Code;
-    BORAX_OBJECT           Constants;
-    BORAX_OBJECT           Locals;
-    BORAX_OBJECT           Shared;
-    BORAX_OBJECT           Closure;
-    CONST CHAR16           *Name;
-    BORAX_OBJECT           Arglist;
-    BORAX_OBJECT           Entry;
-  };
-} BORAX_BUILT_IN_FUNCTION;
+typedef
+EFI_STATUS
+(EFIAPI *BORAX_GC_SUBOBJECT_CALLBACK)(
+  IN VOID              *Ctx,
+  IN OUT BORAX_OBJECT  *SubObject
+  );
+
+typedef
+EFI_STATUS
+(EFIAPI *BORAX_GC_HOOK_SUBOBJECTS)(
+  IN BORAX_OBJECT_HEADER          *Object,
+  IN VOID                         *Ctx,
+  IN BORAX_GC_SUBOBJECT_CALLBACK  Callback
+  );
+
+typedef struct {
+  BORAX_GC_HOOK_COPY          Copy;
+  BORAX_GC_HOOK_SUBOBJECTS    SubObjects;
+} BORAX_GC_HOOKS;
+
+EFI_STATUS
+EFIAPI
+BoraxGcHookNoCopy (
+  IN BORAX_ALLOCATOR       *Alloc,
+  IN BORAX_OBJECT_HEADER   *OldObject,
+  OUT BORAX_OBJECT_HEADER  **NewObject
+  );
+
+EFI_STATUS
+EFIAPI
+BoraxGcHookNoSubObjects (
+  IN BORAX_OBJECT_HEADER          *Object,
+  IN VOID                         *Ctx,
+  IN BORAX_GC_SUBOBJECT_CALLBACK  Callback
+  );
+
+extern CONST BORAX_GC_HOOKS  gBuiltInFunctionGcHooks;
 
 /*
  * Triggering garbage collection
@@ -609,14 +703,14 @@ typedef struct {
   BORAX_WEAK_POINTER        *WeakPointers;          // Non-owning pointer
 } BORAX_COPY_SPACE;
 
-typedef struct {
+struct _BORAX_ALLOCATOR {
   BORAX_COPY_SPACE                   FromSpace;
   BORAX_COPY_SPACE                   ToSpace;
   UINTN                              ToSpaceParity;
   BORAX_PIN                          *Pins;
   BORAX_SYSTEM_ALLOCATOR_PROTOCOL    *SysAlloc;
   UINTN                              UsedPages;
-} BORAX_ALLOCATOR;
+};
 
 VOID
 EFIAPI
@@ -666,83 +760,6 @@ BoraxInjectExternalObjectPages (
   IN BORAX_ALLOCATOR  *Alloc,
   IN VOID             *Buffer,
   IN UINTN            Pages
-  );
-
-EFI_STATUS
-EFIAPI
-BoraxAllocateCons (
-  IN BORAX_ALLOCATOR  *Alloc,
-  IN BORAX_OBJECT     Car,
-  IN BORAX_OBJECT     Cdr,
-  OUT BORAX_CONS      **Cons
-  );
-
-EFI_STATUS
-EFIAPI
-BoraxAllocateObject (
-  IN BORAX_ALLOCATOR       *Alloc,
-  IN UINTN                 Size,
-  OUT BORAX_OBJECT_HEADER  **Object
-  );
-
-EFI_STATUS
-EFIAPI
-BoraxAllocatePin (
-  IN BORAX_ALLOCATOR  *Alloc,
-  IN BORAX_OBJECT     Object,
-  OUT BORAX_PIN       **Pin
-  );
-
-VOID
-EFIAPI
-BoraxReleasePin (
-  IN BORAX_PIN  *Pin
-  );
-
-EFI_STATUS
-EFIAPI
-BoraxAllocateWeakPointer (
-  IN BORAX_ALLOCATOR      *Alloc,
-  IN BORAX_OBJECT         Object,
-  OUT BORAX_WEAK_POINTER  **WeakPointer
-  );
-
-EFI_STATUS
-EFIAPI
-BoraxAllocateRecord (
-  IN BORAX_ALLOCATOR  *Alloc,
-  IN UINTN            WideTag,  // WORD_RECORD or OBJECT_RECORD
-  IN BORAX_OBJECT     Class,
-  IN UINTN            Length,
-  IN BORAX_HALFWORD   LengthAux,
-  IN UINTN            InitialElement,
-  OUT BORAX_RECORD    **Record
-  );
-
-EFI_STATUS
-EFIAPI
-BoraxAllocateRecordUninitialized (
-  IN BORAX_ALLOCATOR  *Alloc,
-  IN UINTN            WideTag,  // WORD_RECORD or OBJECT_RECORD
-  IN BORAX_OBJECT     Class,
-  IN UINTN            Length,
-  IN BORAX_HALFWORD   LengthAux,
-  OUT BORAX_RECORD    **Record
-  );
-
-EFI_STATUS
-EFIAPI
-BoraxAllocateBuiltInFunction (
-  IN BORAX_ALLOCATOR           *Alloc,
-  IN CONST CHAR16              *Name,
-  IN BORAX_OBJECT              Arglist,
-  IN BORAX_OBJECT              Entry,
-  IN BORAX_BUILT_IN_CODE       Code,
-  IN BORAX_OBJECT              Constants,
-  IN BORAX_OBJECT              Locals,
-  IN BORAX_OBJECT              Shared,
-  IN BORAX_OBJECT              Closure,
-  OUT BORAX_BUILT_IN_FUNCTION  **Function
   );
 
 #endif // BORAX_MEMORY_H

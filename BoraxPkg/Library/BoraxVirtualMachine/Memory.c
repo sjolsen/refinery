@@ -5,6 +5,51 @@
 
 #include "Stack.h"
 
+STATIC EFI_STATUS
+EFIAPI
+GcHooks (
+  IN BORAX_OBJECT_HEADER    *Object,
+  OUT CONST BORAX_GC_HOOKS  **Hooks
+  );
+
+STATIC EFI_STATUS
+EFIAPI
+GcHookCopy (
+  IN BORAX_ALLOCATOR       *Alloc,
+  IN BORAX_OBJECT_HEADER   *OldObject,
+  OUT BORAX_OBJECT_HEADER  **NewObject
+  )
+{
+  EFI_STATUS            Status;
+  CONST BORAX_GC_HOOKS  *Hooks;
+
+  Status = GcHooks (OldObject, &Hooks);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  return Hooks->Copy (Alloc, OldObject, NewObject);
+}
+
+STATIC EFI_STATUS
+EFIAPI
+GcHookSubObjects (
+  IN BORAX_OBJECT_HEADER          *Object,
+  IN VOID                         *Ctx,
+  IN BORAX_GC_SUBOBJECT_CALLBACK  Callback
+  )
+{
+  EFI_STATUS            Status;
+  CONST BORAX_GC_HOOKS  *Hooks;
+
+  Status = GcHooks (Object, &Hooks);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  return Hooks->SubObjects (Object, Ctx, Callback);
+}
+
 STATIC VOID *
 EFIAPI
 InternalAllocatePages (
@@ -256,142 +301,67 @@ UpdateColor (
 
 STATIC EFI_STATUS
 EFIAPI
-MarkObjectIfWhite (
-  IN BORAX_ALLOCATOR      *Alloc,
-  IN BORAX_STACK          *GreyList,
-  IN BORAX_OBJECT_HEADER  *Object
+MarkObjectGrey (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN BORAX_STACK      *GreyList,
+  IN BORAX_OBJECT     Object
   )
 {
   EFI_STATUS           Status;
   UINTN                GcData;
-  BORAX_OBJECT_HEADER  *NewObj = NULL;
+  BORAX_OBJECT_HEADER  *OldObject;
+  BORAX_OBJECT_HEADER  *NewObject = NULL;
 
-  GcData = GetObjectGcData (Alloc, Object);
-  if (DecodeColor (Alloc, GcData) != WHITE) {
-    // Nothing to do
+  // There is only work to be done for white heap objects
+  if (!BORAX_IS_POINTER (Object)) {
     return EFI_SUCCESS;
   }
 
-  // Copy from FromSpace to ToSpace
-  switch (BORAX_DISCRIMINATE_POINTER (Object)) {
-    case BORAX_DISCRIM_CONS:
-    {
-      BORAX_CONS  *OldCons = (BORAX_CONS *)Object;
-      Status = BoraxAllocateCons (
-                 Alloc,
-                 OldCons->Car,
-                 OldCons->Cdr,
-                 (BORAX_CONS **)&NewObj
-                 );
-      if (EFI_ERROR (Status)) {
-        return Status;
-      }
-
-      // Future reads to Object will interpret it as a "moved" object and will
-      // access GcData instead of the bitmap.
-      Object->WideTag        = BORAX_WIDETAG_MOVED;
-      Object->HeaderWords[1] = BORAX_MAKE_POINTER (NewObj);
-      break;
-    }
-    // TODO: Implement move optimization for large objects
-    case BORAX_DISCRIM_WORD_RECORD:
-    case BORAX_DISCRIM_OBJECT_RECORD:
-    {
-      BORAX_RECORD  *Record = (BORAX_RECORD *)Object;
-      BORAX_RECORD  *NewRec;
-
-      Status = BoraxAllocateRecordUninitialized (
-                 Alloc,
-                 Object->WideTag,
-                 Record->Class,
-                 Record->Length,
-                 Record->LengthAux,
-                 &NewRec
-                 );
-      if (EFI_ERROR (Status)) {
-        return Status;
-      }
-
-      NewObj = &NewRec->Header;
-      CopyMem (NewRec->Data, Record->Data, sizeof (UINTN) * Record->Length);
-      Object->WideTag        = BORAX_WIDETAG_MOVED;
-      Object->HeaderWords[1] = BORAX_MAKE_POINTER (NewObj);
-      break;
-    }
-    case BORAX_DISCRIM_BUILT_IN_FUNCTION:
-    {
-      BORAX_BUILT_IN_FUNCTION  *Function = (BORAX_BUILT_IN_FUNCTION *)Object;
-
-      Status = BoraxAllocateBuiltInFunction (
-                 Alloc,
-                 Function->Name,
-                 Function->Arglist,
-                 Function->Entry,
-                 Function->Code,
-                 Function->Constants,
-                 Function->Locals,
-                 Function->Shared,
-                 Function->Closure,
-                 (BORAX_BUILT_IN_FUNCTION **)&NewObj
-                 );
-      if (EFI_ERROR (Status)) {
-        return Status;
-      }
-
-      Object->WideTag        = BORAX_WIDETAG_MOVED;
-      Object->HeaderWords[1] = BORAX_MAKE_POINTER (NewObj);
-      break;
-    }
-    case BORAX_DISCRIM_WEAK_POINTER:
-    {
-      BORAX_WEAK_POINTER  *Wp = (BORAX_WEAK_POINTER *)Object;
-      Status = BoraxAllocateWeakPointer (
-                 Alloc,
-                 Wp->Value,
-                 (BORAX_WEAK_POINTER **)&NewObj
-                 );
-      if (EFI_ERROR (Status)) {
-        return Status;
-      }
-
-      Object->WideTag        = BORAX_WIDETAG_MOVED;
-      Object->HeaderWords[1] = BORAX_MAKE_POINTER (NewObj);
-      break;
-    }
-    case BORAX_DISCRIM_PIN:   // Don't move pins
-    case BORAX_DISCRIM_MOVED: // Not an object
-      break;
-    default:
-      // If a new widetag is added, we need to add support for it
-      DEBUG ((
-        DEBUG_ERROR,
-        "%a: gc not implemented for widetag (%u)\n",
-        __func__,
-        Object->WideTag
-        ));
-      return EFI_INVALID_PARAMETER;
+  OldObject = BORAX_GET_POINTER (Object);
+  GcData    = GetObjectGcData (Alloc, OldObject);
+  if (DecodeColor (Alloc, GcData) != WHITE) {
+    return EFI_SUCCESS;
   }
 
-  // Mark the old and new copy (if it exists) grey
-  (VOID)UpdateColor (Alloc, &GcData, GREY);
-  Status = SetObjectGcData (Alloc, Object, GcData);
+  // Copy from FromSpace to ToSpace. NewObj will be NULL if the object cannot be
+  // moved.
+  Status = GcHookCopy (Alloc, OldObject, &NewObject);
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
-  if (NewObj == NULL) {
-    Status = BoraxStackPush (GreyList, (UINTN)Object);
-    if (EFI_ERROR (Status)) {
-      return Status;
-    }
-  } else {
-    GcData ^= BORAX_OBJECT_GCDATA_SPACEBIT;
-    Status  = SetObjectGcData (Alloc, NewObj, GcData);
+  (VOID)UpdateColor (Alloc, &GcData, GREY);
+  if (NewObject == NULL) {
+    // If the object was not copied, simply mark it grey
+    Status = SetObjectGcData (Alloc, OldObject, GcData);
     if (EFI_ERROR (Status)) {
       return Status;
     }
 
-    Status = BoraxStackPush (GreyList, (UINTN)NewObj);
+    Status = BoraxStackPush (GreyList, (UINTN)OldObject);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+  } else {
+    // If the object was copied, mark the original "moved" and mark _both_
+    // copies grey -- as further accesses to the object's original location need
+    // to see that it has already been visited -- but only push the new object
+    // onto the grey list
+    OldObject->WideTag        = BORAX_WIDETAG_MOVED;
+    OldObject->HeaderWords[1] = BORAX_MAKE_POINTER (NewObject);
+
+    Status = SetObjectGcData (Alloc, OldObject, GcData);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+
+    GcData ^= BORAX_OBJECT_GCDATA_SPACEBIT;
+    Status  = SetObjectGcData (Alloc, NewObject, GcData);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+
+    Status = BoraxStackPush (GreyList, (UINTN)NewObject);
     if (EFI_ERROR (Status)) {
       return Status;
     }
@@ -400,140 +370,35 @@ MarkObjectIfWhite (
   return EFI_SUCCESS;
 }
 
+typedef struct {
+  BORAX_ALLOCATOR    *Alloc;
+  BORAX_STACK        *GreyList;
+} MARK_GREY_SUBOBJECT_CTX;
+
 STATIC EFI_STATUS
 EFIAPI
-MarkObjectWordIfWhite (
-  IN BORAX_ALLOCATOR  *Alloc,
-  IN BORAX_STACK      *GreyList,
-  IN BORAX_OBJECT     ObjectWord
+MarkSubObjectGrey (
+  IN VOID          *Ctx,
+  IN BORAX_OBJECT  *SubObject
   )
 {
-  EFI_STATUS           Status;
-  BORAX_OBJECT_HEADER  *Object;
+  MARK_GREY_SUBOBJECT_CTX  *TheCtx = (MARK_GREY_SUBOBJECT_CTX *)Ctx;
 
-  // There's only work to be done if we're looking at an unmarked heap object
-  if (!BORAX_IS_POINTER (ObjectWord)) {
-    return EFI_SUCCESS;
-  }
-
-  Object = BORAX_GET_POINTER (ObjectWord);
-  Status = MarkObjectIfWhite (Alloc, GreyList, Object);
-  return Status;
+  return MarkObjectGrey (TheCtx->Alloc, TheCtx->GreyList, *SubObject);
 }
 
 STATIC EFI_STATUS
 EFIAPI
-MarkSubObjectsIfWhite (
-  IN BORAX_ALLOCATOR      *Alloc,
-  IN BORAX_STACK          *GreyList,
-  IN BORAX_OBJECT_HEADER  *Object
+UpdateSubObjectIfMoved (
+  IN VOID              *Ctx,
+  IN OUT BORAX_OBJECT  *SubObject
   )
 {
-  EFI_STATUS  Status;
-
-  switch (BORAX_DISCRIMINATE_POINTER (Object)) {
-    case BORAX_DISCRIM_CONS:
-    {
-      BORAX_CONS  *Cons = (BORAX_CONS *)Object;
-
-      Status = MarkObjectWordIfWhite (Alloc, GreyList, Cons->Car);
-      if (EFI_ERROR (Status)) {
-        return Status;
-      }
-
-      // Mark CDR last to ensure it gets copied first
-      Status = MarkObjectWordIfWhite (Alloc, GreyList, Cons->Cdr);
-      return Status;
-    }
-    case BORAX_DISCRIM_PIN:
-    {
-      BORAX_PIN  *Pin = (BORAX_PIN *)Object;
-      Status = MarkObjectWordIfWhite (Alloc, GreyList, Pin->Object);
-      return Status;
-    }
-    case BORAX_DISCRIM_WORD_RECORD:
-    case BORAX_DISCRIM_OBJECT_RECORD:
-    {
-      BORAX_RECORD  *Record = (BORAX_RECORD *)Object;
-      UINTN         I;
-
-      Status = MarkObjectWordIfWhite (Alloc, GreyList, Record->Class);
-      if (EFI_ERROR (Status)) {
-        return Status;
-      }
-
-      if (Object->WideTag == BORAX_WIDETAG_OBJECT_RECORD) {
-        for (I = 0; I < Record->Length; ++I) {
-          Status = MarkObjectWordIfWhite (Alloc, GreyList, Record->Data[I]);
-          if (EFI_ERROR (Status)) {
-            return Status;
-          }
-        }
-      }
-
-      return EFI_SUCCESS;
-    }
-    case BORAX_DISCRIM_BUILT_IN_FUNCTION:
-    {
-      BORAX_BUILT_IN_FUNCTION  *Function = (BORAX_BUILT_IN_FUNCTION *)Object;
-
-      Status = MarkObjectWordIfWhite (Alloc, GreyList, Function->Constants);
-      if (EFI_ERROR (Status)) {
-        return Status;
-      }
-
-      Status = MarkObjectWordIfWhite (Alloc, GreyList, Function->Locals);
-      if (EFI_ERROR (Status)) {
-        return Status;
-      }
-
-      Status = MarkObjectWordIfWhite (Alloc, GreyList, Function->Shared);
-      if (EFI_ERROR (Status)) {
-        return Status;
-      }
-
-      Status = MarkObjectWordIfWhite (Alloc, GreyList, Function->Closure);
-      if (EFI_ERROR (Status)) {
-        return Status;
-      }
-
-      Status = MarkObjectWordIfWhite (Alloc, GreyList, Function->Arglist);
-      if (EFI_ERROR (Status)) {
-        return Status;
-      }
-
-      Status = MarkObjectWordIfWhite (Alloc, GreyList, Function->Entry);
-      if (EFI_ERROR (Status)) {
-        return Status;
-      }
-
-      return EFI_SUCCESS;
-    }
-    case BORAX_DISCRIM_WEAK_POINTER:
-    case BORAX_DISCRIM_MOVED:
-      // Nothing to do
-      return EFI_SUCCESS;
-    default:
-      // If a new widetag is added, we need to add support for it
-      DEBUG ((
-        DEBUG_ERROR,
-        "%a: gc not implemented for widetag (%u)\n",
-        __func__,
-        Object->WideTag
-        ));
-      return EFI_INVALID_PARAMETER;
+  if (BORAX_DISCRIMINATE (*SubObject) == BORAX_DISCRIM_MOVED) {
+    *SubObject = BORAX_GET_POINTER (*SubObject)->HeaderWords[1];
   }
-}
 
-STATIC VOID
-EFIAPI
-UpdateIfMoved (
-  IN OUT BORAX_OBJECT  *Object
-  )
-{
-  if (BORAX_DISCRIMINATE (*Object) == BORAX_DISCRIM_MOVED) {
-    *Object = BORAX_GET_POINTER (*Object)->HeaderWords[1];
-  }
+  return EFI_SUCCESS;
 }
 
 STATIC EFI_STATUS
@@ -546,61 +411,7 @@ MarkObjectBlack (
   EFI_STATUS  Status;
   UINTN       GcData;
 
-  switch (BORAX_DISCRIMINATE_POINTER (Object)) {
-    case BORAX_DISCRIM_CONS:
-    {
-      BORAX_CONS  *Cons = (BORAX_CONS *)Object;
-
-      UpdateIfMoved (&Cons->Car);
-      UpdateIfMoved (&Cons->Cdr);
-      break;
-    }
-    case BORAX_DISCRIM_PIN:
-    {
-      BORAX_PIN  *Pin = (BORAX_PIN *)Object;
-      UpdateIfMoved (&Pin->Object);
-      break;
-    }
-    case BORAX_DISCRIM_WORD_RECORD:
-    case BORAX_DISCRIM_OBJECT_RECORD:
-    {
-      BORAX_RECORD  *Record = (BORAX_RECORD *)Object;
-      UINTN         I;
-
-      UpdateIfMoved (&Record->Class);
-      if (Object->WideTag == BORAX_WIDETAG_OBJECT_RECORD) {
-        for (I = 0; I < Record->Length; ++I) {
-          UpdateIfMoved (&Record->Data[I]);
-        }
-      }
-
-      break;
-    }
-    case BORAX_DISCRIM_BUILT_IN_FUNCTION:
-    {
-      BORAX_BUILT_IN_FUNCTION  *Function = (BORAX_BUILT_IN_FUNCTION *)Object;
-
-      UpdateIfMoved (&Function->Constants);
-      UpdateIfMoved (&Function->Locals);
-      UpdateIfMoved (&Function->Shared);
-      UpdateIfMoved (&Function->Closure);
-      UpdateIfMoved (&Function->Arglist);
-      UpdateIfMoved (&Function->Entry);
-
-      break;
-    }
-    case BORAX_DISCRIM_WEAK_POINTER: // Will get updated later
-    case BORAX_DISCRIM_MOVED:        // Not an object
-      break;
-    default:
-      // If a new widetag is added, we need to add support for it
-      DEBUG ((
-        DEBUG_ERROR,
-        "%a: gc not implemented for widetag (%u)\n",
-        __func__,
-        Object->WideTag
-        ));
-  }
+  (VOID)GcHookSubObjects (Object, NULL, UpdateSubObjectIfMoved);
 
   GcData = GetObjectGcData (Alloc, Object);
   (VOID)UpdateColor (Alloc, &GcData, BLACK);
@@ -661,7 +472,7 @@ SweepWeakPointers (
   for (Wp = Alloc->ToSpace.WeakPointers; Wp != NULL; Wp = Wp->Next) {
     // If the weak pointer was marked before its referent, it will not have
     // had a chance to see the moved tag, so we delay that logic until here.
-    UpdateIfMoved (&Wp->Value);
+    UpdateSubObjectIfMoved (NULL, &Wp->Value);
     if (!BORAX_IS_POINTER (Wp->Value)) {
       continue;
     }
@@ -689,10 +500,11 @@ BoraxAllocatorCollect (
   IN BORAX_ALLOCATOR  *Alloc
   )
 {
-  EFI_STATUS           Status;
-  BORAX_PIN            *Pin;
-  BORAX_STACK          GreyList;
-  BORAX_OBJECT_HEADER  *Object;
+  EFI_STATUS               Status;
+  BORAX_PIN                *Pin;
+  BORAX_STACK              GreyList;
+  BORAX_OBJECT_HEADER      *Object;
+  MARK_GREY_SUBOBJECT_CTX  MarkGreyCtx;
 
   // Begin by flipping spaces
   Alloc->FromSpace = Alloc->ToSpace;
@@ -703,7 +515,7 @@ BoraxAllocatorCollect (
   BoraxStackInit (&GreyList, Alloc->SysAlloc);
   for (Pin = Alloc->Pins; Pin != NULL; Pin = Pin->Next) {
     if (Pin->Live) {
-      Status = MarkObjectIfWhite (Alloc, &GreyList, &Pin->Header);
+      Status = MarkObjectGrey (Alloc, &GreyList, BORAX_MAKE_POINTER (&Pin->Header));
       if (EFI_ERROR (Status)) {
         goto cleanup;
       }
@@ -711,8 +523,10 @@ BoraxAllocatorCollect (
   }
 
   // Walk the graph
+  MarkGreyCtx.Alloc    = Alloc;
+  MarkGreyCtx.GreyList = &GreyList;
   while (BoraxStackPop (&GreyList, (UINTN *)&Object)) {
-    Status = MarkSubObjectsIfWhite (Alloc, &GreyList, Object);
+    Status = GcHookSubObjects (Object, &MarkGreyCtx, MarkSubObjectGrey);
     if (EFI_ERROR (Status)) {
       goto cleanup;
     }
@@ -846,6 +660,44 @@ BoraxAllocateCons (
 
   Alloc->ToSpace.Cons.FillIndex = FillIndex;
   return EFI_SUCCESS;
+}
+
+STATIC EFI_STATUS
+EFIAPI
+CopyCons (
+  IN BORAX_ALLOCATOR       *Alloc,
+  IN BORAX_OBJECT_HEADER   *OldObject,
+  OUT BORAX_OBJECT_HEADER  **NewObject
+  )
+{
+  BORAX_CONS  *Cons = (BORAX_CONS *)OldObject;
+
+  return BoraxAllocateCons (
+           Alloc,
+           Cons->Car,
+           Cons->Cdr,
+           (BORAX_CONS **)NewObject
+           );
+}
+
+STATIC EFI_STATUS
+EFIAPI
+ConsSubObjects (
+  IN BORAX_OBJECT_HEADER          *Object,
+  IN VOID                         *Ctx,
+  IN BORAX_GC_SUBOBJECT_CALLBACK  Callback
+  )
+{
+  EFI_STATUS  Status;
+  BORAX_CONS  *Cons = (BORAX_CONS *)Object;
+
+  Status = Callback (Ctx, &Cons->Car);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  // Mark CDR last to ensure it gets copied first
+  return Callback (Ctx, &Cons->Cdr);
 }
 
 STATIC CONST UINTN  gBinSizes[BORAX_ALLOC_BIN_COUNT] = {
@@ -986,6 +838,33 @@ BoraxAllocateObject (
 
 EFI_STATUS
 EFIAPI
+BoraxCopyObject (
+  IN BORAX_ALLOCATOR       *Alloc,
+  IN UINTN                 Size,
+  IN BORAX_OBJECT_HEADER   *OldObject,
+  OUT BORAX_OBJECT_HEADER  **NewObject
+  )
+{
+  EFI_STATUS           Status;
+  UINTN                GcData;
+  BORAX_OBJECT_HEADER  *TheNewObject;
+
+  Status = BoraxAllocateObject (Alloc, Size, &TheNewObject);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  // GcData is the only field we need to worry about clobbering
+  GcData = TheNewObject->GcData;
+  CopyMem (TheNewObject, OldObject, Size);
+  TheNewObject->GcData = GcData;
+
+  *NewObject = TheNewObject;
+  return EFI_SUCCESS;
+}
+
+EFI_STATUS
+EFIAPI
 BoraxAllocatePin (
   IN BORAX_ALLOCATOR  *Alloc,
   IN BORAX_OBJECT     Object,
@@ -1022,6 +901,19 @@ BoraxReleasePin (
   Pin->Live = FALSE;
 }
 
+STATIC EFI_STATUS
+EFIAPI
+PinSubObjects (
+  IN BORAX_OBJECT_HEADER          *Object,
+  IN VOID                         *Ctx,
+  IN BORAX_GC_SUBOBJECT_CALLBACK  Callback
+  )
+{
+  BORAX_PIN  *Pin = (BORAX_PIN *)Object;
+
+  return Callback (Ctx, &Pin->Object);
+}
+
 EFI_STATUS
 EFIAPI
 BoraxAllocateWeakPointer (
@@ -1051,6 +943,23 @@ BoraxAllocateWeakPointer (
 
   *WeakPointer = NewWp;
   return EFI_SUCCESS;
+}
+
+STATIC EFI_STATUS
+EFIAPI
+CopyWeakPointer (
+  IN BORAX_ALLOCATOR       *Alloc,
+  IN BORAX_OBJECT_HEADER   *OldObject,
+  OUT BORAX_OBJECT_HEADER  **NewObject
+  )
+{
+  BORAX_WEAK_POINTER  *Wp = (BORAX_WEAK_POINTER *)OldObject;
+
+  return BoraxAllocateWeakPointer (
+           Alloc,
+           Wp->Value,
+           (BORAX_WEAK_POINTER **)NewObject
+           );
 }
 
 EFI_STATUS
@@ -1126,6 +1035,60 @@ BoraxAllocateRecordUninitialized (
   return EFI_SUCCESS;
 }
 
+STATIC EFI_STATUS
+EFIAPI
+CopyRecord (
+  IN BORAX_ALLOCATOR       *Alloc,
+  IN BORAX_OBJECT_HEADER   *OldObject,
+  OUT BORAX_OBJECT_HEADER  **NewObject
+  )
+{
+  BORAX_RECORD  *Record = (BORAX_RECORD *)OldObject;
+  UINTN         Size    = sizeof (BORAX_RECORD) + sizeof (UINTN) * Record->Length;
+
+  return BoraxCopyObject (Alloc, Size, OldObject, NewObject);
+}
+
+STATIC EFI_STATUS
+EFIAPI
+WordRecordSubObjects (
+  IN BORAX_OBJECT_HEADER          *Object,
+  IN VOID                         *Ctx,
+  IN BORAX_GC_SUBOBJECT_CALLBACK  Callback
+  )
+{
+  BORAX_RECORD  *Record = (BORAX_RECORD *)Object;
+
+  return Callback (Ctx, &Record->Class);
+}
+
+STATIC EFI_STATUS
+EFIAPI
+ObjectRecordSubObjects (
+  IN BORAX_OBJECT_HEADER          *Object,
+  IN VOID                         *Ctx,
+  IN BORAX_GC_SUBOBJECT_CALLBACK  Callback
+  )
+{
+  EFI_STATUS    Status;
+  BORAX_RECORD  *Record = (BORAX_RECORD *)Object;
+  UINTN         I;
+
+  Status = Callback (Ctx, &Record->Class);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  for (I = 0; I < Record->Length; ++I) {
+    Status = Callback (Ctx, &Record->Data[I]);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+  }
+
+  return EFI_SUCCESS;
+}
+
 EFI_STATUS
 EFIAPI
 BoraxGetRecord (
@@ -1172,43 +1135,88 @@ BoraxGetRecord (
 
 EFI_STATUS
 EFIAPI
-BoraxAllocateBuiltInFunction (
-  IN BORAX_ALLOCATOR           *Alloc,
-  IN CONST CHAR16              *Name,
-  IN BORAX_OBJECT              Arglist,
-  IN BORAX_OBJECT              Entry,
-  IN BORAX_BUILT_IN_CODE       Code,
-  IN BORAX_OBJECT              Constants,
-  IN BORAX_OBJECT              Locals,
-  IN BORAX_OBJECT              Shared,
-  IN BORAX_OBJECT              Closure,
-  OUT BORAX_BUILT_IN_FUNCTION  **Function
+BoraxGcHookNoCopy (
+  IN BORAX_ALLOCATOR       *Alloc,
+  IN BORAX_OBJECT_HEADER   *OldObject,
+  OUT BORAX_OBJECT_HEADER  **NewObject
   )
 {
-  EFI_STATUS               Status;
-  BORAX_BUILT_IN_FUNCTION  *NewFunction;
-
-  // Allocate a regular lisp object
-  Status = BoraxAllocateObject (
-             Alloc,
-             sizeof (BORAX_BUILT_IN_FUNCTION),
-             (BORAX_OBJECT_HEADER **)&NewFunction
-             );
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  // Initialize the record
-  NewFunction->Header.WideTag = BORAX_WIDETAG_BUILT_IN_FUNCTION;
-  NewFunction->Code           = Code;
-  NewFunction->Constants      = Constants;
-  NewFunction->Locals         = Locals;
-  NewFunction->Shared         = Shared;
-  NewFunction->Closure        = Closure;
-  NewFunction->Name           = Name;
-  NewFunction->Arglist        = Arglist;
-  NewFunction->Entry          = Entry;
-
-  *Function = NewFunction;
+  *NewObject = NULL;
   return EFI_SUCCESS;
+}
+
+EFI_STATUS
+EFIAPI
+BoraxGcHookNoSubObjects (
+  IN BORAX_OBJECT_HEADER          *Object,
+  IN VOID                         *Ctx,
+  IN BORAX_GC_SUBOBJECT_CALLBACK  Callback
+  )
+{
+  return EFI_SUCCESS;
+}
+
+STATIC CONST BORAX_GC_HOOKS  gConsGcHooks = {
+  .Copy       = &CopyCons,
+  .SubObjects = &ConsSubObjects,
+};
+
+STATIC CONST BORAX_GC_HOOKS  gWordRecordGcHooks = {
+  .Copy       = &CopyRecord,
+  .SubObjects = &WordRecordSubObjects,
+};
+
+STATIC CONST BORAX_GC_HOOKS  gObjectRecordGcHooks = {
+  .Copy       = &CopyRecord,
+  .SubObjects = &ObjectRecordSubObjects,
+};
+
+STATIC CONST BORAX_GC_HOOKS  gWeakPointerGcHooks = {
+  .Copy       = &CopyWeakPointer,
+  .SubObjects = &BoraxGcHookNoSubObjects, // Handled in sweep
+};
+
+STATIC CONST BORAX_GC_HOOKS  gPinGcHooks = {
+  .Copy       = &BoraxGcHookNoCopy, // Don't move pins
+  .SubObjects = &PinSubObjects,
+};
+
+STATIC CONST BORAX_GC_HOOKS  gMovedGcHooks = {
+  .Copy       = &BoraxGcHookNoCopy,       // Not an object
+  .SubObjects = &BoraxGcHookNoSubObjects, // Not an object
+};
+
+STATIC EFI_STATUS
+EFIAPI
+GcHooks (
+  IN BORAX_OBJECT_HEADER    *Object,
+  OUT CONST BORAX_GC_HOOKS  **Hooks
+  )
+{
+  switch (BORAX_DISCRIMINATE_POINTER (Object)) {
+    case BORAX_DISCRIM_CONS:
+      *Hooks = &gConsGcHooks;
+      return EFI_SUCCESS;
+    case BORAX_DISCRIM_WORD_RECORD:
+      *Hooks =  &gWordRecordGcHooks;
+      return EFI_SUCCESS;
+    case BORAX_DISCRIM_OBJECT_RECORD:
+      *Hooks = &gObjectRecordGcHooks;
+      return EFI_SUCCESS;
+    case BORAX_DISCRIM_BUILT_IN_FUNCTION:
+      *Hooks = &gBuiltInFunctionGcHooks;
+      return EFI_SUCCESS;
+    case BORAX_DISCRIM_WEAK_POINTER:
+      *Hooks = &gWeakPointerGcHooks;
+      return EFI_SUCCESS;
+    case BORAX_WIDETAG_PIN:
+      *Hooks = &gPinGcHooks;
+      return EFI_SUCCESS;
+    case BORAX_WIDETAG_MOVED:
+      *Hooks = &gMovedGcHooks;
+      return EFI_SUCCESS;
+    default:
+      DEBUG ((DEBUG_ERROR, "gc not implemented for widetag %u\n", Object->WideTag));
+      return EFI_INVALID_PARAMETER;
+  }
 }

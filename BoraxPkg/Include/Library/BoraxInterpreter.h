@@ -180,13 +180,13 @@ typedef enum {
   BORAX_TASK_PENDING,
 } BORAX_TASK_STATE;
 
-struct _BORAX_TASK {
+typedef struct {
   LIST_ENTRY          TaskList;
   BORAX_TASK_STATE    State;
   EFI_EVENT           Completion;
   BORAX_PIN           *Result;
   BORAX_PIN           *Data;
-};
+} BORAX_TASK;
 
 typedef struct {
   BORAX_RECORD    Record;
@@ -252,6 +252,43 @@ BoraxSetSymbolFunction (
   IN BORAX_INTERPRETER  *Interp,
   IN BORAX_OBJECT       Symbol,
   IN BORAX_OBJECT       Function
+  );
+
+typedef
+EFI_STATUS
+(EFIAPI *BORAX_BUILT_IN_CODE)(
+  IN BORAX_TASK *Task,
+  IN OUT UINTN  *State
+  );
+
+typedef union {
+  BORAX_OBJECT_HEADER    Header;
+  struct {
+    UINTN                  Word0;
+    BORAX_BUILT_IN_CODE    Code;
+    BORAX_OBJECT           Constants;
+    BORAX_OBJECT           Locals;
+    BORAX_OBJECT           Shared;
+    BORAX_OBJECT           Closure;
+    CONST CHAR16           *Name;
+    BORAX_OBJECT           Arglist;
+    BORAX_OBJECT           Entry;
+  };
+} BORAX_BUILT_IN_FUNCTION;
+
+EFI_STATUS
+EFIAPI
+BoraxAllocateBuiltInFunction (
+  IN BORAX_ALLOCATOR           *Alloc,
+  IN CONST CHAR16              *Name,
+  IN BORAX_OBJECT              Arglist,
+  IN BORAX_OBJECT              Entry,
+  IN BORAX_BUILT_IN_CODE       Code,
+  IN BORAX_OBJECT              Constants,
+  IN BORAX_OBJECT              Locals,
+  IN BORAX_OBJECT              Shared,
+  IN BORAX_OBJECT              Closure,
+  OUT BORAX_BUILT_IN_FUNCTION  **Function
   );
 
 #endif // BORAX_INTERPRETER_H
