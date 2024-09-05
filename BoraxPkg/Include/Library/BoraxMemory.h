@@ -362,7 +362,6 @@ typedef union {
 
   struct {
     UINTN    HeaderWords[2];
-    UINTN    BodyWords[];
   };
 } BORAX_OBJECT_HEADER;
 
@@ -448,20 +447,52 @@ BoraxCopyObject (
  * will be invalidated by a collection cycle. This limits, for instance, the
  * ways a TPL_CALLBACK routine can interact with the lisp system, which runs the
  * garbage collector at TPL_APPLICATION.
+ *
+ * Pin records
+ * -----------
+ *
+ * The basic single-pointer pin structure described above turns out to have
+ * almost all of the functionality required by other data structures, like task
+ * stacks, that cannot be simple object records but nevertheless need to be
+ * traced by the garbage collector. The more general pin record is provided for
+ * this purpose.
+ *
+ * Pin records must report their subobjects using the GC hooks API and therefore
+ * must have an associated widetag. Such subtypes must use BoraxGcHookNoCopy as
+ * pin records are non-movable.
  */
 
-typedef union _BORAX_PIN BORAX_PIN;
+typedef union _BORAX_PIN_RECORD BORAX_PIN_RECORD;
 
-union _BORAX_PIN {
+union _BORAX_PIN_RECORD {
   // Pins are allocated manually and kept in a singly-linked list
   BORAX_OBJECT_HEADER    Header;
   struct {
-    BORAX_HALFWORD    HalfWord0;
-    BORAX_HALFWORD    Live;
-    BORAX_PIN         *Next;
-    BORAX_OBJECT      Object;
+    BORAX_HALFWORD      HalfWord0;
+    BORAX_HALFWORD      Live;
+    BORAX_PIN_RECORD    *Next;
   };
 };
+
+typedef struct {
+  BORAX_PIN_RECORD    Record;
+  BORAX_OBJECT        Object;
+} BORAX_PIN;
+
+EFI_STATUS
+EFIAPI
+BoraxAllocatePinRecord (
+  IN BORAX_ALLOCATOR    *Alloc,
+  IN UINTN              WideTag,
+  IN UINTN              Size,
+  OUT BORAX_PIN_RECORD  **Record
+  );
+
+VOID
+EFIAPI
+BoraxReleasePinRecord (
+  IN BORAX_PIN_RECORD  *Record
+  );
 
 EFI_STATUS
 EFIAPI
@@ -707,7 +738,7 @@ struct _BORAX_ALLOCATOR {
   BORAX_COPY_SPACE                   FromSpace;
   BORAX_COPY_SPACE                   ToSpace;
   UINTN                              ToSpaceParity;
-  BORAX_PIN                          *Pins;
+  BORAX_PIN_RECORD                   *Pins;
   BORAX_SYSTEM_ALLOCATOR_PROTOCOL    *SysAlloc;
   UINTN                              UsedPages;
 };

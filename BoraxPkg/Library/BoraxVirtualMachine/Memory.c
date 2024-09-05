@@ -156,7 +156,7 @@ BoraxAllocatorCleanup (
   IN BORAX_ALLOCATOR  *Alloc
   )
 {
-  BORAX_PIN  *Pin;
+  BORAX_PIN_RECORD  *Pin;
 
   // We may have aborted in the middle of a cycle, so clean both spaces
   ClearSpace (Alloc, &Alloc->FromSpace);
@@ -165,7 +165,7 @@ BoraxAllocatorCleanup (
   // Free pin objects
   Pin = Alloc->Pins;
   while (Pin != NULL) {
-    BORAX_PIN  *Next = Pin->Next;
+    BORAX_PIN_RECORD  *Next = Pin->Next;
     InternalFreePool (Alloc, Pin);
     Pin = Next;
   }
@@ -425,10 +425,10 @@ SweepPins (
   IN BORAX_ALLOCATOR  *Alloc
   )
 {
-  UINTN      GcData;
-  BORAX_PIN  **Iter;
-  BORAX_PIN  *Pin;
-  BOOLEAN    Live;
+  UINTN             GcData;
+  BORAX_PIN_RECORD  **Iter;
+  BORAX_PIN_RECORD  *Pin;
+  BOOLEAN           Live;
 
   Iter = &Alloc->Pins;
   while (*Iter != NULL) {
@@ -501,7 +501,7 @@ BoraxAllocatorCollect (
   )
 {
   EFI_STATUS               Status;
-  BORAX_PIN                *Pin;
+  BORAX_PIN_RECORD         *Pin;
   BORAX_STACK              GreyList;
   BORAX_OBJECT_HEADER      *Object;
   MARK_GREY_SUBOBJECT_CTX  MarkGreyCtx;
@@ -865,31 +865,66 @@ BoraxCopyObject (
 
 EFI_STATUS
 EFIAPI
-BoraxAllocatePin (
-  IN BORAX_ALLOCATOR  *Alloc,
-  IN BORAX_OBJECT     Object,
-  OUT BORAX_PIN       **Pin
+BoraxAllocatePinRecord (
+  IN BORAX_ALLOCATOR    *Alloc,
+  IN UINTN              WideTag,
+  IN UINTN              Size,
+  OUT BORAX_PIN_RECORD  **Record
   )
 {
-  BORAX_PIN  *NewPin;
+  BORAX_PIN_RECORD  *NewPin;
 
   // Get the memory for the pin
-  NewPin = InternalAllocatePool (Alloc, sizeof (*NewPin));
+  NewPin = InternalAllocatePool (Alloc, Size);
   if (NewPin == NULL) {
     DEBUG ((DEBUG_ERROR, "%a: out of memory\n", __func__));
     return EFI_OUT_OF_RESOURCES;
   }
 
   // Initialize the pin and add it to the list
-  NewPin->Header.WideTag = BORAX_WIDETAG_PIN;
+  NewPin->Header.WideTag = WideTag;
   NewPin->Header.GcData  = Alloc->ToSpaceParity;
   NewPin->Live           = TRUE;
   NewPin->Next           = Alloc->Pins;
   Alloc->Pins            = NewPin;
-  NewPin->Object         = Object;
 
-  *Pin = NewPin;
+  *Record = NewPin;
   return EFI_SUCCESS;
+}
+
+EFI_STATUS
+EFIAPI
+BoraxAllocatePin (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN BORAX_OBJECT     Object,
+  OUT BORAX_PIN       **Pin
+  )
+{
+  EFI_STATUS  Status;
+  BORAX_PIN   *NewPin;
+
+  Status = BoraxAllocatePinRecord (
+             Alloc,
+             BORAX_WIDETAG_PIN,
+             sizeof (BORAX_PIN),
+             (BORAX_PIN_RECORD **)&NewPin
+             );
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  NewPin->Object = Object;
+  *Pin           = NewPin;
+  return EFI_SUCCESS;
+}
+
+VOID
+EFIAPI
+BoraxReleasePinRecord (
+  IN BORAX_PIN_RECORD  *Record
+  )
+{
+  Record->Live = FALSE;
 }
 
 VOID
@@ -898,7 +933,7 @@ BoraxReleasePin (
   IN BORAX_PIN  *Pin
   )
 {
-  Pin->Live = FALSE;
+  BoraxReleasePinRecord (&Pin->Record);
 }
 
 STATIC EFI_STATUS
