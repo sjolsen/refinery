@@ -1,5 +1,6 @@
 #include "Image.h"
 
+#include <Library/BoraxInterpreter.h>
 #include <Library/BoraxMemory.h>
 #include <Library/BoraxObjectFile.h>
 #include <Library/BoraxSystemAllocator.h>
@@ -8,18 +9,19 @@
 #include <Library/MemoryAllocationLib.h>
 #include <Library/UefiLib.h>
 
-STATIC BORAX_ALLOCATOR  gAlloc;
+STATIC BORAX_ALLOCATOR    gAlloc;
+STATIC BORAX_INTERPRETER  gInterp;
 
 typedef struct {
-  BORAX_RECORD    Record;
-  BORAX_OBJECT    Globals;
-  BORAX_OBJECT    Classes;
-  BORAX_OBJECT    Packages;
-  BORAX_OBJECT    Numbers;
-  BORAX_OBJECT    Stuff;
-  BORAX_OBJECT    Vector;
-  BORAX_OBJECT    Hello;
-  BORAX_OBJECT    SumList;
+  BORAX_GLOBAL_ENVIRONMENT    Env;
+  BORAX_OBJECT                Globals;
+  BORAX_OBJECT                Classes;
+  BORAX_OBJECT                Packages;
+  BORAX_OBJECT                Numbers;
+  BORAX_OBJECT                Stuff;
+  BORAX_OBJECT                Vector;
+  BORAX_OBJECT                Hello;
+  BORAX_OBJECT                SumList;
 } ROOT;
 
 typedef struct {
@@ -61,17 +63,19 @@ typedef struct {
   CLASSES    *Classes;
 } LISP_CONTEXT;
 
+// TODO: Make this a function constant
+STATIC LISP_CONTEXT  gCtx;
+
 STATIC BORAX_OBJECT
 EFIAPI
 Car (
-  LISP_CONTEXT  *Ctx,
   BORAX_OBJECT  Object
   )
 {
   BORAX_CONS  *Cons;
 
   if (BORAX_DISCRIMINATE (Object) != BORAX_DISCRIM_CONS) {
-    return Ctx->Globals->Nil;
+    return gCtx.Globals->Nil;
   }
 
   Cons = (BORAX_CONS *)BORAX_GET_POINTER (Object);
@@ -81,14 +85,13 @@ Car (
 STATIC BORAX_OBJECT
 EFIAPI
 Cdr (
-  LISP_CONTEXT  *Ctx,
   BORAX_OBJECT  Object
   )
 {
   BORAX_CONS  *Cons;
 
   if (BORAX_DISCRIMINATE (Object) != BORAX_DISCRIM_CONS) {
-    return Ctx->Globals->Nil;
+    return gCtx.Globals->Nil;
   }
 
   Cons = (BORAX_CONS *)BORAX_GET_POINTER (Object);
@@ -98,7 +101,6 @@ Cdr (
 STATIC BORAX_OBJECT
 EFIAPI
 GetClassName (
-  IN LISP_CONTEXT  *Ctx,
   IN BORAX_OBJECT  Object
   )
 {
@@ -107,11 +109,11 @@ GetClassName (
 
   Status = BORAX_GET_OBJECT_RECORD (Object, &Class);
   if (EFI_ERROR (Status)) {
-    return Ctx->Globals->Nil;
+    return gCtx.Globals->Nil;
   }
 
-  if (Class->Record.Class != Ctx->Classes->StandardClass) {
-    return Ctx->Globals->Nil;
+  if (Class->Record.Class != gCtx.Classes->StandardClass) {
+    return gCtx.Globals->Nil;
   }
 
   return Class->Name;
@@ -120,7 +122,6 @@ GetClassName (
 STATIC BORAX_OBJECT
 EFIAPI
 GetPackageName (
-  IN LISP_CONTEXT  *Ctx,
   IN BORAX_OBJECT  Object
   )
 {
@@ -129,11 +130,11 @@ GetPackageName (
 
   Status = BORAX_GET_OBJECT_RECORD (Object, &Package);
   if (EFI_ERROR (Status)) {
-    return Ctx->Globals->Nil;
+    return gCtx.Globals->Nil;
   }
 
-  if (Package->Record.Class != Ctx->Classes->Package) {
-    return Ctx->Globals->Nil;
+  if (Package->Record.Class != gCtx.Classes->Package) {
+    return gCtx.Globals->Nil;
   }
 
   return Package->Name;
@@ -142,7 +143,6 @@ GetPackageName (
 STATIC EFI_STATUS
 EFIAPI
 WriteString (
-  LISP_CONTEXT     *Ctx,
   IN BORAX_OBJECT  Object
   )
 {
@@ -150,47 +150,46 @@ WriteString (
   UINTN         Length;
 
   if (BORAX_DISCRIMINATE (Object) != BORAX_DISCRIM_WORD_RECORD) {
-    (VOID)BufferWrite (Ctx->Content, L"Not a string\n");
+    (VOID)BufferWrite (gCtx.Content, L"Not a string\n");
     return EFI_INVALID_PARAMETER;
   }
 
   Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
-  if (Record->Class != Ctx->Classes->String) {
-    (VOID)BufferWrite (Ctx->Content, L"Not a string\n");
+  if (Record->Class != gCtx.Classes->String) {
+    (VOID)BufferWrite (gCtx.Content, L"Not a string\n");
     return EFI_INVALID_PARAMETER;
   }
 
   Length = (Record->Length * sizeof (UINTN)) / sizeof (CHAR16) - Record->LengthAux;
 
   // TODO: Non-printable characters
-  return BufferWriteChars (Ctx->Content, (CHAR16 *)Record->Data, Length);
+  return BufferWriteChars (gCtx.Content, (CHAR16 *)Record->Data, Length);
 }
 
 STATIC EFI_STATUS
 EFIAPI
 FormatRecursive (
-  LISP_CONTEXT     *Ctx,
   IN BORAX_OBJECT  Object
   )
 {
   switch (BORAX_DISCRIMINATE (Object)) {
     case BORAX_DISCRIM_FIXNUM:
-      return BufferWriteInt (Ctx->Content, BORAX_GET_FIXNUM (Object));
+      return BufferWriteInt (gCtx.Content, BORAX_GET_FIXNUM (Object));
 
     case BORAX_DISCRIM_UNBOUND:
-      return BufferWrite (Ctx->Content, L"<UNBOUND>");
+      return BufferWrite (gCtx.Content, L"<UNBOUND>");
 
     case BORAX_DISCRIM_CHARACTER:
     {
       EFI_STATUS  Status;
 
-      Status = BufferWrite (Ctx->Content, L"#\\");
+      Status = BufferWrite (gCtx.Content, L"#\\");
       if (EFI_ERROR (Status)) {
         return Status;
       }
 
       // TODO: Non-printable characters
-      return BufferWriteChar (Ctx->Content, BORAX_GET_CHARACTER (Object));
+      return BufferWriteChar (gCtx.Content, BORAX_GET_CHARACTER (Object));
     }
 
     case BORAX_DISCRIM_CONS:
@@ -199,45 +198,45 @@ FormatRecursive (
       BORAX_OBJECT  List;
       BOOLEAN       Start = TRUE;
 
-      Status = BufferWriteChar (Ctx->Content, L'(');
+      Status = BufferWriteChar (gCtx.Content, L'(');
       if (EFI_ERROR (Status)) {
         return Status;
       }
 
       for (List = Object;
            BORAX_DISCRIMINATE (List) == BORAX_DISCRIM_CONS;
-           List = Cdr (Ctx, List))
+           List = Cdr (List))
       {
-        BORAX_OBJECT  Value = Car (Ctx, List);
+        BORAX_OBJECT  Value = Car (List);
 
         if (Start) {
           Start = FALSE;
         } else {
-          Status = BufferWriteChar (Ctx->Content, L' ');
+          Status = BufferWriteChar (gCtx.Content, L' ');
           if (EFI_ERROR (Status)) {
             return Status;
           }
         }
 
-        Status = FormatRecursive (Ctx, Value);
+        Status = FormatRecursive (Value);
         if (EFI_ERROR (Status)) {
           return Status;
         }
       }
 
-      if (List != Ctx->Globals->Nil) {
-        Status = BufferWrite (Ctx->Content, L" . ");
+      if (List != gCtx.Globals->Nil) {
+        Status = BufferWrite (gCtx.Content, L" . ");
         if (EFI_ERROR (Status)) {
           return Status;
         }
 
-        Status = FormatRecursive (Ctx, List);
+        Status = FormatRecursive (List);
         if (EFI_ERROR (Status)) {
           return Status;
         }
       }
 
-      return BufferWriteChar (Ctx->Content, L')');
+      return BufferWriteChar (gCtx.Content, L')');
     }
 
     case BORAX_DISCRIM_WORD_RECORD:
@@ -247,20 +246,20 @@ FormatRecursive (
 
       Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
 
-      if (Record->Class == Ctx->Classes->String) {
-        Status = BufferWriteChar (Ctx->Content, L'"');
+      if (Record->Class == gCtx.Classes->String) {
+        Status = BufferWriteChar (gCtx.Content, L'"');
         if (EFI_ERROR (Status)) {
           return Status;
         }
 
-        Status = WriteString (Ctx, Object);
+        Status = WriteString (Object);
         if (EFI_ERROR (Status)) {
           return Status;
         }
 
-        return BufferWriteChar (Ctx->Content, L'"');
+        return BufferWriteChar (gCtx.Content, L'"');
       } else {
-        return BufferWrite (Ctx->Content, L"<WORD-RECORD>");
+        return BufferWrite (gCtx.Content, L"<WORD-RECORD>");
       }
     }
 
@@ -271,39 +270,39 @@ FormatRecursive (
 
       Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
 
-      if (Object == Ctx->Globals->Nil) {
-        return BufferWrite (Ctx->Content, L"NIL");
-      } else if (Record->Class == Ctx->Classes->Symbol) {
+      if (Object == gCtx.Globals->Nil) {
+        return BufferWrite (gCtx.Content, L"NIL");
+      } else if (Record->Class == gCtx.Classes->Symbol) {
         SYMBOL  *Symbol;
 
         Status = BORAX_GET_OBJECT_RECORD (Object, &Symbol);
         if (EFI_ERROR (Status)) {
-          (VOID)BufferWrite (Ctx->Content, L"Malformed symbol object\n");
+          (VOID)BufferWrite (gCtx.Content, L"Malformed symbol object\n");
           return EFI_INVALID_PARAMETER;
         }
 
-        if (Symbol->Package != Ctx->Globals->CommonLisp) {
-          if (Symbol->Package != Ctx->Globals->Keyword) {
-            BORAX_OBJECT  PackageName = GetPackageName (Ctx, Symbol->Package);
+        if (Symbol->Package != gCtx.Globals->CommonLisp) {
+          if (Symbol->Package != gCtx.Globals->Keyword) {
+            BORAX_OBJECT  PackageName = GetPackageName (Symbol->Package);
 
-            Status = WriteString (Ctx, PackageName);
+            Status = WriteString (PackageName);
             if (EFI_ERROR (Status)) {
               return Status;
             }
           }
 
-          Status = BufferWriteChar (Ctx->Content, L':');
+          Status = BufferWriteChar (gCtx.Content, L':');
           if (EFI_ERROR (Status)) {
             return Status;
           }
         }
 
-        return WriteString (Ctx, Symbol->Name);
-      } else if (Record->Class == Ctx->Classes->SimpleVector) {
+        return WriteString (Symbol->Name);
+      } else if (Record->Class == gCtx.Classes->SimpleVector) {
         UINTN    I;
         BOOLEAN  Start = TRUE;
 
-        Status = BufferWrite (Ctx->Content, L"#(");
+        Status = BufferWrite (gCtx.Content, L"#(");
         if (EFI_ERROR (Status)) {
           return Status;
         }
@@ -314,62 +313,62 @@ FormatRecursive (
           if (Start) {
             Start = FALSE;
           } else {
-            Status = BufferWriteChar (Ctx->Content, L' ');
+            Status = BufferWriteChar (gCtx.Content, L' ');
             if (EFI_ERROR (Status)) {
               return Status;
             }
           }
 
-          Status = FormatRecursive (Ctx, Value);
+          Status = FormatRecursive (Value);
           if (EFI_ERROR (Status)) {
             return Status;
           }
         }
 
-        return BufferWriteChar (Ctx->Content, L')');
-      } else if (Record->Class == Ctx->Classes->StandardClass) {
+        return BufferWriteChar (gCtx.Content, L')');
+      } else if (Record->Class == gCtx.Classes->StandardClass) {
         STANDARD_CLASS  *Class;
 
         Status = BORAX_GET_OBJECT_RECORD (Object, &Class);
         if (EFI_ERROR (Status)) {
-          (VOID)BufferWrite (Ctx->Content, L"Malformed class object\n");
+          (VOID)BufferWrite (gCtx.Content, L"Malformed class object\n");
           return EFI_INVALID_PARAMETER;
         }
 
-        Status = BufferWrite (Ctx->Content, L"<STANDARD-CLASS ");
+        Status = BufferWrite (gCtx.Content, L"<STANDARD-CLASS ");
         if (EFI_ERROR (Status)) {
           return Status;
         }
 
-        Status = FormatRecursive (Ctx, Class->Name);
+        Status = FormatRecursive (Class->Name);
         if (EFI_ERROR (Status)) {
           return Status;
         }
 
-        return BufferWriteChar (Ctx->Content, L'>');
+        return BufferWriteChar (gCtx.Content, L'>');
       } else {
         BORAX_OBJECT  ClassName;
         UINTN         I;
 
-        ClassName = GetClassName (Ctx, Record->Class);
+        ClassName = GetClassName (Record->Class);
 
-        if (ClassName == Ctx->Globals->Nil) {
-          Status = BufferWrite (Ctx->Content, L"<OBJECT-RECORD ");
+        if (ClassName == gCtx.Globals->Nil) {
+          Status = BufferWrite (gCtx.Content, L"<OBJECT-RECORD ");
           if (EFI_ERROR (Status)) {
             return Status;
           }
 
-          Status = FormatRecursive (Ctx, Record->Class);
+          Status = FormatRecursive (Record->Class);
           if (EFI_ERROR (Status)) {
             return Status;
           }
         } else {
-          Status = BufferWriteChar (Ctx->Content, L'<');
+          Status = BufferWriteChar (gCtx.Content, L'<');
           if (EFI_ERROR (Status)) {
             return Status;
           }
 
-          Status = FormatRecursive (Ctx, ClassName);
+          Status = FormatRecursive (ClassName);
           if (EFI_ERROR (Status)) {
             return Status;
           }
@@ -378,112 +377,114 @@ FormatRecursive (
         for (I = 0; I < Record->Length; ++I) {
           BORAX_OBJECT  Value = Record->Data[I];
 
-          Status = BufferWriteChar (Ctx->Content, L' ');
+          Status = BufferWriteChar (gCtx.Content, L' ');
           if (EFI_ERROR (Status)) {
             return Status;
           }
 
-          Status = BufferWriteInt (Ctx->Content, I);
+          Status = BufferWriteInt (gCtx.Content, I);
           if (EFI_ERROR (Status)) {
             return Status;
           }
 
-          Status = BufferWriteChar (Ctx->Content, L'=');
+          Status = BufferWriteChar (gCtx.Content, L'=');
           if (EFI_ERROR (Status)) {
             return Status;
           }
 
-          Status = FormatRecursive (Ctx, Value);
+          Status = FormatRecursive (Value);
           if (EFI_ERROR (Status)) {
             return Status;
           }
         }
 
-        return BufferWriteChar (Ctx->Content, L'>');
+        return BufferWriteChar (gCtx.Content, L'>');
       }
     }
 
     case BORAX_DISCRIM_WEAK_POINTER:
-      return BufferWrite (Ctx->Content, L"<WEAK-POINTER>");
+      return BufferWrite (gCtx.Content, L"<WEAK-POINTER>");
 
     case BORAX_DISCRIM_PIN:
-      return BufferWrite (Ctx->Content, L"<PIN>");
+      return BufferWrite (gCtx.Content, L"<PIN>");
 
     case BORAX_DISCRIM_MOVED:
-      return BufferWrite (Ctx->Content, L"<MOVED>");
+      return BufferWrite (gCtx.Content, L"<MOVED>");
 
     case BORAX_DISCRIM_UNINITIALIZED:
-      return BufferWrite (Ctx->Content, L"<UNINITIALIZED>");
+      return BufferWrite (gCtx.Content, L"<UNINITIALIZED>");
 
     default:
-      return BufferWrite (Ctx->Content, L"<ILLEGAL>");
+      return BufferWrite (gCtx.Content, L"<ILLEGAL>");
   }
 }
 
 STATIC EFI_STATUS
 EFIAPI
 PrintLabelled (
-  IN LISP_CONTEXT  *Ctx,
   IN CONST CHAR16  *Label,
   IN BORAX_OBJECT  Object
   )
 {
   EFI_STATUS  Status;
 
-  Status = BufferWrite (Ctx->Content, Label);
+  Status = BufferWrite (gCtx.Content, Label);
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
-  Status = BufferWrite (Ctx->Content, L" = ");
+  Status = BufferWrite (gCtx.Content, L" = ");
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
-  Status = FormatRecursive (Ctx, Object);
+  Status = FormatRecursive (Object);
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
-  return BufferWriteChar (Ctx->Content, L'\n');
+  return BufferWriteChar (gCtx.Content, L'\n');
 }
 
 STATIC EFI_STATUS
 EFIAPI
 FillContent (
-  IN OUT BUFFER    *Content,
-  IN BORAX_OBJECT  RootObject
+  IN OUT BUFFER  *Content,
+  BORAX_PIN      *RootPin
   )
 {
-  EFI_STATUS    Status;
-  LISP_CONTEXT  Ctx;
-  ROOT          *Root;
+  EFI_STATUS  Status;
+  ROOT        *Root;
 
-  Ctx.Content = Content;
+  gCtx.Content = Content;
 
-  Status = BORAX_GET_OBJECT_RECORD (RootObject, &Root);
+  Status = BORAX_GET_OBJECT_RECORD (RootPin->Object, &Root);
   if (EFI_ERROR (Status)) {
     (VOID)BufferWrite (Content, L"Malformed root object\n");
     return EFI_INVALID_PARAMETER;
   }
 
-  Status = BORAX_GET_OBJECT_RECORD (Root->Globals, &Ctx.Globals);
+  Status = BORAX_GET_OBJECT_RECORD (Root->Globals, &gCtx.Globals);
   if (EFI_ERROR (Status)) {
     (VOID)BufferWrite (Content, L"Malformed globals object\n");
     return EFI_INVALID_PARAMETER;
   }
 
-  Status = BORAX_GET_OBJECT_RECORD (Root->Classes, &Ctx.Classes);
+  Status = BORAX_GET_OBJECT_RECORD (Root->Classes, &gCtx.Classes);
   if (EFI_ERROR (Status)) {
     (VOID)BufferWrite (Content, L"Malformed classes object\n");
     return EFI_INVALID_PARAMETER;
   }
 
-  (VOID)PrintLabelled (&Ctx, L"NUMBERS", Root->Numbers);
-  (VOID)PrintLabelled (&Ctx, L"STUFF", Root->Stuff);
-  (VOID)PrintLabelled (&Ctx, L"VECTOR", Root->Vector);
-  (VOID)PrintLabelled (&Ctx, L"HELLO", Root->Hello);
-  (VOID)PrintLabelled (&Ctx, L"SUM-LIST", Root->SumList);
+  BoraxInterpreterInit (&gInterp, &gAlloc, RootPin);
+
+  (VOID)PrintLabelled (L"NUMBERS", Root->Numbers);
+  (VOID)PrintLabelled (L"STUFF", Root->Stuff);
+  (VOID)PrintLabelled (L"VECTOR", Root->Vector);
+  (VOID)PrintLabelled (L"HELLO", Root->Hello);
+  (VOID)PrintLabelled (L"SUM-LIST", Root->SumList);
+
+  BoraxInterpreterCleanup (&gInterp);
 
   return EFI_SUCCESS;
 }
@@ -546,7 +547,7 @@ ImageLoadContent (
   (VOID)BufferWrite (Content, InitialImagePath);
   (VOID)BufferWrite (Content, L"\n");
 
-  (VOID)FillContent (Content, RootPin->Object);
+  (VOID)FillContent (Content, RootPin);
 
 cleanup:
   if (InitialImage != NULL) {

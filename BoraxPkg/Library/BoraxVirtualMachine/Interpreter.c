@@ -182,7 +182,7 @@ TaskEnd (
   BoraxReleasePinRecord (&Task->Record);
 }
 
-EFI_STATUS
+VOID
 EFIAPI
 BoraxInterpreterInit (
   OUT BORAX_INTERPRETER  *Interp,
@@ -197,8 +197,6 @@ BoraxInterpreterInit (
                                 GC_PAGE_THRESHOLD_FACTOR * Alloc->UsedPages
                                 );
   InitializeListHead (&Interp->TaskList);
-
-  return EFI_SUCCESS;
 }
 
 VOID
@@ -326,6 +324,16 @@ BoraxInterpreterShutdown (
   )
 {
   // TODO
+}
+
+EFI_STATUS
+EFIAPI
+BoraxGlobalEnvironment (
+  IN BORAX_INTERPRETER          *Interp,
+  OUT BORAX_GLOBAL_ENVIRONMENT  **Env
+  )
+{
+  return BORAX_GET_OBJECT_RECORD (Interp->GlobalEnvironment->Object, Env);
 }
 
 BORAX_OBJECT
@@ -475,7 +483,7 @@ BoraxMakeMultipleValues (
 
   Capacity = MAX (MULTIPLE_VALUES_MIN, ValuesLength);
 
-  Status = BORAX_GET_OBJECT_RECORD (Interp->GlobalEnvironment->Object, &Env);
+  Status = BoraxGlobalEnvironment (Interp, &Env);
   if (EFI_ERROR (Status)) {
     return Status;
   }

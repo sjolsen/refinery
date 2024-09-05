@@ -42,7 +42,15 @@
   (do-record-slots (place slot) instance
     (setf place (find-class (slot-definition-name slot)))))
 
-(defclass root ()
+(defclass multiple-values ()
+  ()
+  (:metaclass record-class))
+
+(defclass global-environment ()
+  ((multiple-values :initform (find-class 'multiple-values)))
+  (:metaclass record-class))
+
+(defclass root (global-environment)
   ((globals :accessor globals
             :initform (make-instance 'globals))
    (classes :accessor classes

@@ -171,18 +171,13 @@
  */
 
 typedef struct {
-  BORAX_RECORD    Record;
-  BORAX_OBJECT    ClassMultipleValues;
-} BORAX_GLOBAL_ENVIRONMENT;
-
-typedef struct {
   BORAX_ALLOCATOR    *Alloc;
   BORAX_PIN          *GlobalEnvironment;
   UINTN              GcPageThreshold;
   LIST_ENTRY         TaskList;
 } BORAX_INTERPRETER;
 
-EFI_STATUS
+VOID
 EFIAPI
 BoraxInterpreterInit (
   OUT BORAX_INTERPRETER  *Interp,
@@ -217,6 +212,18 @@ VOID
 EFIAPI
 BoraxInterpreterShutdown (
   IN BORAX_INTERPRETER  *Interp
+  );
+
+typedef struct {
+  BORAX_RECORD    Record;
+  BORAX_OBJECT    ClassMultipleValues;
+} BORAX_GLOBAL_ENVIRONMENT;
+
+EFI_STATUS
+EFIAPI
+BoraxGlobalEnvironment (
+  IN BORAX_INTERPRETER          *Interp,
+  OUT BORAX_GLOBAL_ENVIRONMENT  **Env
   );
 
 typedef enum {
