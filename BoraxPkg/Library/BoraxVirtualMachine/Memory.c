@@ -838,6 +838,33 @@ BoraxAllocateObject (
 
 EFI_STATUS
 EFIAPI
+BoraxCopyObject (
+  IN BORAX_ALLOCATOR       *Alloc,
+  IN UINTN                 Size,
+  IN BORAX_OBJECT_HEADER   *OldObject,
+  OUT BORAX_OBJECT_HEADER  **NewObject
+  )
+{
+  EFI_STATUS           Status;
+  UINTN                GcData;
+  BORAX_OBJECT_HEADER  *TheNewObject;
+
+  Status = BoraxAllocateObject (Alloc, Size, &TheNewObject);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  // GcData is the only field we need to worry about clobbering
+  GcData = TheNewObject->GcData;
+  CopyMem (TheNewObject, OldObject, Size);
+  TheNewObject->GcData = GcData;
+
+  *NewObject = TheNewObject;
+  return EFI_SUCCESS;
+}
+
+EFI_STATUS
+EFIAPI
 BoraxAllocatePin (
   IN BORAX_ALLOCATOR  *Alloc,
   IN BORAX_OBJECT     Object,
@@ -1016,25 +1043,10 @@ CopyRecord (
   OUT BORAX_OBJECT_HEADER  **NewObject
   )
 {
-  EFI_STATUS    Status;
   BORAX_RECORD  *Record = (BORAX_RECORD *)OldObject;
-  BORAX_RECORD  *NewRec;
+  UINTN         Size    = sizeof (BORAX_RECORD) + sizeof (UINTN) * Record->Length;
 
-  Status = BoraxAllocateRecordUninitialized (
-             Alloc,
-             OldObject->WideTag,
-             Record->Class,
-             Record->Length,
-             Record->LengthAux,
-             &NewRec
-             );
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  CopyMem (NewRec->Data, Record->Data, sizeof (UINTN) * Record->Length);
-  *NewObject = &NewRec->Header;
-  return EFI_SUCCESS;
+  return BoraxCopyObject (Alloc, Size, OldObject, NewObject);
 }
 
 STATIC EFI_STATUS

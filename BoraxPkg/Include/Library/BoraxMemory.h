@@ -410,6 +410,15 @@ BoraxAllocateObject (
   OUT BORAX_OBJECT_HEADER  **Object
   );
 
+EFI_STATUS
+EFIAPI
+BoraxCopyObject (
+  IN BORAX_ALLOCATOR       *Alloc,
+  IN UINTN                 Size,
+  IN BORAX_OBJECT_HEADER   *OldObject,
+  OUT BORAX_OBJECT_HEADER  **NewObject
+  );
+
 /*
  * Pinning objects
  * ===============

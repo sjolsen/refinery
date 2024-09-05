@@ -215,19 +215,11 @@ CopyBuiltInFunction (
   OUT BORAX_OBJECT_HEADER  **NewObject
   )
 {
-  BORAX_BUILT_IN_FUNCTION  *Function = (BORAX_BUILT_IN_FUNCTION *)OldObject;
-
-  return BoraxAllocateBuiltInFunction (
+  return BoraxCopyObject (
            Alloc,
-           Function->Name,
-           Function->Arglist,
-           Function->Entry,
-           Function->Code,
-           Function->Constants,
-           Function->Locals,
-           Function->Shared,
-           Function->Closure,
-           (BORAX_BUILT_IN_FUNCTION **)NewObject
+           sizeof (BORAX_BUILT_IN_FUNCTION),
+           OldObject,
+           NewObject
            );
 }
 
