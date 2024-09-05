@@ -179,6 +179,7 @@ typedef struct {
 typedef enum {
   BORAX_TASK_RUNNING,
   BORAX_TASK_PENDING,
+  BORAX_TASK_EXITED,
 } BORAX_TASK_STATE;
 
 typedef struct {
@@ -265,8 +266,7 @@ BoraxMakeMultipleValues (
 typedef
 EFI_STATUS
 (EFIAPI *BORAX_BUILT_IN_CODE)(
-  IN BORAX_TASK *Task,
-  IN OUT UINTN  *State
+  IN BORAX_TASK *Task
   );
 
 typedef union {
@@ -307,6 +307,7 @@ typedef struct {
   BORAX_OBJECT    Function;
 } BORAX_SYMBOL;
 
+// TODO: this belongs somewhere else
 EFI_STATUS
 EFIAPI
 BoraxSetSymbolFunction (

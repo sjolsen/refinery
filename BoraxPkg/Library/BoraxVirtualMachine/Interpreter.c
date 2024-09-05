@@ -95,6 +95,26 @@ TaskStackCleanup (
   FreePool (Stack->Pages);
 }
 
+STATIC VOID
+EFIAPI
+TaskEnd (
+  IN BORAX_TASK    *Task,
+  IN BORAX_OBJECT  Result
+  )
+{
+  if (Task->Result != NULL) {
+    Task->Result->Object = Result;
+  }
+
+  if (Task->Completion != NULL) {
+    gBS->SignalEvent (Task->Completion);
+  }
+
+  TaskStackCleanup (&Task->Stack);
+  RemoveEntryList (&Task->TaskList);
+  BoraxReleasePinRecord (&Task->Record);
+}
+
 VOID
 EFIAPI
 BoraxInterpreterCleanup (
@@ -106,17 +126,8 @@ BoraxInterpreterCleanup (
   BASE_LIST_FOR_EACH_SAFE (Entry, NextEntry, &Interp->TaskList) {
     BORAX_TASK  *Task = BASE_CR (Entry, BORAX_TASK, TaskList);
 
-    if (Task->Result != NULL) {
-      // TODO: Return a meaningful value indicating abnormal exit
-      Task->Result->Object = BORAX_IMMEDIATE_UNBOUND;
-    }
-
-    if (Task->Completion != NULL) {
-      gBS->SignalEvent (Task->Completion);
-    }
-
-    TaskStackCleanup (&Task->Stack);
-    BoraxReleasePinRecord (&Task->Record);
+    // TODO: Return a meaningful value indicating abnormal exit
+    TaskEnd (Task, BORAX_IMMEDIATE_UNBOUND);
   }
 }
 
@@ -176,6 +187,20 @@ cleanup:
   }
 
   return Status;
+}
+
+STATIC BORAX_OBJECT
+EFIAPI
+TaskStackRead (
+  IN BORAX_TASK_STACK  *Stack,
+  IN UINTN             Index
+  )
+{
+  UINTN  PageIndex  = Index / BORAX_WORDS_PER_PAGE;
+  UINTN  PageOffset = Index % BORAX_WORDS_PER_PAGE;
+
+  ASSERT (PageIndex < Stack->PagesLength);
+  return Stack->Pages[PageIndex][PageOffset];
 }
 
 STATIC VOID
@@ -347,6 +372,35 @@ CONST BORAX_GC_HOOKS  gTaskGcHooks = {
   .SubObjects = &TaskSubObjects,
 };
 
+STATIC EFI_STATUS
+EFIAPI
+TaskRun (
+  IN BORAX_TASK  *Task
+  )
+{
+  while (Task->State == BORAX_TASK_RUNNING) {
+    EFI_STATUS               Status;
+    UINTN                    BP   = Task->Registers.BP;
+    BORAX_OBJECT             Code = TaskStackRead (&Task->Stack, BP + 2);
+    BORAX_BUILT_IN_FUNCTION  *F;
+
+    // TODO: Non-built-ins
+    if (BORAX_DISCRIMINATE (Code) != BORAX_DISCRIM_BUILT_IN_FUNCTION) {
+      // TODO: Error reporting
+      return EFI_INVALID_PARAMETER;
+    }
+
+    F = (BORAX_BUILT_IN_FUNCTION *)BORAX_GET_POINTER (Code);
+
+    Status = F->Code (Task);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+  }
+
+  return EFI_SUCCESS;
+}
+
 EFI_STATUS
 EFIAPI
 BoraxInterpreterRun (
@@ -354,6 +408,26 @@ BoraxInterpreterRun (
   OUT BORAX_PIN         **IORequests
   )
 {
+  EFI_STATUS  Status;
+  LIST_ENTRY  *Entry;
+  BOOLEAN     WorkDone;
+
+  do {
+    WorkDone = FALSE;
+    BASE_LIST_FOR_EACH (Entry, &Interp->TaskList) {
+      BORAX_TASK  *Task = BASE_CR (Entry, BORAX_TASK, TaskList);
+
+      if (Task->State == BORAX_TASK_RUNNING) {
+        WorkDone = TRUE;
+        Status   = TaskRun (Task);
+        if (EFI_ERROR (Status)) {
+          // TODO: principled error handling
+          return Status;
+        }
+      }
+    }
+  } while (WorkDone);
+
   // TODO
   *IORequests = NULL;
   return EFI_SUCCESS;
