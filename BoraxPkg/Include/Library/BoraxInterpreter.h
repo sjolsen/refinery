@@ -171,6 +171,30 @@
  */
 
 typedef struct {
+  BORAX_RECORD    Record;
+  BORAX_OBJECT    ClassSymbol;
+} BORAX_GLOBAL_ENVIRONMENT;
+
+typedef enum {
+  BORAX_TASK_RUNNING,
+  BORAX_TASK_PENDING,
+} BORAX_TASK_STATE;
+
+struct _BORAX_TASK {
+  LIST_ENTRY          TaskList;
+  BORAX_TASK_STATE    State;
+  EFI_EVENT           Completion;
+  BORAX_PIN           *Result;
+  BORAX_PIN           *Data;
+};
+
+typedef struct {
+  BORAX_RECORD    Record;
+  BORAX_OBJECT    EntryPoint;
+  BORAX_OBJECT    Args;
+} BORAX_TASK_DATA;
+
+typedef struct {
   BORAX_ALLOCATOR    *Alloc;
   BORAX_PIN          *GlobalEnvironment;
   UINTN              GcPageThreshold;
@@ -195,8 +219,8 @@ EFI_STATUS
 EFIAPI
 BoraxInterpreterSpawn (
   IN BORAX_INTERPRETER  *Interp,
-  IN EFI_EVENT          Completion OPTIONAL,
-  IN OUT BORAX_PIN      *Result OPTIONAL,
+  IN EFI_EVENT          Completion  OPTIONAL,
+  IN OUT BORAX_PIN      *Result     OPTIONAL,
   IN BORAX_OBJECT       EntryPoint,
   IN BORAX_OBJECT       Args
   );
@@ -212,6 +236,22 @@ VOID
 EFIAPI
 BoraxInterpreterShutdown (
   IN BORAX_INTERPRETER  *Interp
+  );
+
+typedef struct {
+  BORAX_RECORD    Record;
+  BORAX_OBJECT    Package;
+  BORAX_OBJECT    Name;
+  BORAX_OBJECT    Value;
+  BORAX_OBJECT    Function;
+} BORAX_SYMBOL;
+
+EFI_STATUS
+EFIAPI
+BoraxSetSymbolFunction (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Symbol,
+  IN BORAX_OBJECT       Function
   );
 
 #endif // BORAX_INTERPRETER_H

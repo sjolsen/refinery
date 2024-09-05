@@ -148,12 +148,13 @@ enum {
 (((_ptr)->HeaderWords[0] & BORAX_LOWTAG_MASK_HEAP) != BORAX_LOWTAG_HEAP)
 
 enum {
-  BORAX_WIDETAG_WORD_RECORD   = 0x03,
-  BORAX_WIDETAG_OBJECT_RECORD = 0x07,
-  BORAX_WIDETAG_WEAK_POINTER  = 0xF3,
-  BORAX_WIDETAG_PIN           = 0xF7,
-  BORAX_WIDETAG_MOVED         = 0xFB,
-  BORAX_WIDETAG_UNINITIALIZED = 0xFF,
+  BORAX_WIDETAG_WORD_RECORD       = 0x03,
+  BORAX_WIDETAG_OBJECT_RECORD     = 0x07,
+  BORAX_WIDETAG_BUILT_IN_FUNCTION = 0x0B,
+  BORAX_WIDETAG_WEAK_POINTER      = 0xF3,
+  BORAX_WIDETAG_PIN               = 0xF7,
+  BORAX_WIDETAG_MOVED             = 0xFB,
+  BORAX_WIDETAG_UNINITIALIZED     = 0xFF,
 };
 
 // Helper enum for simplifying switch statements. Values are implementation
@@ -164,13 +165,14 @@ enum {
   BORAX_DISCRIM_UNBOUND   = BORAX_IMMEDIATE_UNBOUND,
   BORAX_DISCRIM_CHARACTER = BORAX_IMMEDIATE_CHARACTER_BEGIN,
   // Pointers
-  BORAX_DISCRIM_CONS          = 0x02,
-  BORAX_DISCRIM_WORD_RECORD   = BORAX_WIDETAG_WORD_RECORD,
-  BORAX_DISCRIM_OBJECT_RECORD = BORAX_WIDETAG_OBJECT_RECORD,
-  BORAX_DISCRIM_WEAK_POINTER  = BORAX_WIDETAG_WEAK_POINTER,
-  BORAX_DISCRIM_PIN           = BORAX_WIDETAG_PIN,
-  BORAX_DISCRIM_MOVED         = BORAX_WIDETAG_MOVED,
-  BORAX_DISCRIM_UNINITIALIZED = BORAX_WIDETAG_UNINITIALIZED,
+  BORAX_DISCRIM_CONS              = 0x02,
+  BORAX_DISCRIM_WORD_RECORD       = BORAX_WIDETAG_WORD_RECORD,
+  BORAX_DISCRIM_OBJECT_RECORD     = BORAX_WIDETAG_OBJECT_RECORD,
+  BORAX_DISCRIM_BUILT_IN_FUNCTION = BORAX_WIDETAG_BUILT_IN_FUNCTION,
+  BORAX_DISCRIM_WEAK_POINTER      = BORAX_WIDETAG_WEAK_POINTER,
+  BORAX_DISCRIM_PIN               = BORAX_WIDETAG_PIN,
+  BORAX_DISCRIM_MOVED             = BORAX_WIDETAG_MOVED,
+  BORAX_DISCRIM_UNINITIALIZED     = BORAX_WIDETAG_UNINITIALIZED,
 };
 
 #define BORAX_DISCRIMINATE(_obj)                       \
@@ -223,26 +225,7 @@ STATIC_ASSERT (
 typedef enum {
   BORAX_OBJECT_GCDATA_SPACEBIT = 1 << 0,
   BORAX_OBJECT_GCDATA_GREYBIT  = 1 << 1,
-  BORAX_OBJECT_GCDATA_LOCKED   = 1 << 2,
 } BORAX_OBJECT_GCDATA;
-
-STATIC inline VOID
-EFIAPI
-BoraxLockObject (
-  IN BORAX_OBJECT_HEADER  *Object
-  )
-{
-  Object->GcData |= BORAX_OBJECT_GCDATA_LOCKED;
-}
-
-STATIC inline VOID
-EFIAPI
-BoraxUnlockObject (
-  IN BORAX_OBJECT_HEADER  *Object
-  )
-{
-  Object->GcData &= ~BORAX_OBJECT_GCDATA_LOCKED;
-}
 
 /*
  * Cons cell management
@@ -543,6 +526,43 @@ BoraxGetRecord (
   ))
 
 /*
+ * Built-in functions
+ * ==================
+ *
+ * The design constraints on built-in functions are detailed in the interpreter
+ * documentation. The structure of built-in functions is similar to that of
+ * bytecode functions, except that the "code" field refers to a C function
+ * pointer instead of a bytecode array.
+ *
+ * Built-in functions are given a dedicated memory representation to prevent
+ * Lisp code from modifying or forging C pointers.
+ */
+
+typedef struct _BORAX_TASK BORAX_TASK;
+
+typedef
+EFI_STATUS
+(EFIAPI *BORAX_BUILT_IN_CODE)(
+  IN BORAX_TASK *Task,
+  IN OUT UINTN  *State
+  );
+
+typedef union {
+  BORAX_OBJECT_HEADER    Header;
+  struct {
+    UINTN                  Word0;
+    BORAX_BUILT_IN_CODE    Code;
+    BORAX_OBJECT           Constants;
+    BORAX_OBJECT           Locals;
+    BORAX_OBJECT           Shared;
+    BORAX_OBJECT           Closure;
+    CONST CHAR16           *Name;
+    BORAX_OBJECT           Arglist;
+    BORAX_OBJECT           Entry;
+  };
+} BORAX_BUILT_IN_FUNCTION;
+
+/*
  * Triggering garbage collection
  * =============================
  *
@@ -708,6 +728,21 @@ BoraxAllocateRecordUninitialized (
   IN UINTN            Length,
   IN BORAX_HALFWORD   LengthAux,
   OUT BORAX_RECORD    **Record
+  );
+
+EFI_STATUS
+EFIAPI
+BoraxAllocateBuiltInFunction (
+  IN BORAX_ALLOCATOR           *Alloc,
+  IN CONST CHAR16              *Name,
+  IN BORAX_OBJECT              Arglist,
+  IN BORAX_OBJECT              Entry,
+  IN BORAX_BUILT_IN_CODE       Code,
+  IN BORAX_OBJECT              Constants,
+  IN BORAX_OBJECT              Locals,
+  IN BORAX_OBJECT              Shared,
+  IN BORAX_OBJECT              Closure,
+  OUT BORAX_BUILT_IN_FUNCTION  **Function
   );
 
 #endif // BORAX_MEMORY_H

@@ -8,30 +8,6 @@
 #define GC_PAGE_THRESHOLD_MIN     10
 #define GC_PAGE_THRESHOLD_FACTOR  2
 
-typedef struct {
-  BORAX_RECORD    Record;
-  // TODO
-} BORAX_GLOBAL_ENVIRONMENT;
-
-STATIC EFI_STATUS
-EFIAPI
-ValidateGlobalEnvironment (
-  IN BORAX_OBJECT  GlobalEnvironment
-  )
-{
-  EFI_STATUS                Status;
-  BORAX_GLOBAL_ENVIRONMENT  *Env;
-
-  Status = BORAX_GET_OBJECT_RECORD (GlobalEnvironment, &Env);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  BoraxLockObject (&Env->Record.Header);
-
-  return EFI_SUCCESS;
-}
-
 EFI_STATUS
 EFIAPI
 BoraxInterpreterInit (
@@ -40,15 +16,7 @@ BoraxInterpreterInit (
   IN BORAX_PIN           *GlobalEnvironment
   )
 {
-  EFI_STATUS  Status;
-
-  Interp->Alloc = Alloc;
-
-  Status = ValidateGlobalEnvironment (GlobalEnvironment->Object);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
+  Interp->Alloc             = Alloc;
   Interp->GlobalEnvironment = GlobalEnvironment;
   Interp->GcPageThreshold   = MAX (
                                 GC_PAGE_THRESHOLD_MIN,
@@ -58,25 +26,6 @@ BoraxInterpreterInit (
 
   return EFI_SUCCESS;
 }
-
-typedef enum {
-  BORAX_TASK_RUNNING,
-  BORAX_TASK_PENDING,
-} BORAX_TASK_STATE;
-
-typedef struct {
-  LIST_ENTRY          TaskList;
-  BORAX_TASK_STATE    State;
-  EFI_EVENT           Completion;
-  BORAX_PIN           *Result;
-  BORAX_PIN           *Data;
-} BORAX_TASK;
-
-typedef struct {
-  BORAX_RECORD    Record;
-  BORAX_OBJECT    EntryPoint;
-  BORAX_OBJECT    Args;
-} BORAX_TASK_DATA;
 
 VOID
 EFIAPI
@@ -108,8 +57,8 @@ EFI_STATUS
 EFIAPI
 BoraxInterpreterSpawn (
   IN BORAX_INTERPRETER  *Interp,
-  IN EFI_EVENT          Completion OPTIONAL,
-  IN OUT BORAX_PIN      *Result OPTIONAL,
+  IN EFI_EVENT          Completion  OPTIONAL,
+  IN OUT BORAX_PIN      *Result     OPTIONAL,
   IN BORAX_OBJECT       EntryPoint,
   IN BORAX_OBJECT       Args
   )
@@ -150,8 +99,6 @@ BoraxInterpreterSpawn (
   if (EFI_ERROR (Status)) {
     goto cleanup;
   }
-
-  BoraxLockObject (&TaskData->Record.Header);
 
   Task->State          = BORAX_TASK_RUNNING;
   Task->Completion     = Completion;
@@ -195,4 +142,24 @@ BoraxInterpreterShutdown (
   )
 {
   // TODO
+}
+
+EFI_STATUS
+EFIAPI
+BoraxSetSymbolFunction (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Symbol,
+  IN BORAX_OBJECT       Function
+  )
+{
+  EFI_STATUS Status;
+  BORAX_SYMBOL *TheSymbol;
+
+  Status = BORAX_GET_OBJECT_RECORD (Symbol, &TheSymbol);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  TheSymbol->Function = Function;
+  return EFI_SUCCESS;
 }

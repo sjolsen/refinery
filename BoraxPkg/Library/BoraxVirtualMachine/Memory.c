@@ -318,6 +318,30 @@ MarkObjectIfWhite (
       Object->HeaderWords[1] = BORAX_MAKE_POINTER (NewObj);
       break;
     }
+    case BORAX_DISCRIM_BUILT_IN_FUNCTION:
+    {
+      BORAX_BUILT_IN_FUNCTION  *Function = (BORAX_BUILT_IN_FUNCTION *)Object;
+
+      Status = BoraxAllocateBuiltInFunction (
+                 Alloc,
+                 Function->Name,
+                 Function->Arglist,
+                 Function->Entry,
+                 Function->Code,
+                 Function->Constants,
+                 Function->Locals,
+                 Function->Shared,
+                 Function->Closure,
+                 (BORAX_BUILT_IN_FUNCTION **)&NewObj
+                 );
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      Object->WideTag        = BORAX_WIDETAG_MOVED;
+      Object->HeaderWords[1] = BORAX_MAKE_POINTER (NewObj);
+      break;
+    }
     case BORAX_DISCRIM_WEAK_POINTER:
     {
       BORAX_WEAK_POINTER  *Wp = (BORAX_WEAK_POINTER *)Object;
@@ -449,6 +473,42 @@ MarkSubObjectsIfWhite (
 
       return EFI_SUCCESS;
     }
+    case BORAX_DISCRIM_BUILT_IN_FUNCTION:
+    {
+      BORAX_BUILT_IN_FUNCTION  *Function = (BORAX_BUILT_IN_FUNCTION *)Object;
+
+      Status = MarkObjectWordIfWhite (Alloc, GreyList, Function->Constants);
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      Status = MarkObjectWordIfWhite (Alloc, GreyList, Function->Locals);
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      Status = MarkObjectWordIfWhite (Alloc, GreyList, Function->Shared);
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      Status = MarkObjectWordIfWhite (Alloc, GreyList, Function->Closure);
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      Status = MarkObjectWordIfWhite (Alloc, GreyList, Function->Arglist);
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      Status = MarkObjectWordIfWhite (Alloc, GreyList, Function->Entry);
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      return EFI_SUCCESS;
+    }
     case BORAX_DISCRIM_WEAK_POINTER:
     case BORAX_DISCRIM_MOVED:
       // Nothing to do
@@ -513,6 +573,19 @@ MarkObjectBlack (
           UpdateIfMoved (&Record->Data[I]);
         }
       }
+
+      break;
+    }
+    case BORAX_DISCRIM_BUILT_IN_FUNCTION:
+    {
+      BORAX_BUILT_IN_FUNCTION  *Function = (BORAX_BUILT_IN_FUNCTION *)Object;
+
+      UpdateIfMoved (&Function->Constants);
+      UpdateIfMoved (&Function->Locals);
+      UpdateIfMoved (&Function->Shared);
+      UpdateIfMoved (&Function->Closure);
+      UpdateIfMoved (&Function->Arglist);
+      UpdateIfMoved (&Function->Entry);
 
       break;
     }
@@ -936,10 +1009,6 @@ BoraxAllocatePin (
   Alloc->Pins            = NewPin;
   NewPin->Object         = Object;
 
-  // Pins are designed to be handles for C into Lisp, so it's convenient for
-  // them to be locked by default.
-  BoraxLockObject (&NewPin->Header);
-
   *Pin = NewPin;
   return EFI_SUCCESS;
 }
@@ -1098,5 +1167,48 @@ BoraxGetRecord (
   }
 
   *Record = TheRecord;
+  return EFI_SUCCESS;
+}
+
+EFI_STATUS
+EFIAPI
+BoraxAllocateBuiltInFunction (
+  IN BORAX_ALLOCATOR           *Alloc,
+  IN CONST CHAR16              *Name,
+  IN BORAX_OBJECT              Arglist,
+  IN BORAX_OBJECT              Entry,
+  IN BORAX_BUILT_IN_CODE       Code,
+  IN BORAX_OBJECT              Constants,
+  IN BORAX_OBJECT              Locals,
+  IN BORAX_OBJECT              Shared,
+  IN BORAX_OBJECT              Closure,
+  OUT BORAX_BUILT_IN_FUNCTION  **Function
+  )
+{
+  EFI_STATUS               Status;
+  BORAX_BUILT_IN_FUNCTION  *NewFunction;
+
+  // Allocate a regular lisp object
+  Status = BoraxAllocateObject (
+             Alloc,
+             sizeof (BORAX_BUILT_IN_FUNCTION),
+             (BORAX_OBJECT_HEADER **)&NewFunction
+             );
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  // Initialize the record
+  NewFunction->Header.WideTag = BORAX_WIDETAG_BUILT_IN_FUNCTION;
+  NewFunction->Code           = Code;
+  NewFunction->Constants      = Constants;
+  NewFunction->Locals         = Locals;
+  NewFunction->Shared         = Shared;
+  NewFunction->Closure        = Closure;
+  NewFunction->Name           = Name;
+  NewFunction->Arglist        = Arglist;
+  NewFunction->Entry          = Entry;
+
+  *Function = NewFunction;
   return EFI_SUCCESS;
 }
