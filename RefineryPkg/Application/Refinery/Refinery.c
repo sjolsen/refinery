@@ -35,7 +35,10 @@ LoadDrivers (
   }
 
 cleanup:
-  FreePool (DriverPath);
+  if (DriverPath != NULL) {
+    FreePool (DriverPath);
+  }
+
   return Status;
 }
 
