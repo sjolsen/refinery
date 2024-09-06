@@ -75,7 +75,10 @@ GetEfiVolume (
   Status   = EFI_SUCCESS;
 
 cleanup:
-  FreePool (AppDrive);
+  if (AppDrive != NULL) {
+    FreePool (AppDrive);
+  }
+
   return Status;
 }
 
@@ -108,8 +111,14 @@ AppendFilePath (
   Status   = EFI_SUCCESS;
 
 cleanup:
-  FreePool (BaseFile);
-  FreePool (FilePath);
+  if (BaseFile != NULL) {
+    FreePool (BaseFile);
+  }
+
+  if (FilePath != NULL) {
+    FreePool (FilePath);
+  }
+
   return Status;
 }
 
@@ -151,9 +160,21 @@ BundledResourcePath (
   Status  = EFI_SUCCESS;
 
 cleanup:
-  FreePool (File);
-  FreePool (Refinery);
-  FreePool (Efi);
-  FreePool (Volume);
+  if (File != NULL) {
+    FreePool (File);
+  }
+
+  if (Refinery != NULL) {
+    FreePool (Refinery);
+  }
+
+  if (Efi != NULL) {
+    FreePool (Efi);
+  }
+
+  if (Volume != NULL) {
+    FreePool (Volume);
+  }
+
   return Status;
 }

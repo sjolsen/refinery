@@ -9,14 +9,28 @@
 
 !include MdePkg/MdeLibs.dsc.inc
 
+[PcdsFixedAtBuild]
+!ifdef $(DEBUG_ON_OVMF_IO_PORT)
+  gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x0f
+  gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x80000000
+!endif
+
 [LibraryClasses]
   BundledResource|RefineryPkg/Library/BundledResource/BundledResource.inf
 
   BoraxVirtualMachine|BoraxPkg/Library/BoraxVirtualMachine/BoraxVirtualMachine.inf
 
+!ifdef $(DEBUG_ON_OVMF_IO_PORT)
+  CcProbeLib|OvmfPkg/Library/CcProbeLib/DxeCcProbeLib.inf
+  DebugLib|OvmfPkg/Library/PlatformDebugLibIoPort/PlatformDebugLibIoPort.inf
+  IoLib|MdePkg/Library/BaseIoLibIntrinsic/BaseIoLibIntrinsicSev.inf
+  TdxLib|MdePkg/Library/TdxLib/TdxLib.inf
+!else
+  DebugLib|MdePkg/Library/UefiDebugLibConOut/UefiDebugLibConOut.inf
+!endif
+
   BaseLib|MdePkg/Library/BaseLib/BaseLib.inf
   BaseMemoryLib|MdePkg/Library/BaseMemoryLib/BaseMemoryLib.inf
-  DebugLib|MdePkg/Library/UefiDebugLibConOut/UefiDebugLibConOut.inf
   DebugPrintErrorLevelLib|MdePkg/Library/BaseDebugPrintErrorLevelLib/BaseDebugPrintErrorLevelLib.inf
   DevicePathLib|MdePkg/Library/UefiDevicePathLib/UefiDevicePathLibOptionalDevicePathProtocol.inf
   MemoryAllocationLib|MdePkg/Library/UefiMemoryAllocationLib/UefiMemoryAllocationLib.inf

@@ -1240,8 +1240,14 @@ cleanup:
     InitialImage->Close (InitialImage);
   }
 
-  FreePool (InitialImagePath);
-  FreePool (InitialImageDevicePath);
+  if (InitialImagePath != NULL) {
+    FreePool (InitialImagePath);
+  }
+
+  if (InitialImageDevicePath != NULL) {
+    FreePool (InitialImageDevicePath);
+  }
+
   BoraxAllocatorCleanup (&gAlloc);
   return Status;
 }
