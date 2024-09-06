@@ -331,6 +331,13 @@ BoraxTaskExitFunction (
   IN BORAX_TASK  *Task
   );
 
+VOID
+EFIAPI
+BoraxTaskDebugStackTrace (
+  IN UINTN       ErrorLevel,
+  IN BORAX_TASK  *Task
+  );
+
 typedef
 EFI_STATUS
 (EFIAPI *BORAX_BUILT_IN_CODE)(

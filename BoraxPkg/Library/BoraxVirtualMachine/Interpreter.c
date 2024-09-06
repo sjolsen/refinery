@@ -156,6 +156,8 @@ TaskRun (
 
     Status = F->Code (Task);
     if (EFI_ERROR (Status)) {
+      DEBUG ((DEBUG_ERROR, "Task returned error: %r\n", Status));
+      BoraxTaskDebugStackTrace (DEBUG_ERROR, Task);
       return Status;
     }
   }
@@ -573,6 +575,51 @@ BoraxTaskExitFunction (
   BoraxTaskExitFunctionCommon (Task);
   if (Task->Registers.SP == 0) {
     Task->State = BORAX_TASK_EXITED;
+  }
+}
+
+VOID
+EFIAPI
+BoraxTaskDebugStackTrace (
+  IN UINTN       ErrorLevel,
+  IN BORAX_TASK  *Task
+  )
+{
+  UINTN  BP = Task->Registers.BP;
+  UINTN  SP = Task->Registers.SP;
+  UINTN  PC = Task->Registers.PC;
+
+  while (SP != 0) {
+    BORAX_OBJECT  Code;
+    BORAX_OBJECT  Temp;
+
+    ASSERT (SP >= BP + 4);
+    Code = BoraxTaskStackRead (Task, BP + 2);
+
+    switch (BORAX_DISCRIMINATE (Code)) {
+      case BORAX_DISCRIM_BUILT_IN_FUNCTION:
+      {
+        BORAX_BUILT_IN_FUNCTION  *F;
+        F = (BORAX_BUILT_IN_FUNCTION *)BORAX_GET_POINTER (Code);
+
+        DebugPrint (ErrorLevel, "  %s:%u\n", F->Name, PC);
+        break;
+      }
+
+      default:
+        DebugPrint (ErrorLevel, "  <unknown>:%u\n", PC);
+        break;
+    }
+
+    SP = BP;
+
+    Temp = BoraxTaskStackRead (Task, BP + 1);
+    ASSERT (BORAX_IS_FIXNUM (Temp));
+    PC = BORAX_GET_FIXNUM (Temp);
+
+    Temp = BoraxTaskStackRead (Task, BP);
+    ASSERT (BORAX_IS_FIXNUM (Temp));
+    BP = BORAX_GET_FIXNUM (Temp);
   }
 }
 
