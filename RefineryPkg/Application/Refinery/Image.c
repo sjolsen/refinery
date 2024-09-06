@@ -5,6 +5,7 @@
 #include <Library/BoraxObjectFile.h>
 #include <Library/BoraxSystemAllocator.h>
 #include <Library/BundledResource.h>
+#include <Library/DebugLib.h>
 #include <Library/DevicePathLib.h>
 #include <Library/MemoryAllocationLib.h>
 #include <Library/UefiLib.h>
@@ -69,6 +70,9 @@ typedef struct {
   } Constants;
 } FUNCTION_DESCRIPTOR;
 
+#define IMAGE_ERROR(_fmt, ...) \
+DEBUG ((DEBUG_ERROR, "%a:%d: " _fmt "\n", __func__, __LINE__, ##__VA_ARGS__))
+
 STATIC UINTN
 EFIAPI
 StringLength (
@@ -81,7 +85,6 @@ StringLength (
 STATIC EFI_STATUS
 EFIAPI
 EarlyStringEqual (
-  IN BUFFER        *Buffer,
   IN BORAX_OBJECT  Name1,
   IN CONST CHAR16  *Name2,
   OUT BOOLEAN      *Match
@@ -95,7 +98,7 @@ EarlyStringEqual (
 
   Status = BORAX_GET_WORD_RECORD (Name1, &Record);
   if (EFI_ERROR (Status)) {
-    (VOID)BufferWrite (Buffer, L"Not a valid string object\n");
+    IMAGE_ERROR ("Not a valid string object");
     return Status;
   }
 
@@ -121,7 +124,6 @@ EarlyStringEqual (
 STATIC EFI_STATUS
 EFIAPI
 EarlyFindPackage (
-  IN BUFFER                    *Buffer,
   IN BORAX_GLOBAL_ENVIRONMENT  *Env,
   IN CONST CHAR16              *Name,
   OUT PACKAGE                  **Package
@@ -137,11 +139,11 @@ EarlyFindPackage (
 
     Status = BORAX_GET_OBJECT_RECORD (Cons->Car, &SomePackage);
     if (EFI_ERROR (Status)) {
-      (VOID)BufferWrite (Buffer, L"Not a valid package object\n");
+      IMAGE_ERROR ("Not a valid package object");
       return Status;
     }
 
-    Status = EarlyStringEqual (Buffer, SomePackage->Name, Name, &Match);
+    Status = EarlyStringEqual (SomePackage->Name, Name, &Match);
     if (EFI_ERROR (Status)) {
       return Status;
     }
@@ -154,16 +156,13 @@ EarlyFindPackage (
     List = Cons->Cdr;
   }
 
-  (VOID)BufferWrite (Buffer, L"Package not found: ");
-  (VOID)BufferWrite (Buffer, Name);
-  (VOID)BufferWriteChar (Buffer, L'\n');
+  IMAGE_ERROR ("Package not found: %u", Name);
   return EFI_INVALID_PARAMETER;
 }
 
 STATIC EFI_STATUS
 EFIAPI
 EarlyFindSymbol (
-  IN BUFFER        *Buffer,
   IN PACKAGE       *Package,
   IN CONST CHAR16  *Name,
   OUT SYMBOL       **Symbol
@@ -179,11 +178,11 @@ EarlyFindSymbol (
 
     Status = BORAX_GET_OBJECT_RECORD (Cons->Car, &SomeSymbol);
     if (EFI_ERROR (Status)) {
-      (VOID)BufferWrite (Buffer, L"Not a valid symbol object\n");
+      IMAGE_ERROR ("Not a valid symbol object");
       return Status;
     }
 
-    Status = EarlyStringEqual (Buffer, SomeSymbol->Name, Name, &Match);
+    Status = EarlyStringEqual (SomeSymbol->Name, Name, &Match);
     if (EFI_ERROR (Status)) {
       return Status;
     }
@@ -196,9 +195,7 @@ EarlyFindSymbol (
     List = Cons->Cdr;
   }
 
-  (VOID)BufferWrite (Buffer, L"Symbol not found: ");
-  (VOID)BufferWrite (Buffer, Name);
-  (VOID)BufferWriteChar (Buffer, L'\n');
+  IMAGE_ERROR ("Symbol not found: %u", Name);
   return EFI_INVALID_PARAMETER;
 }
 
@@ -214,11 +211,12 @@ GetClassName (
 
   Status = BORAX_GET_OBJECT_RECORD (Object, &Class);
   if (EFI_ERROR (Status)) {
+    IMAGE_ERROR ("Not a valid class object");
     return Ctx->Nil;
   }
 
   if (Class->Record.Class != Ctx->ClassStandardClass) {
-    return Ctx->Nil;
+    IMAGE_ERROR ("Not an instance of STANDARD-CLASS");
   }
 
   return Class->Name;
@@ -236,10 +234,12 @@ GetPackageName (
 
   Status = BORAX_GET_OBJECT_RECORD (Object, &Package);
   if (EFI_ERROR (Status)) {
+    IMAGE_ERROR ("Not a valid package object");
     return Ctx->Nil;
   }
 
   if (Package->Record.Class != Ctx->ClassPackage) {
+    IMAGE_ERROR ("Not an instance of PACKAGE");
     return Ctx->Nil;
   }
 
@@ -258,13 +258,13 @@ WriteString (
   UINTN         Length;
 
   if (BORAX_DISCRIMINATE (Object) != BORAX_DISCRIM_WORD_RECORD) {
-    (VOID)BufferWrite (Buffer, L"Not a string\n");
+    IMAGE_ERROR ("Not a valid string object");
     return EFI_INVALID_PARAMETER;
   }
 
   Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
   if (Record->Class != Ctx->ClassString) {
-    (VOID)BufferWrite (Buffer, L"Not a string\n");
+    IMAGE_ERROR ("Not an instance of STRING");
     return EFI_INVALID_PARAMETER;
   }
 
@@ -312,7 +312,7 @@ FormatSimpleVector (
       BORAX_RECORD  *Record;
 
       if (Task->Registers.VR->Length != 1) {
-        (VOID)BufferWrite (Buffer, L"Wrong number of arguments\n");
+        IMAGE_ERROR ("Wrong number of arguments");
         return EFI_INVALID_PARAMETER;
       }
 
@@ -320,7 +320,7 @@ FormatSimpleVector (
 
       Status = BORAX_GET_OBJECT_RECORD (*Object, &Record);
       if (EFI_ERROR (Status)) {
-        (VOID)BufferWrite (Buffer, L"Not an object vector\n");
+        IMAGE_ERROR ("Not a valid simple-vector object");
         return EFI_INVALID_PARAMETER;
       }
 
@@ -424,7 +424,7 @@ FormatStandardClass (
       STANDARD_CLASS  *Class;
 
       if (Task->Registers.VR->Length != 1) {
-        (VOID)BufferWrite (Buffer, L"Wrong number of arguments\n");
+        IMAGE_ERROR ("Wrong number of arguments");
         return EFI_INVALID_PARAMETER;
       }
 
@@ -432,7 +432,12 @@ FormatStandardClass (
 
       Status = BORAX_GET_OBJECT_RECORD (Object, &Class);
       if (EFI_ERROR (Status)) {
-        (VOID)BufferWrite (Buffer, L"Malformed class object\n");
+        IMAGE_ERROR ("Not a valid class object");
+        return EFI_INVALID_PARAMETER;
+      }
+
+      if (Class->Record.Class != Ctx->ClassStandardClass) {
+        IMAGE_ERROR ("Not an instance of STANDARD-CLASS");
         return EFI_INVALID_PARAMETER;
       }
 
@@ -513,7 +518,7 @@ FormatObjectRecord (
       BORAX_RECORD  *Record;
 
       if (Task->Registers.VR->Length != 1) {
-        (VOID)BufferWrite (Buffer, L"Wrong number of arguments\n");
+        IMAGE_ERROR ("Wrong number of arguments");
         return EFI_INVALID_PARAMETER;
       }
 
@@ -521,7 +526,7 @@ FormatObjectRecord (
 
       Status = BORAX_GET_OBJECT_RECORD (*Object, &Record);
       if (EFI_ERROR (Status)) {
-        (VOID)BufferWrite (Buffer, L"Not an object vector\n");
+        IMAGE_ERROR ("Not a valid object record");
         return Status;
       }
 
@@ -648,7 +653,7 @@ FormatRecursive (
       BORAX_OBJECT  Object;
 
       if (Task->Registers.VR->Length != 1) {
-        (VOID)BufferWrite (Buffer, L"Wrong number of arguments\n");
+        IMAGE_ERROR ("Wrong number of arguments");
         return EFI_INVALID_PARAMETER;
       }
 
@@ -753,7 +758,7 @@ FormatRecursive (
 
             Status = BORAX_GET_OBJECT_RECORD (Object, &Symbol);
             if (EFI_ERROR (Status)) {
-              (VOID)BufferWrite (Buffer, L"Malformed symbol object\n");
+              IMAGE_ERROR ("Not a valid symbol object");
               return EFI_INVALID_PARAMETER;
             }
 
@@ -926,7 +931,7 @@ PrintLabelled (
     return Status;
   }
 
-  Status = EarlyFindSymbol (Buffer, Package, SymbolName, &Symbol);
+  Status = EarlyFindSymbol (Package, SymbolName, &Symbol);
   if (EFI_ERROR (Status)) {
     return Status;
   }
@@ -1034,13 +1039,12 @@ InitializeEnvironment (
     return Status;
   }
 
-  Status = EarlyFindPackage (Content, Env, L"COMMON-LISP", &CommonLisp);
+  Status = EarlyFindPackage (Env, L"COMMON-LISP", &CommonLisp);
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
   Status = EarlyFindPackage (
-             Content,
              Env,
              L"BORAX-VIRTUAL-MACHINE/INITIAL-IMAGE",
              &InitialImage
@@ -1049,32 +1053,32 @@ InitializeEnvironment (
     return Status;
   }
 
-  Status = EarlyFindPackage (Content, Env, L"KEYWORD", &Keyword);
+  Status = EarlyFindPackage (Env, L"KEYWORD", &Keyword);
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
-  Status = EarlyFindSymbol (Content, CommonLisp, L"NIL", &Nil);
+  Status = EarlyFindSymbol (CommonLisp, L"NIL", &Nil);
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
-  Status = EarlyFindSymbol (Content, CommonLisp, L"PACKAGE", &Package);
+  Status = EarlyFindSymbol (CommonLisp, L"PACKAGE", &Package);
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
-  Status = EarlyFindSymbol (Content, CommonLisp, L"STANDARD-CLASS", &StandardClass);
+  Status = EarlyFindSymbol (CommonLisp, L"STANDARD-CLASS", &StandardClass);
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
-  Status = EarlyFindSymbol (Content, CommonLisp, L"STRING", &String);
+  Status = EarlyFindSymbol (CommonLisp, L"STRING", &String);
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
-  Status = EarlyFindSymbol (Content, CommonLisp, L"SYMBOL", &Symbol);
+  Status = EarlyFindSymbol (CommonLisp, L"SYMBOL", &Symbol);
   if (EFI_ERROR (Status)) {
     return Status;
   }
