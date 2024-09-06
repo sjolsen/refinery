@@ -58,45 +58,17 @@ typedef struct {
 } SYMBOL;
 
 typedef struct {
-  BUFFER     *Content;
-  GLOBALS    *Globals;
-  CLASSES    *Classes;
+  BUFFER          *Content;
+  GLOBALS         *Globals;
+  CLASSES         *Classes;
+  BORAX_OBJECT    FormatSimpleVector;
+  BORAX_OBJECT    FormatObjectRecord;
+  BORAX_OBJECT    FormatStandardClass;
+  BORAX_OBJECT    FormatRecursive;
 } LISP_CONTEXT;
 
 // TODO: Make this a function constant
 STATIC LISP_CONTEXT  gCtx;
-
-STATIC BORAX_OBJECT
-EFIAPI
-Car (
-  BORAX_OBJECT  Object
-  )
-{
-  BORAX_CONS  *Cons;
-
-  if (BORAX_DISCRIMINATE (Object) != BORAX_DISCRIM_CONS) {
-    return gCtx.Globals->Nil;
-  }
-
-  Cons = (BORAX_CONS *)BORAX_GET_POINTER (Object);
-  return Cons->Car;
-}
-
-STATIC BORAX_OBJECT
-EFIAPI
-Cdr (
-  BORAX_OBJECT  Object
-  )
-{
-  BORAX_CONS  *Cons;
-
-  if (BORAX_DISCRIMINATE (Object) != BORAX_DISCRIM_CONS) {
-    return gCtx.Globals->Nil;
-  }
-
-  Cons = (BORAX_CONS *)BORAX_GET_POINTER (Object);
-  return Cons->Cdr;
-}
 
 STATIC BORAX_OBJECT
 EFIAPI
@@ -166,258 +138,573 @@ WriteString (
   return BufferWriteChars (gCtx.Content, (CHAR16 *)Record->Data, Length);
 }
 
+typedef struct {
+  CONST CHAR16           *Name;
+  UINTN                  Entry;
+  BORAX_BUILT_IN_CODE    Code;
+  UINTN                  Locals;
+} FUNCTION_DESCRIPTOR;
+
+enum {
+  FSV_LOCAL_OBJECT,
+  FSV_LOCAL_INDEX,
+  FSV_LOCALS
+};
+
+enum {
+  FSV_PC_START,
+  FSV_PC_SLOTS,
+};
+
 STATIC EFI_STATUS
 EFIAPI
-FormatRecursive (
-  IN BORAX_OBJECT  Object
+FormatSimpleVector (
+  IN BORAX_TASK  *Task
   )
 {
-  switch (BORAX_DISCRIMINATE (Object)) {
-    case BORAX_DISCRIM_FIXNUM:
-      return BufferWriteInt (gCtx.Content, BORAX_GET_FIXNUM (Object));
+  EFI_STATUS    Status;
+  BORAX_OBJECT  *Object = BoraxTaskStackLocal (Task, FSV_LOCAL_OBJECT);
+  BORAX_OBJECT  *Index  = BoraxTaskStackLocal (Task, FSV_LOCAL_INDEX);
 
-    case BORAX_DISCRIM_UNBOUND:
-      return BufferWrite (gCtx.Content, L"<UNBOUND>");
-
-    case BORAX_DISCRIM_CHARACTER:
+  switch (Task->Registers.PC) {
+    case FSV_PC_START:
     {
-      EFI_STATUS  Status;
+      BORAX_RECORD  *Record;
 
-      Status = BufferWrite (gCtx.Content, L"#\\");
+      if (Task->Registers.VR->Length != 1) {
+        (VOID)BufferWrite (gCtx.Content, L"Wrong number of arguments\n");
+        return EFI_INVALID_PARAMETER;
+      }
+
+      *Object = Task->Registers.VR->Values[0];
+
+      Status = BORAX_GET_WORD_RECORD (*Object, &Record);
+      if (EFI_ERROR (Status)) {
+        (VOID)BufferWrite (gCtx.Content, L"Not a word vector\n");
+        return EFI_INVALID_PARAMETER;
+      }
+
+      Status = BufferWrite (gCtx.Content, L"#(");
       if (EFI_ERROR (Status)) {
         return Status;
       }
 
-      // TODO: Non-printable characters
-      return BufferWriteChar (gCtx.Content, BORAX_GET_CHARACTER (Object));
+      // Bounce through to the loop
+      *Index             = BORAX_MAKE_FIXNUM (0);
+      Task->Registers.PC = FSV_PC_SLOTS;
+      return EFI_SUCCESS;
     }
 
-    case BORAX_DISCRIM_CONS:
+    case FSV_PC_SLOTS:
     {
-      EFI_STATUS    Status;
-      BORAX_OBJECT  List;
-      BOOLEAN       Start = TRUE;
+      BORAX_RECORD  *Record = (BORAX_RECORD *)BORAX_GET_POINTER (*Object);
+      UINTN         I       = BORAX_GET_FIXNUM (*Index);
 
-      Status = BufferWriteChar (gCtx.Content, L'(');
+      Status = BoraxResizeMultipleValues (Task->Interp, &Task->Registers.VR, 1);
       if (EFI_ERROR (Status)) {
         return Status;
       }
 
-      for (List = Object;
-           BORAX_DISCRIMINATE (List) == BORAX_DISCRIM_CONS;
-           List = Cdr (List))
-      {
-        BORAX_OBJECT  Value = Car (List);
-
-        if (Start) {
-          Start = FALSE;
-        } else {
-          Status = BufferWriteChar (gCtx.Content, L' ');
-          if (EFI_ERROR (Status)) {
-            return Status;
-          }
-        }
-
-        Status = FormatRecursive (Value);
+      if (I != 0) {
+        Status = BufferWriteChar (gCtx.Content, L' ');
         if (EFI_ERROR (Status)) {
           return Status;
         }
       }
 
-      if (List != gCtx.Globals->Nil) {
+      if (I < Record->Length) {
+        BORAX_OBJECT  Value = Record->Data[I];
+
+        *Index                        = BORAX_MAKE_FIXNUM (I + 1);
+        Task->Registers.VR->Values[0] = Value;
+        return BoraxTaskEnterFunction (Task, gCtx.FormatRecursive);
+      } else {
+        Status = BufferWriteChar (gCtx.Content, L')');
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        Task->Registers.VR->Values[0] = *Object;
+        BoraxTaskExitFunction (Task);
+        return EFI_SUCCESS;
+      }
+    }
+
+    default:
+      return EFI_INVALID_PARAMETER;
+  }
+}
+
+STATIC CONST FUNCTION_DESCRIPTOR  gFormatSimpleVector = {
+  .Name   = L"FormatSimpleVector",
+  .Entry  = FSV_PC_START,
+  .Code   = &FormatSimpleVector,
+  .Locals = FSV_LOCALS,
+};
+
+enum {
+  FSC_LOCALS
+};
+
+enum {
+  FSC_PC_START,
+  FSC_PC_END,
+};
+
+STATIC EFI_STATUS
+EFIAPI
+FormatStandardClass (
+  IN BORAX_TASK  *Task
+  )
+{
+  EFI_STATUS  Status;
+
+  switch (Task->Registers.PC) {
+    case FSC_PC_START:
+    {
+      BORAX_OBJECT    Object;
+      STANDARD_CLASS  *Class;
+
+      if (Task->Registers.VR->Length != 1) {
+        (VOID)BufferWrite (gCtx.Content, L"Wrong number of arguments\n");
+        return EFI_INVALID_PARAMETER;
+      }
+
+      Object = Task->Registers.VR->Values[0];
+
+      Status = BORAX_GET_OBJECT_RECORD (Object, &Class);
+      if (EFI_ERROR (Status)) {
+        (VOID)BufferWrite (gCtx.Content, L"Malformed class object\n");
+        return EFI_INVALID_PARAMETER;
+      }
+
+      Status = BufferWrite (gCtx.Content, L"<STANDARD-CLASS ");
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      Task->Registers.VR->Values[0] = Class->Name;
+      Task->Registers.PC            = FSC_PC_END;
+      return BoraxTaskEnterFunction (Task, gCtx.FormatRecursive);
+    }
+    case FSC_PC_END:
+      Status = BufferWriteChar (gCtx.Content, L'>');
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      BoraxTaskExitFunction (Task);
+      return EFI_SUCCESS;
+
+    default:
+      return EFI_INVALID_PARAMETER;
+  }
+}
+
+STATIC CONST FUNCTION_DESCRIPTOR  gFormatStandardClass = {
+  .Name   = L"FormatStandardClass",
+  .Entry  = FSC_PC_START,
+  .Code   = &FormatStandardClass,
+  .Locals = FSC_LOCALS,
+};
+
+enum {
+  FOR_LOCAL_OBJECT,
+  FOR_LOCAL_CLASS_NAME,
+  FOR_LOCAL_INDEX,
+  FOR_LOCALS
+};
+
+enum {
+  FOR_PC_START,
+  FOR_PC_SLOTS,
+};
+
+STATIC EFI_STATUS
+EFIAPI
+FormatObjectRecord (
+  IN BORAX_TASK  *Task
+  )
+{
+  EFI_STATUS    Status;
+  BORAX_OBJECT  *Object    = BoraxTaskStackLocal (Task, FOR_LOCAL_OBJECT);
+  BORAX_OBJECT  *ClassName = BoraxTaskStackLocal (Task, FOR_LOCAL_CLASS_NAME);
+  BORAX_OBJECT  *Index     = BoraxTaskStackLocal (Task, FOR_LOCAL_INDEX);
+
+  switch (Task->Registers.PC) {
+    case FOR_PC_START:
+    {
+      BORAX_RECORD  *Record;
+
+      if (Task->Registers.VR->Length != 1) {
+        (VOID)BufferWrite (gCtx.Content, L"Wrong number of arguments\n");
+        return EFI_INVALID_PARAMETER;
+      }
+
+      *Object = Task->Registers.VR->Values[0];
+
+      Status = BORAX_GET_OBJECT_RECORD (*Object, &Record);
+      if (EFI_ERROR (Status)) {
+        (VOID)BufferWrite (gCtx.Content, L"Not an object vector\n");
+        return Status;
+      }
+
+      *ClassName = GetClassName (Record->Class);
+      if (*ClassName == gCtx.Globals->Nil) {
+        Status = BufferWrite (gCtx.Content, L"<OBJECT-RECORD ");
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        Task->Registers.VR->Values[0] = Record->Class;
+      } else {
+        Status = BufferWriteChar (gCtx.Content, L'<');
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        Task->Registers.VR->Values[0] = *ClassName;
+      }
+
+      *Index             = BORAX_MAKE_FIXNUM (0);
+      Task->Registers.PC = FOR_PC_SLOTS;
+      return BoraxTaskEnterFunction (Task, gCtx.FormatRecursive);
+    }
+
+    case FOR_PC_SLOTS:
+    {
+      BORAX_RECORD  *Record = (BORAX_RECORD *)BORAX_GET_POINTER (*Object);
+      UINTN         I       = BORAX_GET_FIXNUM (*Index);
+
+      Status = BoraxResizeMultipleValues (Task->Interp, &Task->Registers.VR, 1);
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      if (I < Record->Length) {
+        BORAX_OBJECT  Value = Record->Data[I];
+
+        Status = BufferWriteChar (gCtx.Content, L' ');
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        Status = BufferWriteInt (gCtx.Content, I);
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        Status = BufferWriteChar (gCtx.Content, L'=');
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        *Index                        = BORAX_MAKE_FIXNUM (I + 1);
+        Task->Registers.VR->Values[0] = Value;
+        return BoraxTaskEnterFunction (Task, gCtx.FormatRecursive);
+      } else {
+        Status = BufferWriteChar (gCtx.Content, L'>');
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        Task->Registers.VR->Values[0] = *Object;
+        BoraxTaskExitFunction (Task);
+        return EFI_SUCCESS;
+      }
+    }
+
+    default:
+      return EFI_INVALID_PARAMETER;
+  }
+}
+
+STATIC CONST FUNCTION_DESCRIPTOR  gFormatObjectRecord = {
+  .Name   = L"FormatObjectRecord",
+  .Entry  = FOR_PC_START,
+  .Code   = &FormatObjectRecord,
+  .Locals = FOR_LOCALS,
+};
+
+enum {
+  FR_LOCAL_OBJECT,
+  FR_LOCAL_REST,
+  FR_LOCALS,
+};
+
+enum {
+  FR_PC_START,
+  FR_PC_LIST,
+  FR_PC_ENDLIST,
+};
+
+STATIC EFI_STATUS
+EFIAPI
+FormatRecursive (
+  IN BORAX_TASK  *Task
+  )
+{
+  EFI_STATUS    Status;
+  BORAX_OBJECT  *SavedObject = BoraxTaskStackLocal (Task, FR_LOCAL_OBJECT);
+  BORAX_OBJECT  *SavedRest   = BoraxTaskStackLocal (Task, FR_LOCAL_REST);
+
+  switch (Task->Registers.PC) {
+    case FR_PC_START:
+    {
+      BORAX_OBJECT  Object;
+
+      if (Task->Registers.VR->Length != 1) {
+        (VOID)BufferWrite (gCtx.Content, L"Wrong number of arguments\n");
+        return EFI_INVALID_PARAMETER;
+      }
+
+      Object       = Task->Registers.VR->Values[0];
+      *SavedObject = Object;
+
+      switch (BORAX_DISCRIMINATE (Object)) {
+        case BORAX_DISCRIM_FIXNUM:
+          Status = BufferWriteInt (gCtx.Content, BORAX_GET_FIXNUM (Object));
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
+
+          BoraxTaskExitFunction (Task);
+          return EFI_SUCCESS;
+
+        case BORAX_DISCRIM_UNBOUND:
+          Status = BufferWrite (gCtx.Content, L"<UNBOUND>");
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
+
+          BoraxTaskExitFunction (Task);
+          return EFI_SUCCESS;
+
+        case BORAX_DISCRIM_CHARACTER:
+        {
+          Status = BufferWrite (gCtx.Content, L"#\\");
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
+
+          // TODO: Non-printable characters
+          Status = BufferWriteChar (gCtx.Content, BORAX_GET_CHARACTER (Object));
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
+
+          BoraxTaskExitFunction (Task);
+          return EFI_SUCCESS;
+        }
+
+        case BORAX_DISCRIM_CONS:
+        {
+          BORAX_CONS  *Cons = (BORAX_CONS *)BORAX_GET_POINTER (Object);
+
+          Status = BufferWriteChar (gCtx.Content, L'(');
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
+
+          Task->Registers.VR->Values[0] = Cons->Car;
+          *SavedRest                    = Cons->Cdr;
+          Task->Registers.PC            = FR_PC_LIST;
+          return BoraxTaskEnterFunction (Task, gCtx.FormatRecursive);
+        }
+
+        case BORAX_DISCRIM_WORD_RECORD:
+        {
+          BORAX_RECORD  *Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
+
+          if (Record->Class == gCtx.Classes->String) {
+            Status = BufferWriteChar (gCtx.Content, L'"');
+            if (EFI_ERROR (Status)) {
+              return Status;
+            }
+
+            Status = WriteString (Object);
+            if (EFI_ERROR (Status)) {
+              return Status;
+            }
+
+            Status = BufferWriteChar (gCtx.Content, L'"');
+            if (EFI_ERROR (Status)) {
+              return Status;
+            }
+          } else {
+            Status = BufferWrite (gCtx.Content, L"<WORD-RECORD>");
+            if (EFI_ERROR (Status)) {
+              return Status;
+            }
+          }
+
+          BoraxTaskExitFunction (Task);
+          return EFI_SUCCESS;
+        }
+
+        case BORAX_DISCRIM_OBJECT_RECORD:
+        {
+          BORAX_RECORD  *Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
+
+          if (Object == gCtx.Globals->Nil) {
+            return BufferWrite (gCtx.Content, L"NIL");
+            if (EFI_ERROR (Status)) {
+              return Status;
+            }
+
+            BoraxTaskExitFunction (Task);
+            return EFI_SUCCESS;
+          } else if (Record->Class == gCtx.Classes->Symbol) {
+            SYMBOL  *Symbol;
+
+            Status = BORAX_GET_OBJECT_RECORD (Object, &Symbol);
+            if (EFI_ERROR (Status)) {
+              (VOID)BufferWrite (gCtx.Content, L"Malformed symbol object\n");
+              return EFI_INVALID_PARAMETER;
+            }
+
+            if (Symbol->Package != gCtx.Globals->CommonLisp) {
+              if (Symbol->Package != gCtx.Globals->Keyword) {
+                BORAX_OBJECT  PackageName = GetPackageName (Symbol->Package);
+
+                Status = WriteString (PackageName);
+                if (EFI_ERROR (Status)) {
+                  return Status;
+                }
+              }
+
+              Status = BufferWriteChar (gCtx.Content, L':');
+              if (EFI_ERROR (Status)) {
+                return Status;
+              }
+            }
+
+            Status = WriteString (Symbol->Name);
+            if (EFI_ERROR (Status)) {
+              return Status;
+            }
+
+            BoraxTaskExitFunction (Task);
+            return EFI_SUCCESS;
+          } else if (Record->Class == gCtx.Classes->SimpleVector) {
+            return BoraxTaskEnterFunctionTail (Task, gCtx.FormatSimpleVector);
+          } else if (Record->Class == gCtx.Classes->StandardClass) {
+            return BoraxTaskEnterFunctionTail (Task, gCtx.FormatStandardClass);
+          } else {
+            return BoraxTaskEnterFunctionTail (Task, gCtx.FormatObjectRecord);
+          }
+        }
+
+        case BORAX_DISCRIM_WEAK_POINTER:
+          Status = BufferWrite (gCtx.Content, L"<WEAK-POINTER>");
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
+
+          BoraxTaskExitFunction (Task);
+          return EFI_SUCCESS;
+
+        case BORAX_DISCRIM_PIN:
+          Status = BufferWrite (gCtx.Content, L"<PIN>");
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
+
+          BoraxTaskExitFunction (Task);
+          return EFI_SUCCESS;
+
+        case BORAX_DISCRIM_MOVED:
+          Status = BufferWrite (gCtx.Content, L"<MOVED>");
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
+
+          BoraxTaskExitFunction (Task);
+          return EFI_SUCCESS;
+
+        case BORAX_DISCRIM_UNINITIALIZED:
+          Status = BufferWrite (gCtx.Content, L"<UNINITIALIZED>");
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
+
+          BoraxTaskExitFunction (Task);
+          return EFI_SUCCESS;
+
+        default:
+          Status = BufferWrite (gCtx.Content, L"<ILLEGAL>");
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
+
+          BoraxTaskExitFunction (Task);
+          return EFI_SUCCESS;
+      }
+    }
+
+    case FR_PC_LIST:
+    {
+      BORAX_OBJECT  Rest = *SavedRest;
+
+      Status = BoraxResizeMultipleValues (Task->Interp, &Task->Registers.VR, 1);
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      if (BORAX_DISCRIMINATE (Rest) == BORAX_DISCRIM_CONS) {
+        BORAX_CONS  *Cons = (BORAX_CONS *)BORAX_GET_POINTER (Rest);
+
+        Status = BufferWriteChar (gCtx.Content, L' ');
+        if (EFI_ERROR (Status)) {
+          return Status;
+        }
+
+        Task->Registers.VR->Values[0] = Cons->Car;
+        *SavedRest                    = Cons->Cdr;
+        return BoraxTaskEnterFunction (Task, gCtx.FormatRecursive);
+      } else if (Rest != gCtx.Globals->Nil) {
         Status = BufferWrite (gCtx.Content, L" . ");
         if (EFI_ERROR (Status)) {
           return Status;
         }
 
-        Status = FormatRecursive (List);
-        if (EFI_ERROR (Status)) {
-          return Status;
-        }
-      }
-
-      return BufferWriteChar (gCtx.Content, L')');
-    }
-
-    case BORAX_DISCRIM_WORD_RECORD:
-    {
-      EFI_STATUS    Status;
-      BORAX_RECORD  *Record;
-
-      Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
-
-      if (Record->Class == gCtx.Classes->String) {
-        Status = BufferWriteChar (gCtx.Content, L'"');
-        if (EFI_ERROR (Status)) {
-          return Status;
-        }
-
-        Status = WriteString (Object);
-        if (EFI_ERROR (Status)) {
-          return Status;
-        }
-
-        return BufferWriteChar (gCtx.Content, L'"');
+        Task->Registers.VR->Values[0] = Rest;
+        Task->Registers.PC            = FR_PC_ENDLIST;
+        return BoraxTaskEnterFunction (Task, gCtx.FormatRecursive);
       } else {
-        return BufferWrite (gCtx.Content, L"<WORD-RECORD>");
+        Task->Registers.PC = FR_PC_ENDLIST;
+        return EFI_SUCCESS;
       }
     }
 
-    case BORAX_DISCRIM_OBJECT_RECORD:
+    case FR_PC_ENDLIST:
     {
-      EFI_STATUS    Status;
-      BORAX_RECORD  *Record;
-
-      Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
-
-      if (Object == gCtx.Globals->Nil) {
-        return BufferWrite (gCtx.Content, L"NIL");
-      } else if (Record->Class == gCtx.Classes->Symbol) {
-        SYMBOL  *Symbol;
-
-        Status = BORAX_GET_OBJECT_RECORD (Object, &Symbol);
-        if (EFI_ERROR (Status)) {
-          (VOID)BufferWrite (gCtx.Content, L"Malformed symbol object\n");
-          return EFI_INVALID_PARAMETER;
-        }
-
-        if (Symbol->Package != gCtx.Globals->CommonLisp) {
-          if (Symbol->Package != gCtx.Globals->Keyword) {
-            BORAX_OBJECT  PackageName = GetPackageName (Symbol->Package);
-
-            Status = WriteString (PackageName);
-            if (EFI_ERROR (Status)) {
-              return Status;
-            }
-          }
-
-          Status = BufferWriteChar (gCtx.Content, L':');
-          if (EFI_ERROR (Status)) {
-            return Status;
-          }
-        }
-
-        return WriteString (Symbol->Name);
-      } else if (Record->Class == gCtx.Classes->SimpleVector) {
-        UINTN    I;
-        BOOLEAN  Start = TRUE;
-
-        Status = BufferWrite (gCtx.Content, L"#(");
-        if (EFI_ERROR (Status)) {
-          return Status;
-        }
-
-        for (I = 0; I < Record->Length; ++I) {
-          BORAX_OBJECT  Value = Record->Data[I];
-
-          if (Start) {
-            Start = FALSE;
-          } else {
-            Status = BufferWriteChar (gCtx.Content, L' ');
-            if (EFI_ERROR (Status)) {
-              return Status;
-            }
-          }
-
-          Status = FormatRecursive (Value);
-          if (EFI_ERROR (Status)) {
-            return Status;
-          }
-        }
-
-        return BufferWriteChar (gCtx.Content, L')');
-      } else if (Record->Class == gCtx.Classes->StandardClass) {
-        STANDARD_CLASS  *Class;
-
-        Status = BORAX_GET_OBJECT_RECORD (Object, &Class);
-        if (EFI_ERROR (Status)) {
-          (VOID)BufferWrite (gCtx.Content, L"Malformed class object\n");
-          return EFI_INVALID_PARAMETER;
-        }
-
-        Status = BufferWrite (gCtx.Content, L"<STANDARD-CLASS ");
-        if (EFI_ERROR (Status)) {
-          return Status;
-        }
-
-        Status = FormatRecursive (Class->Name);
-        if (EFI_ERROR (Status)) {
-          return Status;
-        }
-
-        return BufferWriteChar (gCtx.Content, L'>');
-      } else {
-        BORAX_OBJECT  ClassName;
-        UINTN         I;
-
-        ClassName = GetClassName (Record->Class);
-
-        if (ClassName == gCtx.Globals->Nil) {
-          Status = BufferWrite (gCtx.Content, L"<OBJECT-RECORD ");
-          if (EFI_ERROR (Status)) {
-            return Status;
-          }
-
-          Status = FormatRecursive (Record->Class);
-          if (EFI_ERROR (Status)) {
-            return Status;
-          }
-        } else {
-          Status = BufferWriteChar (gCtx.Content, L'<');
-          if (EFI_ERROR (Status)) {
-            return Status;
-          }
-
-          Status = FormatRecursive (ClassName);
-          if (EFI_ERROR (Status)) {
-            return Status;
-          }
-        }
-
-        for (I = 0; I < Record->Length; ++I) {
-          BORAX_OBJECT  Value = Record->Data[I];
-
-          Status = BufferWriteChar (gCtx.Content, L' ');
-          if (EFI_ERROR (Status)) {
-            return Status;
-          }
-
-          Status = BufferWriteInt (gCtx.Content, I);
-          if (EFI_ERROR (Status)) {
-            return Status;
-          }
-
-          Status = BufferWriteChar (gCtx.Content, L'=');
-          if (EFI_ERROR (Status)) {
-            return Status;
-          }
-
-          Status = FormatRecursive (Value);
-          if (EFI_ERROR (Status)) {
-            return Status;
-          }
-        }
-
-        return BufferWriteChar (gCtx.Content, L'>');
+      Status = BufferWriteChar (gCtx.Content, L')');
+      if (EFI_ERROR (Status)) {
+        return Status;
       }
+
+      Status = BoraxResizeMultipleValues (Task->Interp, &Task->Registers.VR, 1);
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      Task->Registers.VR->Values[0] = *SavedObject;
+      BoraxTaskExitFunction (Task);
+      return EFI_SUCCESS;
     }
-
-    case BORAX_DISCRIM_WEAK_POINTER:
-      return BufferWrite (gCtx.Content, L"<WEAK-POINTER>");
-
-    case BORAX_DISCRIM_PIN:
-      return BufferWrite (gCtx.Content, L"<PIN>");
-
-    case BORAX_DISCRIM_MOVED:
-      return BufferWrite (gCtx.Content, L"<MOVED>");
-
-    case BORAX_DISCRIM_UNINITIALIZED:
-      return BufferWrite (gCtx.Content, L"<UNINITIALIZED>");
 
     default:
-      return BufferWrite (gCtx.Content, L"<ILLEGAL>");
+      return EFI_INVALID_PARAMETER;
   }
 }
+
+STATIC CONST FUNCTION_DESCRIPTOR  gFormatRecursive = {
+  .Name   = L"FormatRecursive",
+  .Entry  = FR_PC_START,
+  .Code   = &FormatRecursive,
+  .Locals = FR_LOCALS,
+};
 
 STATIC EFI_STATUS
 EFIAPI
@@ -426,7 +713,9 @@ PrintLabelled (
   IN BORAX_OBJECT  Object
   )
 {
-  EFI_STATUS  Status;
+  EFI_STATUS             Status;
+  BORAX_MULTIPLE_VALUES  *Args;
+  BORAX_PIN              *IORequests;
 
   Status = BufferWrite (gCtx.Content, Label);
   if (EFI_ERROR (Status)) {
@@ -438,12 +727,59 @@ PrintLabelled (
     return Status;
   }
 
-  Status = FormatRecursive (Object);
+  Status = BoraxMakeMultipleValues (&gInterp, 1, &Args);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Args->Values[0] = Object;
+
+  Status = BoraxInterpreterSpawn (
+             &gInterp,
+             NULL,
+             NULL,
+             gCtx.FormatRecursive,
+             BORAX_MAKE_POINTER (Args)
+             );
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = BoraxInterpreterRun (&gInterp, &IORequests);
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
   return BufferWriteChar (gCtx.Content, L'\n');
+}
+
+STATIC EFI_STATUS
+EFIAPI
+MakeFunction (
+  IN CONST FUNCTION_DESCRIPTOR  *Desc,
+  OUT BORAX_OBJECT              *Function
+  )
+{
+  EFI_STATUS               Status;
+  BORAX_BUILT_IN_FUNCTION  *F;
+
+  Status = BoraxMakeBuiltInFunction (
+             &gAlloc,
+             Desc->Name,
+             BORAX_IMMEDIATE_UNBOUND, // Arglist
+             Desc->Entry,
+             Desc->Code,
+             Desc->Locals,
+             BORAX_IMMEDIATE_UNBOUND, // Shared
+             0,                       // ConstantsLength
+             &F
+             );
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  *Function = BORAX_MAKE_POINTER (F);
+  return EFI_SUCCESS;
 }
 
 STATIC EFI_STATUS
@@ -474,6 +810,26 @@ FillContent (
   if (EFI_ERROR (Status)) {
     (VOID)BufferWrite (Content, L"Malformed classes object\n");
     return EFI_INVALID_PARAMETER;
+  }
+
+  Status = MakeFunction (&gFormatSimpleVector, &gCtx.FormatSimpleVector);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = MakeFunction (&gFormatStandardClass, &gCtx.FormatStandardClass);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = MakeFunction (&gFormatObjectRecord, &gCtx.FormatObjectRecord);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = MakeFunction (&gFormatRecursive, &gCtx.FormatRecursive);
+  if (EFI_ERROR (Status)) {
+    return Status;
   }
 
   BoraxInterpreterInit (&gInterp, &gAlloc, RootPin);

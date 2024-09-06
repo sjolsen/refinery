@@ -216,7 +216,6 @@ BoraxInterpreterShutdown (
 
 typedef struct {
   BORAX_RECORD    Record;
-  BORAX_OBJECT    ClassMultipleValues;
 } BORAX_GLOBAL_ENVIRONMENT;
 
 EFI_STATUS
@@ -224,6 +223,32 @@ EFIAPI
 BoraxGlobalEnvironment (
   IN BORAX_INTERPRETER          *Interp,
   OUT BORAX_GLOBAL_ENVIRONMENT  **Env
+  );
+
+typedef union {
+  BORAX_OBJECT_HEADER    Header;
+  struct {
+    UINTN           Word0;
+    UINTN           Capacity;
+    UINTN           Length;
+    BORAX_OBJECT    Values[];
+  };
+} BORAX_MULTIPLE_VALUES;
+
+EFI_STATUS
+EFIAPI
+BoraxMakeMultipleValues (
+  IN BORAX_INTERPRETER       *Interp,
+  IN UINTN                   Length,
+  OUT BORAX_MULTIPLE_VALUES  **Values
+  );
+
+EFI_STATUS
+EFIAPI
+BoraxResizeMultipleValues (
+  IN BORAX_INTERPRETER          *Interp,
+  IN OUT BORAX_MULTIPLE_VALUES  **Values,
+  IN UINTN                      Length
   );
 
 typedef enum {
@@ -239,15 +264,16 @@ typedef struct {
 } BORAX_TASK_STACK;
 
 typedef struct {
-  UINTN           BP;
-  UINTN           SP;
-  UINTN           PC;
-  BORAX_OBJECT    VR;
+  UINTN                    BP;
+  UINTN                    SP;
+  UINTN                    PC;
+  BORAX_MULTIPLE_VALUES    *VR;
 } BORAX_TASK_REGISTERS;
 
 typedef struct {
   BORAX_PIN_RECORD        Record;
   LIST_ENTRY              TaskList;
+  BORAX_INTERPRETER       *Interp;
   BORAX_TASK_STATE        State;
   BORAX_TASK_STACK        Stack;
   BORAX_TASK_REGISTERS    Registers;
@@ -270,9 +296,23 @@ BoraxTaskStackWrite (
   IN BORAX_OBJECT  Value
   );
 
+BORAX_OBJECT *
+EFIAPI
+BoraxTaskStackLocal (
+  IN BORAX_TASK  *Task,
+  IN UINTN       Index
+  );
+
 EFI_STATUS
 EFIAPI
 BoraxTaskEnterFunction (
+  IN BORAX_TASK    *Task,
+  IN BORAX_OBJECT  Function
+  );
+
+EFI_STATUS
+EFIAPI
+BoraxTaskEnterFunctionTail (
   IN BORAX_TASK    *Task,
   IN BORAX_OBJECT  Function
   );
@@ -281,20 +321,6 @@ VOID
 EFIAPI
 BoraxTaskExitFunction (
   IN BORAX_TASK  *Task
-  );
-
-typedef struct {
-  BORAX_RECORD    Record;
-  BORAX_OBJECT    ValuesLength;
-  BORAX_OBJECT    Values[];
-} BORAX_MULTIPLE_VALUES;
-
-EFI_STATUS
-EFIAPI
-BoraxMakeMultipleValues (
-  IN BORAX_INTERPRETER       *Interp,
-  IN UINTN                   ValuesLength,
-  OUT BORAX_MULTIPLE_VALUES  **Values
   );
 
 typedef
@@ -307,14 +333,14 @@ typedef union {
   BORAX_OBJECT_HEADER    Header;
   struct {
     UINTN                  Word0;
-    BORAX_BUILT_IN_CODE    Code;
-    BORAX_OBJECT           Constants;
-    BORAX_OBJECT           Locals;
-    BORAX_OBJECT           Shared;
-    BORAX_OBJECT           Closure;
     CONST CHAR16           *Name;
     BORAX_OBJECT           Arglist;
-    BORAX_OBJECT           Entry;
+    UINTN                  Entry;
+    BORAX_BUILT_IN_CODE    Code;
+    UINTN                  Locals;
+    BORAX_OBJECT           Shared;
+    UINTN                  ConstantsLength;
+    BORAX_OBJECT           Constants[];
   };
 } BORAX_BUILT_IN_FUNCTION;
 
@@ -324,12 +350,11 @@ BoraxMakeBuiltInFunction (
   IN BORAX_ALLOCATOR           *Alloc,
   IN CONST CHAR16              *Name,
   IN BORAX_OBJECT              Arglist,
-  IN BORAX_OBJECT              Entry,
+  IN UINTN                     Entry,
   IN BORAX_BUILT_IN_CODE       Code,
-  IN BORAX_OBJECT              Constants,
-  IN BORAX_OBJECT              Locals,
+  IN UINTN                     Locals,
   IN BORAX_OBJECT              Shared,
-  IN BORAX_OBJECT              Closure,
+  IN UINTN                     ConstantsLength,
   OUT BORAX_BUILT_IN_FUNCTION  **Function
   );
 

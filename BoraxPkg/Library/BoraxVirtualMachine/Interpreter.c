@@ -170,7 +170,7 @@ TaskEnd (
   )
 {
   if (Task->Result != NULL) {
-    Task->Result->Object = Task->Registers.VR;
+    Task->Result->Object = BORAX_MAKE_POINTER (Task->Registers.VR);
   }
 
   if (Task->Completion != NULL) {
@@ -232,6 +232,10 @@ BoraxInterpreterSpawn (
     return EFI_INVALID_PARAMETER;
   }
 
+  if (BORAX_DISCRIMINATE (Args) != BORAX_DISCRIM_MULTIPLE_VALUES) {
+    return EFI_INVALID_PARAMETER;
+  }
+
   Status = BoraxAllocatePinRecord (
              Interp->Alloc,
              BORAX_WIDETAG_TASK,
@@ -249,6 +253,7 @@ BoraxInterpreterSpawn (
 
   Stack = &Task->Stack;
 
+  Task->Interp     = Interp;
   Task->State      = BORAX_TASK_RUNNING;
   Task->Completion = Completion;
   Task->Result     = Result;
@@ -256,7 +261,7 @@ BoraxInterpreterSpawn (
   Task->Registers.BP = 0;
   Task->Registers.SP = 0;
   Task->Registers.PC = 0;
-  Task->Registers.VR = Args;
+  Task->Registers.VR = (BORAX_MULTIPLE_VALUES *)BORAX_GET_POINTER (Args);
 
   Status = BoraxTaskEnterFunction (Task, EntryPoint);
   if (EFI_ERROR (Status)) {
@@ -336,9 +341,99 @@ BoraxGlobalEnvironment (
   return BORAX_GET_OBJECT_RECORD (Interp->GlobalEnvironment->Object, Env);
 }
 
-BORAX_OBJECT
+EFI_STATUS
 EFIAPI
-BoraxTaskStackRead (
+BoraxMakeMultipleValues (
+  IN BORAX_INTERPRETER       *Interp,
+  IN UINTN                   Length,
+  OUT BORAX_MULTIPLE_VALUES  **Values
+  )
+{
+  EFI_STATUS             Status;
+  UINTN                  Capacity;
+  BORAX_MULTIPLE_VALUES  *NewMV;
+
+  Capacity = MAX (MULTIPLE_VALUES_MIN, Length);
+
+  Status = BoraxAllocateObject (
+             Interp->Alloc,
+             sizeof (BORAX_MULTIPLE_VALUES) + Capacity * sizeof (BORAX_OBJECT),
+             (BORAX_OBJECT_HEADER **)&NewMV
+             );
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  NewMV->Header.WideTag = BORAX_WIDETAG_MULTIPLE_VALUES;
+  NewMV->Capacity       = Capacity;
+  NewMV->Length         = Length;
+  *Values               = NewMV;
+  return EFI_SUCCESS;
+}
+
+EFI_STATUS
+EFIAPI
+BoraxResizeMultipleValues (
+  IN BORAX_INTERPRETER          *Interp,
+  IN OUT BORAX_MULTIPLE_VALUES  **Values,
+  IN UINTN                      Length
+  )
+{
+  BORAX_MULTIPLE_VALUES  *MV = *Values;
+
+  if (Length > MV->Capacity) {
+    return BoraxMakeMultipleValues (Interp, Length, Values);
+  } else {
+    MV->Length = Length;
+    return EFI_SUCCESS;
+  }
+}
+
+STATIC EFI_STATUS
+EFIAPI
+CopyMultipleValues (
+  IN BORAX_ALLOCATOR       *Alloc,
+  IN BORAX_OBJECT_HEADER   *OldObject,
+  OUT BORAX_OBJECT_HEADER  **NewObject
+  )
+{
+  BORAX_MULTIPLE_VALUES  *Values = (BORAX_MULTIPLE_VALUES *)OldObject;
+  UINTN                  Size    = sizeof (BORAX_MULTIPLE_VALUES)
+                                   + sizeof (BORAX_OBJECT) * Values->Capacity;
+
+  return BoraxCopyObject (Alloc, Size, OldObject, NewObject);
+}
+
+STATIC EFI_STATUS
+EFIAPI
+MultipleValuesSubObjects (
+  IN BORAX_OBJECT_HEADER          *Object,
+  IN VOID                         *Ctx,
+  IN BORAX_GC_SUBOBJECT_CALLBACK  Callback
+  )
+{
+  EFI_STATUS             Status;
+  BORAX_MULTIPLE_VALUES  *Values = (BORAX_MULTIPLE_VALUES *)Object;
+  UINTN                  I;
+
+  for (I = 0; I < Values->Length; ++I) {
+    Status = Callback (Ctx, &Values->Values[I]);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+  }
+
+  return EFI_SUCCESS;
+}
+
+CONST BORAX_GC_HOOKS  gMultipleValuesGcHooks = {
+  .Copy       = &CopyMultipleValues,
+  .SubObjects = &MultipleValuesSubObjects,
+};
+
+STATIC BORAX_OBJECT *
+EFIAPI
+BoraxTaskStackIndex (
   IN BORAX_TASK  *Task,
   IN UINTN       Index
   )
@@ -347,7 +442,17 @@ BoraxTaskStackRead (
   UINTN  PageOffset = Index % BORAX_WORDS_PER_PAGE;
 
   ASSERT (PageIndex < Task->Stack.PagesLength);
-  return Task->Stack.Pages[PageIndex][PageOffset];
+  return &Task->Stack.Pages[PageIndex][PageOffset];
+}
+
+BORAX_OBJECT
+EFIAPI
+BoraxTaskStackRead (
+  IN BORAX_TASK  *Task,
+  IN UINTN       Index
+  )
+{
+  return *BoraxTaskStackIndex (Task, Index);
 }
 
 VOID
@@ -358,11 +463,17 @@ BoraxTaskStackWrite (
   IN BORAX_OBJECT  Value
   )
 {
-  UINTN  PageIndex  = Index / BORAX_WORDS_PER_PAGE;
-  UINTN  PageOffset = Index % BORAX_WORDS_PER_PAGE;
+  *BoraxTaskStackIndex (Task, Index) = Value;
+}
 
-  ASSERT (PageIndex < Task->Stack.PagesLength);
-  Task->Stack.Pages[PageIndex][PageOffset] = Value;
+BORAX_OBJECT *
+EFIAPI
+BoraxTaskStackLocal (
+  IN BORAX_TASK  *Task,
+  IN UINTN       Index
+  )
+{
+  return BoraxTaskStackIndex (Task, Task->Registers.BP + 4 + Index);
 }
 
 EFI_STATUS
@@ -374,7 +485,6 @@ BoraxTaskEnterFunction (
 {
   EFI_STATUS               Status;
   BORAX_BUILT_IN_FUNCTION  *F;
-  UINTN                    Locals, Entry;
   UINTN                    NewBP, NewSP;
   UINTN                    I;
 
@@ -386,21 +496,9 @@ BoraxTaskEnterFunction (
 
   F = (BORAX_BUILT_IN_FUNCTION *)BORAX_GET_POINTER (Function);
 
-  if (!BORAX_IS_FIXNUM (F->Locals)) {
-    return EFI_INVALID_PARAMETER;
-  }
-
-  Locals = BORAX_GET_FIXNUM (F->Locals);
-
-  if (!BORAX_IS_FIXNUM (F->Entry)) {
-    return EFI_INVALID_PARAMETER;
-  }
-
-  Entry = BORAX_GET_FIXNUM (F->Entry);
-
   // TODO: Shared bindings
   NewBP = Task->Registers.SP;
-  NewSP = NewBP + 4 + Locals;
+  NewSP = NewBP + 4 + F->Locals;
 
   Status = TaskStackEnsureCapacity (&Task->Stack, NewSP);
   if (EFI_ERROR (Status)) {
@@ -412,20 +510,20 @@ BoraxTaskEnterFunction (
   BoraxTaskStackWrite (Task, NewBP + 2, Function);
   BoraxTaskStackWrite (Task, NewBP + 3, BORAX_IMMEDIATE_UNBOUND);
 
-  for (I = 0; I < Locals; ++I) {
+  for (I = 0; I < F->Locals; ++I) {
     BoraxTaskStackWrite (Task, NewBP + 4 + I, BORAX_IMMEDIATE_UNBOUND);
   }
 
   Task->Registers.SP = NewSP;
   Task->Registers.BP = NewBP;
-  Task->Registers.PC = Entry;
+  Task->Registers.PC = F->Entry;
 
   return EFI_SUCCESS;
 }
 
-VOID
+STATIC VOID
 EFIAPI
-BoraxTaskExitFunction (
+BoraxTaskExitFunctionCommon (
   IN BORAX_TASK  *Task
   )
 {
@@ -438,6 +536,29 @@ BoraxTaskExitFunction (
   // TODO: Shrink the stack if appropriate
 }
 
+EFI_STATUS
+EFIAPI
+BoraxTaskEnterFunctionTail (
+  IN BORAX_TASK    *Task,
+  IN BORAX_OBJECT  Function
+  )
+{
+  BoraxTaskExitFunctionCommon (Task);
+  return BoraxTaskEnterFunction (Task, Function);
+}
+
+VOID
+EFIAPI
+BoraxTaskExitFunction (
+  IN BORAX_TASK  *Task
+  )
+{
+  BoraxTaskExitFunctionCommon (Task);
+  if (Task->Registers.SP == 0) {
+    Task->State = BORAX_TASK_EXITED;
+  }
+}
+
 STATIC EFI_STATUS
 EFIAPI
 TaskSubObjects (
@@ -446,9 +567,10 @@ TaskSubObjects (
   IN BORAX_GC_SUBOBJECT_CALLBACK  Callback
   )
 {
-  EFI_STATUS  Status;
-  BORAX_TASK  *Task = (BORAX_TASK *)Object;
-  UINTN       I;
+  EFI_STATUS    Status;
+  BORAX_TASK    *Task = (BORAX_TASK *)Object;
+  UINTN         I;
+  BORAX_OBJECT  VR;
 
   for (I = 0; I < Task->Registers.SP; ++I) {
     UINTN  PageIndex  = I / BORAX_WORDS_PER_PAGE;
@@ -460,7 +582,12 @@ TaskSubObjects (
     }
   }
 
-  return Callback (Ctx, &Task->Registers.VR);
+  VR     = BORAX_MAKE_POINTER (Task->Registers.VR);
+  Status = Callback (Ctx, &VR);
+  ASSERT (BORAX_IS_POINTER (VR));
+  Task->Registers.VR = (BORAX_MULTIPLE_VALUES *)BORAX_GET_POINTER (VR);
+
+  return Status;
 }
 
 CONST BORAX_GC_HOOKS  gTaskGcHooks = {
@@ -470,80 +597,39 @@ CONST BORAX_GC_HOOKS  gTaskGcHooks = {
 
 EFI_STATUS
 EFIAPI
-BoraxMakeMultipleValues (
-  IN BORAX_INTERPRETER       *Interp,
-  IN UINTN                   ValuesLength,
-  OUT BORAX_MULTIPLE_VALUES  **Values
-  )
-{
-  EFI_STATUS                Status;
-  UINTN                     Capacity;
-  BORAX_MULTIPLE_VALUES     *NewMV;
-  BORAX_GLOBAL_ENVIRONMENT  *Env;
-
-  Capacity = MAX (MULTIPLE_VALUES_MIN, ValuesLength);
-
-  Status = BoraxGlobalEnvironment (Interp, &Env);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  Status = BoraxAllocateRecord (
-             Interp->Alloc,
-             BORAX_WIDETAG_OBJECT_RECORD,
-             Env->ClassMultipleValues,
-             BORAX_RECORD_LENGTH (BORAX_MULTIPLE_VALUES) + Capacity,
-             0, // LengthAux
-             BORAX_IMMEDIATE_UNBOUND,
-             (BORAX_RECORD **)&NewMV
-             );
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  NewMV->ValuesLength = BORAX_MAKE_FIXNUM (ValuesLength);
-  *Values             = NewMV;
-  return EFI_SUCCESS;
-}
-
-EFI_STATUS
-EFIAPI
 BoraxMakeBuiltInFunction (
   IN BORAX_ALLOCATOR           *Alloc,
   IN CONST CHAR16              *Name,
   IN BORAX_OBJECT              Arglist,
-  IN BORAX_OBJECT              Entry,
+  IN UINTN                     Entry,
   IN BORAX_BUILT_IN_CODE       Code,
-  IN BORAX_OBJECT              Constants,
-  IN BORAX_OBJECT              Locals,
+  IN UINTN                     Locals,
   IN BORAX_OBJECT              Shared,
-  IN BORAX_OBJECT              Closure,
+  IN UINTN                     ConstantsLength,
   OUT BORAX_BUILT_IN_FUNCTION  **Function
   )
 {
   EFI_STATUS               Status;
   BORAX_BUILT_IN_FUNCTION  *NewFunction;
 
-  // Allocate a regular lisp object
   Status = BoraxAllocateObject (
              Alloc,
-             sizeof (BORAX_BUILT_IN_FUNCTION),
+             sizeof (BORAX_BUILT_IN_FUNCTION)
+             + ConstantsLength * sizeof (BORAX_OBJECT),
              (BORAX_OBJECT_HEADER **)&NewFunction
              );
   if (EFI_ERROR (Status)) {
     return Status;
   }
 
-  // Initialize the record
-  NewFunction->Header.WideTag = BORAX_WIDETAG_BUILT_IN_FUNCTION;
-  NewFunction->Code           = Code;
-  NewFunction->Constants      = Constants;
-  NewFunction->Locals         = Locals;
-  NewFunction->Shared         = Shared;
-  NewFunction->Closure        = Closure;
-  NewFunction->Name           = Name;
-  NewFunction->Arglist        = Arglist;
-  NewFunction->Entry          = Entry;
+  NewFunction->Header.WideTag  = BORAX_WIDETAG_BUILT_IN_FUNCTION;
+  NewFunction->Name            = Name;
+  NewFunction->Arglist         = Arglist;
+  NewFunction->Entry           = Entry;
+  NewFunction->Code            = Code;
+  NewFunction->Locals          = Locals;
+  NewFunction->Shared          = Shared;
+  NewFunction->ConstantsLength = ConstantsLength;
 
   *Function = NewFunction;
   return EFI_SUCCESS;
@@ -557,9 +643,12 @@ CopyBuiltInFunction (
   OUT BORAX_OBJECT_HEADER  **NewObject
   )
 {
+  BORAX_BUILT_IN_FUNCTION  *Function = (BORAX_BUILT_IN_FUNCTION *)OldObject;
+
   return BoraxCopyObject (
            Alloc,
-           sizeof (BORAX_BUILT_IN_FUNCTION),
+           sizeof (BORAX_BUILT_IN_FUNCTION)
+           + Function->ConstantsLength * sizeof (BORAX_OBJECT),
            OldObject,
            NewObject
            );
@@ -575,13 +664,9 @@ BuiltInFunctionSubObjects (
 {
   EFI_STATUS               Status;
   BORAX_BUILT_IN_FUNCTION  *Function = (BORAX_BUILT_IN_FUNCTION *)Object;
+  UINTN                    I;
 
-  Status = Callback (Ctx, &Function->Constants);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  Status = Callback (Ctx, &Function->Locals);
+  Status = Callback (Ctx, &Function->Arglist);
   if (EFI_ERROR (Status)) {
     return Status;
   }
@@ -591,17 +676,14 @@ BuiltInFunctionSubObjects (
     return Status;
   }
 
-  Status = Callback (Ctx, &Function->Closure);
-  if (EFI_ERROR (Status)) {
-    return Status;
+  for (I = 0; I < Function->ConstantsLength; ++I) {
+    Status = Callback (Ctx, &Function->Constants[I]);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
   }
 
-  Status = Callback (Ctx, &Function->Arglist);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  return Callback (Ctx, &Function->Entry);
+  return EFI_SUCCESS;
 }
 
 CONST BORAX_GC_HOOKS  gBuiltInFunctionGcHooks = {

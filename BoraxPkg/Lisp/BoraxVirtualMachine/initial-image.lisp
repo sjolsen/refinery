@@ -47,7 +47,7 @@
   (:metaclass record-class))
 
 (defclass global-environment ()
-  ((multiple-values :initform (find-class 'multiple-values)))
+  ()
   (:metaclass record-class))
 
 (defclass root (global-environment)
