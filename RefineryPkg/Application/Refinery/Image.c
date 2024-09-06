@@ -178,9 +178,9 @@ FormatSimpleVector (
 
       *Object = Task->Registers.VR->Values[0];
 
-      Status = BORAX_GET_WORD_RECORD (*Object, &Record);
+      Status = BORAX_GET_OBJECT_RECORD (*Object, &Record);
       if (EFI_ERROR (Status)) {
-        (VOID)BufferWrite (gCtx.Content, L"Not a word vector\n");
+        (VOID)BufferWrite (gCtx.Content, L"Not an object vector\n");
         return EFI_INVALID_PARAMETER;
       }
 
@@ -205,15 +205,15 @@ FormatSimpleVector (
         return Status;
       }
 
-      if (I != 0) {
-        Status = BufferWriteChar (gCtx.Content, L' ');
-        if (EFI_ERROR (Status)) {
-          return Status;
-        }
-      }
-
       if (I < Record->Length) {
         BORAX_OBJECT  Value = Record->Data[I];
+
+        if (I != 0) {
+          Status = BufferWriteChar (gCtx.Content, L' ');
+          if (EFI_ERROR (Status)) {
+            return Status;
+          }
+        }
 
         *Index                        = BORAX_MAKE_FIXNUM (I + 1);
         Task->Registers.VR->Values[0] = Value;
@@ -547,7 +547,7 @@ FormatRecursive (
           BORAX_RECORD  *Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
 
           if (Object == gCtx.Globals->Nil) {
-            return BufferWrite (gCtx.Content, L"NIL");
+            Status = BufferWrite (gCtx.Content, L"NIL");
             if (EFI_ERROR (Status)) {
               return Status;
             }
