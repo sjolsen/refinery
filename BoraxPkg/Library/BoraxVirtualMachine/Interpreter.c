@@ -476,6 +476,23 @@ BoraxTaskStackLocal (
   return BoraxTaskStackIndex (Task, Task->Registers.BP + 4 + Index);
 }
 
+BORAX_OBJECT
+EFIAPI
+BoraxTaskFunctionConstant (
+  IN BORAX_TASK  *Task,
+  IN UINTN       Index
+  )
+{
+  BORAX_OBJECT             Function = BoraxTaskStackRead (Task, 2);
+  BORAX_BUILT_IN_FUNCTION  *F;
+
+  // TODO: think a little harder about this API
+  ASSERT (BORAX_DISCRIMINATE (Function) == BORAX_DISCRIM_BUILT_IN_FUNCTION);
+  F = (BORAX_BUILT_IN_FUNCTION *)BORAX_GET_POINTER (Function);
+  ASSERT (Index < F->ConstantsLength);
+  return F->Constants[Index];
+}
+
 EFI_STATUS
 EFIAPI
 BoraxTaskEnterFunction (
@@ -689,4 +706,54 @@ BuiltInFunctionSubObjects (
 CONST BORAX_GC_HOOKS  gBuiltInFunctionGcHooks = {
   .Copy       = &CopyBuiltInFunction,
   .SubObjects = &BuiltInFunctionSubObjects,
+};
+
+EFI_STATUS
+EFIAPI
+BoraxMakeConstant (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN UINTN            Size,
+  OUT BORAX_CONSTANT  **Constant
+  )
+{
+  EFI_STATUS      Status;
+  BORAX_CONSTANT  *NewConstant;
+
+  Status = BoraxAllocateObject (
+             Alloc,
+             sizeof (BORAX_CONSTANT) + Size,
+             (BORAX_OBJECT_HEADER **)&NewConstant
+             );
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  NewConstant->Header.WideTag = BORAX_WIDETAG_CONSTANT;
+  NewConstant->Size           = Size;
+
+  *Constant = NewConstant;
+  return EFI_SUCCESS;
+}
+
+STATIC EFI_STATUS
+EFIAPI
+CopyConstant (
+  IN BORAX_ALLOCATOR       *Alloc,
+  IN BORAX_OBJECT_HEADER   *OldObject,
+  OUT BORAX_OBJECT_HEADER  **NewObject
+  )
+{
+  BORAX_CONSTANT  *Constant = (BORAX_CONSTANT *)OldObject;
+
+  return BoraxCopyObject (
+           Alloc,
+           sizeof (BORAX_CONSTANT) + Constant->Size,
+           OldObject,
+           NewObject
+           );
+}
+
+CONST BORAX_GC_HOOKS  gConstantGcHooks = {
+  .Copy       = &CopyConstant,
+  .SubObjects = &BoraxGcHookNoSubObjects,
 };

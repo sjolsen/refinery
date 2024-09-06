@@ -216,6 +216,7 @@ BoraxInterpreterShutdown (
 
 typedef struct {
   BORAX_RECORD    Record;
+  BORAX_OBJECT    Packages;
 } BORAX_GLOBAL_ENVIRONMENT;
 
 EFI_STATUS
@@ -303,6 +304,13 @@ BoraxTaskStackLocal (
   IN UINTN       Index
   );
 
+BORAX_OBJECT
+EFIAPI
+BoraxTaskFunctionConstant (
+  IN BORAX_TASK  *Task,
+  IN UINTN       Index
+  );
+
 EFI_STATUS
 EFIAPI
 BoraxTaskEnterFunction (
@@ -356,6 +364,25 @@ BoraxMakeBuiltInFunction (
   IN BORAX_OBJECT              Shared,
   IN UINTN                     ConstantsLength,
   OUT BORAX_BUILT_IN_FUNCTION  **Function
+  );
+
+typedef union {
+  BORAX_OBJECT_HEADER    Header;
+  struct {
+    UINTN    Word0;
+    UINTN    Size;
+    UINT8    Data[];
+  };
+} BORAX_CONSTANT;
+
+#define BORAX_CONSTANT_SIZE(_type)  (sizeof (_type) - sizeof (BORAX_CONSTANT))
+
+EFI_STATUS
+EFIAPI
+BoraxMakeConstant (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN UINTN            Size,
+  OUT BORAX_CONSTANT  **Constant
   );
 
 #endif // BORAX_INTERPRETER_H
