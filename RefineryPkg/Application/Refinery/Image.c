@@ -217,6 +217,7 @@ GetClassName (
 
   if (Class->Record.Class != Ctx->ClassStandardClass) {
     IMAGE_ERROR ("Not an instance of STANDARD-CLASS");
+    return Ctx->Nil;
   }
 
   return Class->Name;
@@ -1069,6 +1070,11 @@ InitializeEnvironment (
   }
 
   Status = EarlyFindSymbol (CommonLisp, L"STANDARD-CLASS", &StandardClass);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = EarlyFindSymbol (CommonLisp, L"SIMPLE-VECTOR", &SimpleVector);
   if (EFI_ERROR (Status)) {
     return Status;
   }

@@ -24,7 +24,7 @@ TaskStackInit (
   BORAX_OBJECT  **Pages = NULL;
   UINTN         I;
 
-  Pages = AllocateZeroPool (STACK_PAGE_MIN * sizeof (VOID *));
+  Pages = AllocateZeroPool (STACK_PAGE_MIN * sizeof (BORAX_OBJECT *));
   if (Pages == NULL) {
     Status = EFI_OUT_OF_RESOURCES;
     goto cleanup;
@@ -95,8 +95,8 @@ TaskStackEnsureCapacity (
                                 Pages
                                 );
     BORAX_OBJECT  **NewPages = ReallocatePool (
-                                 Stack->PagesCapacity,
-                                 NewPagesCapacity,
+                                 Stack->PagesCapacity * sizeof (BORAX_OBJECT *),
+                                 NewPagesCapacity * sizeof (BORAX_OBJECT *),
                                  Stack->Pages
                                  );
 
@@ -485,7 +485,8 @@ BoraxTaskFunctionConstant (
   IN UINTN       Index
   )
 {
-  BORAX_OBJECT             Function = BoraxTaskStackRead (Task, 2);
+  BORAX_OBJECT  Function = BoraxTaskStackRead (Task, Task->Registers.BP + 2);
+
   BORAX_BUILT_IN_FUNCTION  *F;
 
   // TODO: think a little harder about this API
