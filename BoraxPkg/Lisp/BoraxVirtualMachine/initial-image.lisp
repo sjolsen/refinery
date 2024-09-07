@@ -102,10 +102,9 @@
   (borax-vm/cl:intern (symbol-name object)
                       (reify (symbol-package object))))
 
-(defmethod reify :after ((object borax-vm/cl:class))
-  (let* ((class (image-class object))
-         (name (reify (slot-value class 'name))))
-    (setf (borax-vm/cl:find-class name) class)))
+(defmethod reify :after ((object borax-vm/cl:standard-class))
+  (let* ((name (reify (borax-vm/cl:class-name object))))
+    (setf (borax-vm/cl:find-class name) object)))
 
 (defmacro borax-vm/cl:setq (&rest items)
   (loop for (symbol value) on items by #'cddr

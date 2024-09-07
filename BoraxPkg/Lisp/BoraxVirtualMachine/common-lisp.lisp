@@ -4,7 +4,7 @@
   (:shadow #:most-positive-fixnum #:most-negative-fixnum
            #:cons #:car #:cdr #:push
            #:null #:nil
-           #:class #:standard-class #:find-class
+           #:class #:standard-class #:class-name #:find-class
            #:package #:package-name #:find-package
            #:symbol #:symbol-package #:symbol-name #:symbol-value
            #:find-symbol #:intern
@@ -14,7 +14,7 @@
   (:export #:most-positive-fixnum #:most-negative-fixnum
            #:cons #:car #:cdr #:push
            #:null #:nil
-           #:class #:standard-class #:find-class
+           #:class #:standard-class #:class-name #:find-class
            #:package #:package-name #:find-package
            #:symbol #:symbol-package #:symbol-name #:symbol-value
            #:find-symbol #:intern
