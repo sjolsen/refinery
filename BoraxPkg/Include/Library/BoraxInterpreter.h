@@ -331,6 +331,34 @@ BoraxTaskExitFunction (
   IN BORAX_TASK  *Task
   );
 
+typedef struct {
+  UINTN           BP;
+  UINTN           SP;
+  UINTN           PC;
+  BORAX_OBJECT    Code;
+} BORAX_STACK_FRAME;
+
+typedef struct {
+  BORAX_TASK    *Task;
+  UINTN         NextBP;
+  UINTN         NextSP;
+  UINTN         NextPC;
+} BORAX_STACK_FRAME_ITERATOR;
+
+BORAX_STACK_FRAME_ITERATOR
+EFIAPI
+BoraxStackFrameIterate (
+  IN BORAX_TASK  *Task
+  );
+
+EFI_STATUS
+EFIAPI
+BoraxStackFrameNext (
+  IN BORAX_STACK_FRAME_ITERATOR  *Iter,
+  OUT BOOLEAN                    *Done,
+  OUT BORAX_STACK_FRAME          *Frame
+  );
+
 VOID
 EFIAPI
 BoraxTaskDebugStackTrace (

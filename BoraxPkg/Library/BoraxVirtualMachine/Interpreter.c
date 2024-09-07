@@ -584,6 +584,63 @@ BoraxTaskExitFunction (
   }
 }
 
+BORAX_STACK_FRAME_ITERATOR
+EFIAPI
+BoraxStackFrameIterate (
+  IN BORAX_TASK  *Task
+  )
+{
+  return (BORAX_STACK_FRAME_ITERATOR) {
+           .Task   = Task,
+           .NextBP = Task->Registers.BP,
+           .NextSP = Task->Registers.SP,
+           .NextPC = Task->Registers.PC,
+  };
+}
+
+EFI_STATUS
+EFIAPI
+BoraxStackFrameNext (
+  IN BORAX_STACK_FRAME_ITERATOR  *Iter,
+  OUT BOOLEAN                    *Done,
+  OUT BORAX_STACK_FRAME          *Frame
+  )
+{
+  BORAX_TASK    *Task = Iter->Task;
+  UINTN         BP    = Iter->NextBP;
+  UINTN         SP    = Iter->NextSP;
+  UINTN         PC    = Iter->NextPC;
+  BORAX_OBJECT  Temp;
+
+  if (SP == 0) {
+    *Done = TRUE;
+    return EFI_SUCCESS;
+  }
+
+  if (SP < BP + 4) {
+    DebugPrint (DEBUG_ERROR, "Corrupted BP/SP [%u:%u]\n", BP, SP);
+    // TODO: Better error codes
+    return EFI_VOLUME_CORRUPTED;
+  }
+
+  Frame->Code = BoraxTaskStackRead (Task, BP + 2);
+  Frame->BP   = BP;
+  Frame->SP   = SP;
+  Frame->PC   = PC;
+
+  Temp = BoraxTaskStackRead (Task, BP);
+  ASSERT (BORAX_IS_FIXNUM (Temp));
+  Iter->NextBP = BORAX_GET_FIXNUM (Temp);
+  Iter->NextSP = BP;
+
+  Temp = BoraxTaskStackRead (Task, BP + 1);
+  ASSERT (BORAX_IS_FIXNUM (Temp));
+  Iter->NextPC = BORAX_GET_FIXNUM (Temp);
+
+  *Done = FALSE;
+  return EFI_SUCCESS;
+}
+
 VOID
 EFIAPI
 BoraxTaskDebugStackTrace (
@@ -591,9 +648,9 @@ BoraxTaskDebugStackTrace (
   IN BORAX_TASK  *Task
   )
 {
-  UINTN  BP = Task->Registers.BP;
-  UINTN  SP = Task->Registers.SP;
-  UINTN  PC = Task->Registers.PC;
+  BORAX_STACK_FRAME_ITERATOR  Iter = BoraxStackFrameIterate (Task);
+  BORAX_STACK_FRAME           Frame;
+  BOOLEAN                     Done;
 
   BORAX_OBJECT  LastCode   = BORAX_IMMEDIATE_UNBOUND;
   UINTN         LastPC     = 0;
@@ -601,14 +658,13 @@ BoraxTaskDebugStackTrace (
   UINTN         Printed    = 0;
   UINTN         Skipped    = 0;
 
-  while (SP != 0) {
-    BORAX_OBJECT  Code;
-    BORAX_OBJECT  Temp;
+  while (TRUE) {
+    EFI_STATUS  Status = BoraxStackFrameNext (&Iter, &Done, &Frame);
+    if (EFI_ERROR (Status) || Done) {
+      break;
+    }
 
-    ASSERT (SP >= BP + 4);
-    Code = BoraxTaskStackRead (Task, BP + 2);
-
-    if ((Code == LastCode) && (PC == LastPC)) {
+    if ((Frame.Code == LastCode) && (Frame.PC == LastPC)) {
       ++Duplicates;
     } else {
       if (Duplicates != 0) {
@@ -621,18 +677,18 @@ BoraxTaskDebugStackTrace (
       }
 
       if (Printed < STACK_TRACE_LIMIT) {
-        switch (BORAX_DISCRIMINATE (Code)) {
+        switch (BORAX_DISCRIMINATE (Frame.Code)) {
           case BORAX_DISCRIM_BUILT_IN_FUNCTION:
           {
             BORAX_BUILT_IN_FUNCTION  *F;
-            F = (BORAX_BUILT_IN_FUNCTION *)BORAX_GET_POINTER (Code);
+            F = (BORAX_BUILT_IN_FUNCTION *)BORAX_GET_POINTER (Frame.Code);
 
-            DebugPrint (ErrorLevel, "  %s:%u\n", F->Name, PC);
+            DebugPrint (ErrorLevel, "  %s:%u\n", F->Name, Frame.PC);
             break;
           }
 
           default:
-            DebugPrint (ErrorLevel, "  <unknown>:%u\n", PC);
+            DebugPrint (ErrorLevel, "  <unknown>:%u\n", Frame.PC);
             break;
         }
 
@@ -642,18 +698,8 @@ BoraxTaskDebugStackTrace (
       }
     }
 
-    LastCode = Code;
-    LastPC   = PC;
-
-    SP = BP;
-
-    Temp = BoraxTaskStackRead (Task, BP + 1);
-    ASSERT (BORAX_IS_FIXNUM (Temp));
-    PC = BORAX_GET_FIXNUM (Temp);
-
-    Temp = BoraxTaskStackRead (Task, BP);
-    ASSERT (BORAX_IS_FIXNUM (Temp));
-    BP = BORAX_GET_FIXNUM (Temp);
+    LastCode = Frame.Code;
+    LastPC   = Frame.PC;
   }
 
   if (Duplicates != 0) {
