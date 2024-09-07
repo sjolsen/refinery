@@ -999,7 +999,8 @@ MakeFunction (
              Desc->Entry,
              Desc->Code,
              Desc->Locals,
-             BORAX_IMMEDIATE_UNBOUND, // Shared
+             0,    // SharedLength
+             NULL, // Shared
              Desc->Constants.Length,
              &F
              );

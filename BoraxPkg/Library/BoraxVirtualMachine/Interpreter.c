@@ -528,6 +528,10 @@ BoraxTaskEnterFunction (
   F = (BORAX_BUILT_IN_FUNCTION *)BORAX_GET_POINTER (Function);
 
   // TODO: Shared bindings
+  if (F->SharedLength != 0) {
+    return EFI_UNSUPPORTED;
+  }
+
   NewBP = Task->Registers.SP;
   NewSP = NewBP + 4 + F->Locals;
 
@@ -766,7 +770,8 @@ BoraxMakeBuiltInFunction (
   IN UINTN                     Entry,
   IN BORAX_BUILT_IN_CODE       Code,
   IN UINTN                     Locals,
-  IN BORAX_OBJECT              Shared,
+  IN UINTN                     SharedLength,
+  IN UINTN                     *Shared  OPTIONAL,
   IN UINTN                     ConstantsLength,
   OUT BORAX_BUILT_IN_FUNCTION  **Function
   )
@@ -790,6 +795,7 @@ BoraxMakeBuiltInFunction (
   NewFunction->Entry           = Entry;
   NewFunction->Code            = Code;
   NewFunction->Locals          = Locals;
+  NewFunction->SharedLength    = SharedLength;
   NewFunction->Shared          = Shared;
   NewFunction->ConstantsLength = ConstantsLength;
 
@@ -829,11 +835,6 @@ BuiltInFunctionSubObjects (
   UINTN                    I;
 
   Status = Callback (Ctx, &Function->Arglist);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  Status = Callback (Ctx, &Function->Shared);
   if (EFI_ERROR (Status)) {
     return Status;
   }

@@ -381,7 +381,8 @@ typedef union {
     UINTN                  Entry;
     BORAX_BUILT_IN_CODE    Code;
     UINTN                  Locals;
-    BORAX_OBJECT           Shared;
+    UINTN                  SharedLength;
+    CONST UINTN            *Shared;
     UINTN                  ConstantsLength;
     BORAX_OBJECT           Constants[];
   };
@@ -396,7 +397,8 @@ BoraxMakeBuiltInFunction (
   IN UINTN                     Entry,
   IN BORAX_BUILT_IN_CODE       Code,
   IN UINTN                     Locals,
-  IN BORAX_OBJECT              Shared,
+  IN UINTN                     SharedLength,
+  IN UINTN                     *Shared  OPTIONAL,
   IN UINTN                     ConstantsLength,
   OUT BORAX_BUILT_IN_FUNCTION  **Function
   );
