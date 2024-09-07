@@ -156,7 +156,7 @@ EarlyFindPackage (
     List = Cons->Cdr;
   }
 
-  IMAGE_ERROR ("Package not found: %u", Name);
+  IMAGE_ERROR ("Package not found: %s", Name);
   return EFI_INVALID_PARAMETER;
 }
 
@@ -195,7 +195,7 @@ EarlyFindSymbol (
     List = Cons->Cdr;
   }
 
-  IMAGE_ERROR ("Symbol not found: %u", Name);
+  IMAGE_ERROR ("Symbol not found: %s", Name);
   return EFI_INVALID_PARAMETER;
 }
 
@@ -1237,7 +1237,7 @@ ImageLoadContent (
 
   (VOID)PrintLabelled (Ctx, Content, L"NUMBERS");
   (VOID)PrintLabelled (Ctx, Content, L"STUFF");
-  (VOID)PrintLabelled (Ctx, Content, L"VECTOR");
+  (VOID)PrintLabelled (Ctx, Content, L"LETTERS");
   (VOID)PrintLabelled (Ctx, Content, L"HELLO");
   (VOID)PrintLabelled (Ctx, Content, L"SUM-LIST");
 
