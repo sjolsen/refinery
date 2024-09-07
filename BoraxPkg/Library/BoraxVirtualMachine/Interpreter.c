@@ -10,6 +10,7 @@
 #define GC_PAGE_THRESHOLD_FACTOR  2
 
 #define STACK_PAGE_MIN     1
+#define STACK_PAGE_MAX     32
 #define STACK_PAGE_FACTOR  2
 
 #define MULTIPLE_VALUES_MIN  8
@@ -89,6 +90,11 @@ TaskStackEnsureCapacity (
   UINTN       Pages          = (Words + BORAX_WORDS_PER_PAGE - 1) / BORAX_WORDS_PER_PAGE;
   UINTN       NewPagesLength = Stack->PagesLength;
   UINTN       I;
+
+  if (Pages > STACK_PAGE_MAX) {
+    DEBUG ((DEBUG_ERROR, "Stack depth limit exceeded\n"));
+    return EFI_OUT_OF_RESOURCES;
+  }
 
   // Allocate space for the page pointers
   if (Stack->PagesCapacity < Pages) {
