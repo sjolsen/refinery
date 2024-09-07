@@ -295,11 +295,11 @@
  *         |                    |
  *         +--------------------+ <- Initial value of SP
  *         |                    |
- *         |   Local bindings   |
+ *         |  Shared bindings   | -> Pointers to heap-allocated bindings
  *         |                    |
  *         +--------------------+
  *         |                    |
- *         |  Shared bindings   | -> Pointers to heap-allocated bindings
+ *         |   Local bindings   |
  *         |                    |
  *         +--------------------+
  *         |  Closure pointer   |

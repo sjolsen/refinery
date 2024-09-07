@@ -148,12 +148,16 @@ enum {
 (((_ptr)->HeaderWords[0] & BORAX_LOWTAG_MASK_HEAP) != BORAX_LOWTAG_HEAP)
 
 enum {
-  BORAX_WIDETAG_WORD_RECORD   = 0x03,
-  BORAX_WIDETAG_OBJECT_RECORD = 0x07,
-  BORAX_WIDETAG_WEAK_POINTER  = 0xF3,
-  BORAX_WIDETAG_PIN           = 0xF7,
-  BORAX_WIDETAG_MOVED         = 0xFB,
-  BORAX_WIDETAG_UNINITIALIZED = 0xFF,
+  BORAX_WIDETAG_WORD_RECORD       = 0x03,
+  BORAX_WIDETAG_OBJECT_RECORD     = 0x07,
+  BORAX_WIDETAG_BUILT_IN_FUNCTION = 0x0B,
+  BORAX_WIDETAG_CONSTANT          = 0x13,
+  BORAX_WIDETAG_MULTIPLE_VALUES   = 0x17,
+  BORAX_WIDETAG_TASK              = 0xEF,
+  BORAX_WIDETAG_WEAK_POINTER      = 0xF3,
+  BORAX_WIDETAG_PIN               = 0xF7,
+  BORAX_WIDETAG_MOVED             = 0xFB,
+  BORAX_WIDETAG_UNINITIALIZED     = 0xFF,
 };
 
 // Helper enum for simplifying switch statements. Values are implementation
@@ -164,13 +168,17 @@ enum {
   BORAX_DISCRIM_UNBOUND   = BORAX_IMMEDIATE_UNBOUND,
   BORAX_DISCRIM_CHARACTER = BORAX_IMMEDIATE_CHARACTER_BEGIN,
   // Pointers
-  BORAX_DISCRIM_CONS          = 0x02,
-  BORAX_DISCRIM_WORD_RECORD   = BORAX_WIDETAG_WORD_RECORD,
-  BORAX_DISCRIM_OBJECT_RECORD = BORAX_WIDETAG_OBJECT_RECORD,
-  BORAX_DISCRIM_WEAK_POINTER  = BORAX_WIDETAG_WEAK_POINTER,
-  BORAX_DISCRIM_PIN           = BORAX_WIDETAG_PIN,
-  BORAX_DISCRIM_MOVED         = BORAX_WIDETAG_MOVED,
-  BORAX_DISCRIM_UNINITIALIZED = BORAX_WIDETAG_UNINITIALIZED,
+  BORAX_DISCRIM_CONS              = 0x02,
+  BORAX_DISCRIM_WORD_RECORD       = BORAX_WIDETAG_WORD_RECORD,
+  BORAX_DISCRIM_OBJECT_RECORD     = BORAX_WIDETAG_OBJECT_RECORD,
+  BORAX_DISCRIM_BUILT_IN_FUNCTION = BORAX_WIDETAG_BUILT_IN_FUNCTION,
+  BORAX_DISCRIM_CONSTANT          = BORAX_WIDETAG_CONSTANT,
+  BORAX_DISCRIM_MULTIPLE_VALUES   = BORAX_WIDETAG_MULTIPLE_VALUES,
+  BORAX_DISCRIM_TASK              = BORAX_WIDETAG_TASK,
+  BORAX_DISCRIM_WEAK_POINTER      = BORAX_WIDETAG_WEAK_POINTER,
+  BORAX_DISCRIM_PIN               = BORAX_WIDETAG_PIN,
+  BORAX_DISCRIM_MOVED             = BORAX_WIDETAG_MOVED,
+  BORAX_DISCRIM_UNINITIALIZED     = BORAX_WIDETAG_UNINITIALIZED,
 };
 
 #define BORAX_DISCRIMINATE(_obj)                       \
@@ -193,32 +201,7 @@ STATIC_ASSERT (
   "Need a minimum alignment of 8 to accomodate 3-bit tags"
   );
 
-typedef struct {
-  BORAX_OBJECT    Car;
-  BORAX_OBJECT    Cdr;
-} BORAX_CONS;
-
-STATIC_ASSERT (
-  sizeof (BORAX_CONS) == BORAX_ALIGNMENT,
-  "Cons cell must be two words"
-  );
-
-typedef union {
-  struct {
-    UINT8    WideTag;
-    UINT8    GcData;
-  };
-
-  struct {
-    UINTN    HeaderWords[2];
-    UINTN    BodyWords[];
-  };
-} BORAX_OBJECT_HEADER;
-
-STATIC_ASSERT (
-  sizeof (BORAX_OBJECT_HEADER) == BORAX_ALIGNMENT,
-  "Object header must be two words"
-  );
+typedef struct _BORAX_ALLOCATOR BORAX_ALLOCATOR;
 
 /*
  * Cons cell management
@@ -274,7 +257,19 @@ STATIC_ASSERT (
  * - Incremental garbage collection?
  */
 
-#define BORAX_PAGE_SIZE          4096
+typedef struct {
+  BORAX_OBJECT    Car;
+  BORAX_OBJECT    Cdr;
+} BORAX_CONS;
+
+STATIC_ASSERT (
+  sizeof (BORAX_CONS) == BORAX_ALIGNMENT,
+  "Cons cell must be two words"
+  );
+
+#define BORAX_PAGE_SIZE       4096
+#define BORAX_WORDS_PER_PAGE  (BORAX_PAGE_SIZE / sizeof(UINTN))
+
 #define BORAX_WORD_BITS          (CHAR_BIT * sizeof(UINTN))
 #define BORAX_CONS_PER_PAGE      (BORAX_PAGE_SIZE / sizeof(BORAX_CONS))
 #define BORAX_CONS_BITMAP_WORDS  (BORAX_CONS_PER_PAGE / BORAX_WORD_BITS)
@@ -294,6 +289,15 @@ typedef struct {
   BORAX_CONS_PAGE    *Pages;
   UINTN              FillIndex; // Offset into the head page
 } BORAX_CONS_ALLOCATOR;
+
+EFI_STATUS
+EFIAPI
+BoraxAllocateCons (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN BORAX_OBJECT     Car,
+  IN BORAX_OBJECT     Cdr,
+  OUT BORAX_CONS      **Cons
+  );
 
 /*
  * Variable-width objects
@@ -358,9 +362,25 @@ typedef struct {
  * by pointer assignment.
  */
 
+typedef union {
+  struct {
+    UINT8    WideTag;
+    UINT8    GcData;
+  };
+
+  struct {
+    UINTN    HeaderWords[2];
+  };
+} BORAX_OBJECT_HEADER;
+
+STATIC_ASSERT (
+  sizeof (BORAX_OBJECT_HEADER) == BORAX_ALIGNMENT,
+  "Object header must be two words"
+  );
+
 typedef enum {
-  BORAX_OBJECT_GCDATA_SPACEBIT = 1,
-  BORAX_OBJECT_GCDATA_GREYBIT  = 2,
+  BORAX_OBJECT_GCDATA_SPACEBIT = 1 << 0,
+  BORAX_OBJECT_GCDATA_GREYBIT  = 1 << 1,
 } BORAX_OBJECT_GCDATA;
 
 typedef struct _BORAX_OBJECT_CHUNK BORAX_OBJECT_CHUNK;
@@ -388,6 +408,23 @@ enum {
 typedef struct {
   BORAX_OBJECT_CHUNK    *Chunks[BORAX_ALLOC_BIN_COUNT];
 } BORAX_OBJECT_ALLOCATOR;
+
+EFI_STATUS
+EFIAPI
+BoraxAllocateObject (
+  IN BORAX_ALLOCATOR       *Alloc,
+  IN UINTN                 Size,
+  OUT BORAX_OBJECT_HEADER  **Object
+  );
+
+EFI_STATUS
+EFIAPI
+BoraxCopyObject (
+  IN BORAX_ALLOCATOR       *Alloc,
+  IN UINTN                 Size,
+  IN BORAX_OBJECT_HEADER   *OldObject,
+  OUT BORAX_OBJECT_HEADER  **NewObject
+  );
 
 /*
  * Pinning objects
@@ -418,20 +455,66 @@ typedef struct {
  * will be invalidated by a collection cycle. This limits, for instance, the
  * ways a TPL_CALLBACK routine can interact with the lisp system, which runs the
  * garbage collector at TPL_APPLICATION.
+ *
+ * Pin records
+ * -----------
+ *
+ * The basic single-pointer pin structure described above turns out to have
+ * almost all of the functionality required by other data structures, like task
+ * stacks, that cannot be simple object records but nevertheless need to be
+ * traced by the garbage collector. The more general pin record is provided for
+ * this purpose.
+ *
+ * Pin records must report their subobjects using the GC hooks API and therefore
+ * must have an associated widetag. Such subtypes must use BoraxGcHookNoCopy as
+ * pin records are non-movable.
  */
 
-typedef union _BORAX_PIN BORAX_PIN;
+typedef union _BORAX_PIN_RECORD BORAX_PIN_RECORD;
 
-union _BORAX_PIN {
+union _BORAX_PIN_RECORD {
   // Pins are allocated manually and kept in a singly-linked list
   BORAX_OBJECT_HEADER    Header;
   struct {
-    BORAX_HALFWORD    HalfWord0;
-    BORAX_HALFWORD    Live;
-    BORAX_PIN         *Next;
-    BORAX_OBJECT      Object;
+    BORAX_HALFWORD      HalfWord0;
+    BORAX_HALFWORD      Live;
+    BORAX_PIN_RECORD    *Next;
   };
 };
+
+typedef struct {
+  BORAX_PIN_RECORD    Record;
+  BORAX_OBJECT        Object;
+} BORAX_PIN;
+
+EFI_STATUS
+EFIAPI
+BoraxAllocatePinRecord (
+  IN BORAX_ALLOCATOR    *Alloc,
+  IN UINTN              WideTag,
+  IN UINTN              Size,
+  OUT BORAX_PIN_RECORD  **Record
+  );
+
+VOID
+EFIAPI
+BoraxReleasePinRecord (
+  IN BORAX_PIN_RECORD  *Record
+  );
+
+EFI_STATUS
+EFIAPI
+BoraxAllocatePin (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN BORAX_OBJECT     Object,
+  OUT BORAX_PIN       **Pin
+  );
+
+VOID
+EFIAPI
+BoraxReleasePin (
+  IN BORAX_PIN  *Pin
+  );
 
 /*
  * Weak pointers
@@ -459,6 +542,14 @@ union _BORAX_WEAK_POINTER {
     BORAX_OBJECT          Value;
   };
 };
+
+EFI_STATUS
+EFIAPI
+BoraxAllocateWeakPointer (
+  IN BORAX_ALLOCATOR      *Alloc,
+  IN BORAX_OBJECT         Object,
+  OUT BORAX_WEAK_POINTER  **WeakPointer
+  );
 
 /*
  * Records
@@ -488,8 +579,124 @@ typedef union {
   };
 } BORAX_RECORD;
 
+EFI_STATUS
+EFIAPI
+BoraxGetRecord (
+  IN CONST CHAR8    *DebugFunc,
+  IN INTN           DebugLine,
+  IN BORAX_OBJECT   Object,
+  IN UINTN          WideTag,
+  IN UINTN          MinLength,
+  OUT BORAX_RECORD  **Record
+  );
+
+// TODO: How can we make these macros type-safe?
 #define BORAX_RECORD_LENGTH(_type) \
 ((sizeof (_type) - sizeof (BORAX_RECORD)) / sizeof (BORAX_OBJECT))
+
+#define BORAX_GET_OBJECT_RECORD(_obj, _ptr) \
+(BoraxGetRecord (                           \
+  __func__,                                 \
+  __LINE__,                                 \
+  (_obj),                                   \
+  BORAX_WIDETAG_OBJECT_RECORD,              \
+  BORAX_RECORD_LENGTH (**(_ptr)),           \
+  (BORAX_RECORD **)(_ptr)                   \
+  ))
+
+#define BORAX_GET_WORD_RECORD(_obj, _ptr) \
+(BoraxGetRecord (                         \
+  __func__,                               \
+  __LINE__,                               \
+  (_obj),                                 \
+  BORAX_WIDETAG_WORD_RECORD,              \
+  BORAX_RECORD_LENGTH (**(_ptr)),         \
+  (BORAX_RECORD **)(_ptr)                 \
+  ))
+
+EFI_STATUS
+EFIAPI
+BoraxAllocateRecord (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN UINTN            WideTag,  // WORD_RECORD or OBJECT_RECORD
+  IN BORAX_OBJECT     Class,
+  IN UINTN            Length,
+  IN BORAX_HALFWORD   LengthAux,
+  IN UINTN            InitialElement,
+  OUT BORAX_RECORD    **Record
+  );
+
+EFI_STATUS
+EFIAPI
+BoraxAllocateRecordUninitialized (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN UINTN            WideTag,  // WORD_RECORD or OBJECT_RECORD
+  IN BORAX_OBJECT     Class,
+  IN UINTN            Length,
+  IN BORAX_HALFWORD   LengthAux,
+  OUT BORAX_RECORD    **Record
+  );
+
+/*
+ * Extensibility
+ * =============
+ *
+ * The above types provide most of the functionality required by the
+ * interpreter. Specialized types can be implemented by claiming a widetag from
+ * the six-bit encoding space and defining garbage collection hooks for
+ * them. The GC hook API does not totally decouple extensions from the generic
+ * memory subsystem implementation, but is enough to prevent the entire Lisp
+ * interpreter from winding up in Memory.c.
+ */
+
+typedef
+EFI_STATUS
+(EFIAPI *BORAX_GC_HOOK_COPY)(
+  IN BORAX_ALLOCATOR       *Alloc,
+  IN BORAX_OBJECT_HEADER   *OldObject,
+  OUT BORAX_OBJECT_HEADER  **NewObject
+  );
+
+typedef
+EFI_STATUS
+(EFIAPI *BORAX_GC_SUBOBJECT_CALLBACK)(
+  IN VOID              *Ctx,
+  IN OUT BORAX_OBJECT  *SubObject
+  );
+
+typedef
+EFI_STATUS
+(EFIAPI *BORAX_GC_HOOK_SUBOBJECTS)(
+  IN BORAX_OBJECT_HEADER          *Object,
+  IN VOID                         *Ctx,
+  IN BORAX_GC_SUBOBJECT_CALLBACK  Callback
+  );
+
+typedef struct {
+  BORAX_GC_HOOK_COPY          Copy;
+  BORAX_GC_HOOK_SUBOBJECTS    SubObjects;
+} BORAX_GC_HOOKS;
+
+EFI_STATUS
+EFIAPI
+BoraxGcHookNoCopy (
+  IN BORAX_ALLOCATOR       *Alloc,
+  IN BORAX_OBJECT_HEADER   *OldObject,
+  OUT BORAX_OBJECT_HEADER  **NewObject
+  );
+
+EFI_STATUS
+EFIAPI
+BoraxGcHookNoSubObjects (
+  IN BORAX_OBJECT_HEADER          *Object,
+  IN VOID                         *Ctx,
+  IN BORAX_GC_SUBOBJECT_CALLBACK  Callback
+  );
+
+extern CONST BORAX_GC_HOOKS  gBuiltInFunctionGcHooks;
+extern CONST BORAX_GC_HOOKS  gConstantGcHooks;
+extern CONST BORAX_GC_HOOKS  gMultipleValuesGcHooks;
+extern CONST BORAX_GC_HOOKS  gTaskGcHooks;
 
 /*
  * Triggering garbage collection
@@ -538,14 +745,14 @@ typedef struct {
   BORAX_WEAK_POINTER        *WeakPointers;          // Non-owning pointer
 } BORAX_COPY_SPACE;
 
-typedef struct {
+struct _BORAX_ALLOCATOR {
   BORAX_COPY_SPACE                   FromSpace;
   BORAX_COPY_SPACE                   ToSpace;
   UINTN                              ToSpaceParity;
-  BORAX_PIN                          *Pins;
+  BORAX_PIN_RECORD                   *Pins;
   BORAX_SYSTEM_ALLOCATOR_PROTOCOL    *SysAlloc;
   UINTN                              UsedPages;
-} BORAX_ALLOCATOR;
+};
 
 VOID
 EFIAPI
@@ -595,68 +802,6 @@ BoraxInjectExternalObjectPages (
   IN BORAX_ALLOCATOR  *Alloc,
   IN VOID             *Buffer,
   IN UINTN            Pages
-  );
-
-EFI_STATUS
-EFIAPI
-BoraxAllocateCons (
-  IN BORAX_ALLOCATOR  *Alloc,
-  IN BORAX_OBJECT     Car,
-  IN BORAX_OBJECT     Cdr,
-  OUT BORAX_CONS      **Cons
-  );
-
-EFI_STATUS
-EFIAPI
-BoraxAllocateObject (
-  IN BORAX_ALLOCATOR       *Alloc,
-  IN UINTN                 Size,
-  OUT BORAX_OBJECT_HEADER  **Object
-  );
-
-EFI_STATUS
-EFIAPI
-BoraxAllocatePin (
-  IN BORAX_ALLOCATOR  *Alloc,
-  IN BORAX_OBJECT     Object,
-  OUT BORAX_PIN       **Pin
-  );
-
-VOID
-EFIAPI
-BoraxReleasePin (
-  IN BORAX_PIN  *Pin
-  );
-
-EFI_STATUS
-EFIAPI
-BoraxAllocateWeakPointer (
-  IN BORAX_ALLOCATOR      *Alloc,
-  IN BORAX_OBJECT         Object,
-  OUT BORAX_WEAK_POINTER  **WeakPointer
-  );
-
-EFI_STATUS
-EFIAPI
-BoraxAllocateRecord (
-  IN BORAX_ALLOCATOR  *Alloc,
-  IN UINTN            WideTag,  // WORD_RECORD or OBJECT_RECORD
-  IN BORAX_OBJECT     Class,
-  IN UINTN            Length,
-  IN BORAX_HALFWORD   LengthAux,
-  IN UINTN            InitialElement,
-  OUT BORAX_RECORD    **Record
-  );
-
-EFI_STATUS
-EFIAPI
-BoraxAllocateRecordUninitialized (
-  IN BORAX_ALLOCATOR  *Alloc,
-  IN UINTN            WideTag,  // WORD_RECORD or OBJECT_RECORD
-  IN BORAX_OBJECT     Class,
-  IN UINTN            Length,
-  IN BORAX_HALFWORD   LengthAux,
-  OUT BORAX_RECORD    **Record
   );
 
 #endif // BORAX_MEMORY_H

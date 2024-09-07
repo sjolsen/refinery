@@ -337,7 +337,8 @@
     (nreverse result)))
 
 (defclass borax-vm/cl:standard-class ()
-  ((name :initarg :name))
+  ((name :initarg :name
+         :reader borax-vm/cl:class-name))
   (:metaclass record-class))
 
 (defclass borax-vm/cl:simple-vector ()
