@@ -162,6 +162,9 @@ TaskRun (
       BoraxTaskDebugStackTrace (DEBUG_ERROR, Task);
       return Status;
     }
+
+    // TODO: Only when crossing the threshold
+    BoraxAllocatorCollect (Task->Interp->Alloc);
   }
 
   return EFI_SUCCESS;

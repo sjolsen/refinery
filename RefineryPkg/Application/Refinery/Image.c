@@ -916,16 +916,22 @@ STATIC CONST FUNCTION_DESCRIPTOR  gFormatRecursive = {
 STATIC EFI_STATUS
 EFIAPI
 PrintLabelled (
-  IN LISP_CONTEXT  *Ctx,
+  IN BORAX_PIN     *LispContext,
   IN BUFFER        *Buffer,
   IN CONST CHAR16  *SymbolName
   )
 {
   EFI_STATUS             Status;
+  LISP_CONTEXT           *Ctx;
   PACKAGE                *Package;
   SYMBOL                 *Symbol;
   BORAX_MULTIPLE_VALUES  *Args;
   BORAX_PIN              *IORequests;
+
+  Status = BORAX_GET_OBJECT_RECORD (LispContext->Object, &Ctx);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
 
   Status = BORAX_GET_OBJECT_RECORD (Ctx->PackageInitialImage, &Package);
   if (EFI_ERROR (Status)) {
@@ -1021,8 +1027,8 @@ MakeFunction (
 STATIC EFI_STATUS
 EFIAPI
 InitializeEnvironment (
-  IN BUFFER         *Content,
-  OUT LISP_CONTEXT  **LispContext
+  IN BUFFER      *Content,
+  OUT BORAX_PIN  **LispContext
   )
 {
   EFI_STATUS  Status;
@@ -1163,8 +1169,11 @@ InitializeEnvironment (
     return Status;
   }
 
-  *LispContext = Ctx;
-  return EFI_SUCCESS;
+  return BoraxAllocatePin (
+           &gAlloc,
+           BORAX_MAKE_POINTER (Ctx),
+           LispContext
+           );
 }
 
 EFI_STATUS
@@ -1180,7 +1189,7 @@ ImageLoadContent (
   EFI_FILE_PROTOCOL         *InitialImage     = NULL;
   BORAX_PIN                 *GlobalEnvironment;
   BORAX_INTERPRETER         *Interp = NULL;
-  LISP_CONTEXT              *Ctx;
+  BORAX_PIN                 *Ctx;
 
   BoraxAllocatorInit (&gAlloc, &gSystemAllocator);
 
