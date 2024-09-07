@@ -542,7 +542,9 @@
  * The PUSH-CLEANUP instruction establishes a cleanup at the code location
  * specified by index. When a cleanup is taken, there may be an in-flight exit;
  * if so, the exit and MULTIPLE-VALUES object containing the previous VR
- * contents are provided in the VR. Otherwise, these values are NIL.
+ * contents are provided in the VR. Otherwise, the first of these values is
+ * NIL. The cleanup is responsible for discarding or explicitly resuming the
+ * in-flight exit.
  *
  *   instruction = POP-DYNAMIC natural-number;
  *
