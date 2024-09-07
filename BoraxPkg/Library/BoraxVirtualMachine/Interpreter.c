@@ -14,6 +14,8 @@
 
 #define MULTIPLE_VALUES_MIN  8
 
+#define STACK_TRACE_LIMIT  16
+
 STATIC EFI_STATUS
 EFIAPI
 TaskStackInit (
@@ -156,7 +158,7 @@ TaskRun (
 
     Status = F->Code (Task);
     if (EFI_ERROR (Status)) {
-      DEBUG ((DEBUG_ERROR, "Task returned error: %r\n", Status));
+      DebugPrint (DEBUG_ERROR, "Task returned error: %r\n", Status);
       BoraxTaskDebugStackTrace (DEBUG_ERROR, Task);
       return Status;
     }
@@ -590,6 +592,12 @@ BoraxTaskDebugStackTrace (
   UINTN  SP = Task->Registers.SP;
   UINTN  PC = Task->Registers.PC;
 
+  BORAX_OBJECT  LastCode   = BORAX_IMMEDIATE_UNBOUND;
+  UINTN         LastPC     = 0;
+  UINTN         Duplicates = 0;
+  UINTN         Printed    = 0;
+  UINTN         Skipped    = 0;
+
   while (SP != 0) {
     BORAX_OBJECT  Code;
     BORAX_OBJECT  Temp;
@@ -597,20 +605,42 @@ BoraxTaskDebugStackTrace (
     ASSERT (SP >= BP + 4);
     Code = BoraxTaskStackRead (Task, BP + 2);
 
-    switch (BORAX_DISCRIMINATE (Code)) {
-      case BORAX_DISCRIM_BUILT_IN_FUNCTION:
-      {
-        BORAX_BUILT_IN_FUNCTION  *F;
-        F = (BORAX_BUILT_IN_FUNCTION *)BORAX_GET_POINTER (Code);
-
-        DebugPrint (ErrorLevel, "  %s:%u\n", F->Name, PC);
-        break;
+    if ((Code == LastCode) && (PC == LastPC)) {
+      ++Duplicates;
+    } else {
+      if (Duplicates != 0) {
+        DebugPrint (
+          ErrorLevel,
+          "  (omitted %u duplicate entries)\n",
+          Duplicates
+          );
+        Duplicates = 0;
       }
 
-      default:
-        DebugPrint (ErrorLevel, "  <unknown>:%u\n", PC);
-        break;
+      if (Printed < STACK_TRACE_LIMIT) {
+        switch (BORAX_DISCRIMINATE (Code)) {
+          case BORAX_DISCRIM_BUILT_IN_FUNCTION:
+          {
+            BORAX_BUILT_IN_FUNCTION  *F;
+            F = (BORAX_BUILT_IN_FUNCTION *)BORAX_GET_POINTER (Code);
+
+            DebugPrint (ErrorLevel, "  %s:%u\n", F->Name, PC);
+            break;
+          }
+
+          default:
+            DebugPrint (ErrorLevel, "  <unknown>:%u\n", PC);
+            break;
+        }
+
+        ++Printed;
+      } else {
+        ++Skipped;
+      }
     }
+
+    LastCode = Code;
+    LastPC   = PC;
 
     SP = BP;
 
@@ -621,6 +651,18 @@ BoraxTaskDebugStackTrace (
     Temp = BoraxTaskStackRead (Task, BP);
     ASSERT (BORAX_IS_FIXNUM (Temp));
     BP = BORAX_GET_FIXNUM (Temp);
+  }
+
+  if (Duplicates != 0) {
+    DebugPrint (
+      ErrorLevel,
+      "  (omitted %u duplicate entries)\n",
+      Duplicates
+      );
+  }
+
+  if (Skipped != 0) {
+    DebugPrint (ErrorLevel, "  (skipped %u entries)\n", Skipped);
   }
 }
 
