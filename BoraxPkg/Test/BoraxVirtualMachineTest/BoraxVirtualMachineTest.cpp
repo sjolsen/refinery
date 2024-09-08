@@ -133,16 +133,20 @@ public:
 
   AutoPin
   MakePin (
-    VOID  *Object
+    VOID  *Ptr  OPTIONAL
     )
   {
+    EFI_STATUS  Status;
     BORAX_PIN   *Pin;
-    EFI_STATUS  Status = BoraxAllocatePin (
-                           &Alloc,
-                           BORAX_MAKE_POINTER (Object),
-                           &Pin
-                           );
+    BORAX_OBJECT Object;
 
+    if (Ptr == NULL) {
+      Object = BORAX_IMMEDIATE_UNBOUND;
+    } else {
+      Object = BORAX_MAKE_POINTER (Ptr);
+    }
+
+    Status = BoraxAllocatePin (&Alloc, Object, &Pin);
     EXPECT_EQ (EFI_SUCCESS, Status);
     return AutoPin (Pin, PinDeleter ());
   }
@@ -461,6 +465,31 @@ TEST_F (MemoryTests, RootedObjectRecord) {
   EXPECT_EQ (gSomeVal, Record->Class);
   EXPECT_EQ (BORAX_IMMEDIATE_UNBOUND, Record->Data[0]);
   EXPECT_EQ (BORAX_IMMEDIATE_UNBOUND, Record->Data[9]);
+}
+
+TEST_F (MemoryTests, CircularPin) {
+  BORAX_PIN *Raw1, *Raw2;
+
+  {
+    AutoPin Pin1 = MakePin (NULL);
+    AutoPin Pin2 = MakePin (NULL);
+
+    Raw1 = Pin1.get();
+    Raw2 = Pin2.get();
+
+    Raw1->Object = BORAX_MAKE_POINTER (Raw2);
+    Raw2->Object = BORAX_MAKE_POINTER (Raw1);
+
+    // Mark the pins !Live
+  }
+
+  ASSERT_THAT (Raw1, IsValidAddress (&Tracer));
+  ASSERT_THAT (Raw2, IsValidAddress (&Tracer));
+
+  Collect ();
+
+  ASSERT_THAT (Raw1, Not (IsValidAddress (&Tracer)));
+  ASSERT_THAT (Raw2, Not (IsValidAddress (&Tracer)));
 }
 
 class ObjectValidationError : public std::exception {
