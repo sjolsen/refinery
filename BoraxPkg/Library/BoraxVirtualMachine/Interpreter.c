@@ -533,7 +533,7 @@ BoraxTaskEnterFunction (
   }
 
   NewBP = Task->Registers.SP;
-  NewSP = NewBP + 4 + F->Locals;
+  NewSP = NewBP + 4 + F->Locals + F->SharedLength;
 
   Status = TaskStackEnsureCapacity (&Task->Stack, NewSP);
   if (EFI_ERROR (Status)) {
