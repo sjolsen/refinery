@@ -550,7 +550,7 @@
  *
  * The POP-DYNAMIC instruction resets the dynamic extent depth to the specified
  * number. The POP-DYNAMIC instruction is intended to be used in the target
- * sequence a transfer of control that disestablish dynamic bindings.
+ * sequence of a transfer of control that disestablishes dynamic bindings.
  *
  * Data operations
  * ---------------
