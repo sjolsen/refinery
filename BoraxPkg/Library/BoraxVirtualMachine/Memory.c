@@ -1250,6 +1250,9 @@ GcHooks (
     case BORAX_DISCRIM_INTERPRETER:
       *Hooks = &gInterpreterGcHooks;
       return EFI_SUCCESS;
+    case BORAX_DISCRIM_EXIT:
+      *Hooks = &gExitGcHooks;
+      return EFI_SUCCESS;
     case BORAX_DISCRIM_TASK:
       *Hooks = &gTaskGcHooks;
       return EFI_SUCCESS;

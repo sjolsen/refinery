@@ -590,19 +590,34 @@ BoraxTaskEnterFunction (
   return EFI_SUCCESS;
 }
 
-STATIC VOID
+STATIC EFI_STATUS
 EFIAPI
-BoraxTaskExitFunctionCommon (
-  IN BORAX_TASK  *Task
+UnwindFrame (
+  IN BORAX_TASK    *Task,
+  IN BORAX_OBJECT  TargetExit,
+  OUT BOOLEAN      *Intercepted
   )
 {
-  UINTN  NewSP = Task->Registers.BP;
+  EFI_STATUS  Status;
+  UINTN       NewSP = Task->Registers.BP;
+  BOOLEAN     PopIntercepted;
+
+  Status = BoraxTaskPopDynamic (Task, 0, TargetExit, &PopIntercepted);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  if (PopIntercepted) {
+    *Intercepted = TRUE;
+    return EFI_SUCCESS;
+  }
 
   Task->Registers.SP = NewSP;
   Task->Registers.BP = BORAX_GET_FIXNUM (BoraxTaskStackRead (Task, NewSP));
   Task->Registers.PC = BORAX_GET_FIXNUM (BoraxTaskStackRead (Task, NewSP + 1));
 
   // TODO: Shrink the stack if appropriate
+  return EFI_SUCCESS;
 }
 
 EFI_STATUS
@@ -612,20 +627,205 @@ BoraxTaskEnterFunctionTail (
   IN BORAX_OBJECT  Function
   )
 {
-  BoraxTaskExitFunctionCommon (Task);
+  EFI_STATUS  Status;
+  BOOLEAN     Intercepted;
+
+  Status = UnwindFrame (Task, BORAX_IMMEDIATE_UNBOUND, &Intercepted);
+  if (EFI_ERROR (Status) || Intercepted) {
+    return Status;
+  }
+
   return BoraxTaskEnterFunction (Task, Function);
 }
 
-VOID
+EFI_STATUS
 EFIAPI
 BoraxTaskExitFunction (
   IN BORAX_TASK  *Task
   )
 {
-  BoraxTaskExitFunctionCommon (Task);
+  EFI_STATUS  Status;
+  BOOLEAN     Intercepted;
+
+  Status = UnwindFrame (Task, BORAX_IMMEDIATE_UNBOUND, &Intercepted);
+  if (EFI_ERROR (Status) || Intercepted) {
+    return Status;
+  }
+
   if (Task->Registers.SP == 0) {
     Task->State = BORAX_TASK_EXITED;
   }
+
+  return EFI_SUCCESS;
+}
+
+EFI_STATUS
+EFIAPI
+BoraxTaskPushExit (
+  IN BORAX_TASK   *Task,
+  IN UINTN        PC,
+  OUT BORAX_EXIT  **Exit
+  )
+{
+  EFI_STATUS  Status;
+  UINTN       NewSP = Task->Registers.SP + 1;
+  BORAX_EXIT  *NewExit;
+
+  Status = TaskStackEnsureCapacity (&Task->Stack, NewSP);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = BoraxAllocateObject (
+             Task->Interp->Alloc,
+             sizeof (BORAX_EXIT),
+             (BORAX_OBJECT_HEADER **)&NewExit
+             );
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  NewExit->Valid = TRUE;
+  NewExit->Task  = BORAX_MAKE_POINTER (Task);
+  NewExit->BP    = Task->Registers.BP;
+  NewExit->PC    = PC;
+
+  BoraxTaskStackWrite (Task, Task->Registers.SP, BORAX_MAKE_POINTER (NewExit));
+  Task->Registers.SP = NewSP;
+
+  *Exit = NewExit;
+  return EFI_SUCCESS;
+}
+
+STATIC EFI_STATUS
+EFIAPI
+CopyExit (
+  IN BORAX_ALLOCATOR       *Alloc,
+  IN BORAX_OBJECT_HEADER   *OldObject,
+  OUT BORAX_OBJECT_HEADER  **NewObject
+  )
+{
+  return BoraxCopyObject (
+           Alloc,
+           sizeof (BORAX_EXIT),
+           OldObject,
+           NewObject
+           );
+}
+
+STATIC EFI_STATUS
+EFIAPI
+ExitSubObjects (
+  IN BORAX_OBJECT_HEADER          *Object,
+  IN VOID                         *Ctx,
+  IN BORAX_GC_SUBOBJECT_CALLBACK  Callback
+  )
+{
+  BORAX_EXIT  *Exit = (BORAX_EXIT *)Object;
+
+  return Callback (Ctx, &Exit->Task);
+}
+
+CONST BORAX_GC_HOOKS  gExitGcHooks = {
+  .Copy       = &CopyExit,
+  .SubObjects = &ExitSubObjects,
+};
+
+EFI_STATUS
+EFIAPI
+BoraxTaskTakeExit (
+  IN BORAX_TASK    *Task,
+  IN BORAX_OBJECT  Exit
+  )
+{
+  EFI_STATUS  Status;
+  BORAX_EXIT  *TheExit;
+
+  if (BORAX_DISCRIMINATE (Exit) != BORAX_DISCRIM_EXIT) {
+    DEBUG ((DEBUG_ERROR, "Not an exit object\n"));
+    return EFI_INVALID_PARAMETER;
+  }
+
+  TheExit = (BORAX_EXIT *)BORAX_GET_POINTER (Exit);
+
+  if (!TheExit->Valid) {
+    DEBUG ((DEBUG_ERROR, "Task tried to take an expired exit\n"));
+    return EFI_INVALID_PARAMETER;
+  }
+
+  if (TheExit->Task != BORAX_MAKE_POINTER (Task)) {
+    DEBUG ((DEBUG_ERROR, "Task tried to take an exit to another task\n"));
+    return EFI_INVALID_PARAMETER;
+  }
+
+  while (Task->Registers.BP > TheExit->BP) {
+    BOOLEAN  Intercepted;
+
+    Status = UnwindFrame (Task, Exit, &Intercepted);
+    if (EFI_ERROR (Status) || Intercepted) {
+      return Status;
+    }
+  }
+
+  ASSERT (Task->Registers.BP == TheExit->BP);
+
+  // The exit remains valid
+  Task->Registers.PC = TheExit->PC;
+  return EFI_SUCCESS;
+}
+
+EFI_STATUS
+EFIAPI
+BoraxTaskPopDynamic (
+  IN BORAX_TASK    *Task,
+  IN UINTN         Depth,
+  IN BORAX_OBJECT  TargetExit,
+  OUT BOOLEAN      *Intercepted
+  )
+{
+  UINTN                    BP, DP;
+  BORAX_OBJECT             Code;
+  BORAX_BUILT_IN_FUNCTION  *F;
+
+  BP   = Task->Registers.BP;
+  Code = BoraxTaskStackRead (Task, BP + 2);
+
+  // TODO: yadda yadda
+  if (BORAX_DISCRIMINATE (Code) != BORAX_DISCRIM_BUILT_IN_FUNCTION) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  F  = (BORAX_BUILT_IN_FUNCTION *)BORAX_GET_POINTER (Code);
+  DP = BP + 4 + F->Locals + F->SharedLength;
+
+  if (Task->Registers.SP < DP + Depth) {
+    DEBUG ((DEBUG_ERROR, "Task tried to PopDynamic to an invalid depth\n"));
+    return EFI_INVALID_PARAMETER;
+  }
+
+  while (Task->Registers.SP > DP + Depth) {
+    BORAX_OBJECT  Dynamic = BoraxTaskStackRead (Task, Task->Registers.SP - 1);
+
+    switch (BORAX_DISCRIMINATE (Dynamic)) {
+      case BORAX_DISCRIM_EXIT:
+      {
+        BORAX_EXIT  *Exit = (BORAX_EXIT *)BORAX_GET_POINTER (Dynamic);
+        Exit->Valid = FALSE;
+        break;
+      }
+
+      // TODO: make sure to set Intercepted when entering a cleanup
+
+      default:
+        DEBUG ((DEBUG_ERROR, "Invalid dynamic extent\n"));
+        return EFI_VOLUME_CORRUPTED;
+    }
+
+    --Task->Registers.SP;
+  }
+
+  *Intercepted = FALSE;
+  return EFI_SUCCESS;
 }
 
 BORAX_STACK_FRAME_ITERATOR

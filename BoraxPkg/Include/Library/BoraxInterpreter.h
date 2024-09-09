@@ -326,10 +326,45 @@ BoraxTaskEnterFunctionTail (
   IN BORAX_OBJECT  Function
   );
 
-VOID
+EFI_STATUS
 EFIAPI
 BoraxTaskExitFunction (
   IN BORAX_TASK  *Task
+  );
+
+typedef union {
+  BORAX_OBJECT_HEADER    Header;
+  struct {
+    BORAX_HALFWORD    HalfWord0;
+    BORAX_HALFWORD    Valid;
+    BORAX_OBJECT      Task;
+    UINTN             BP;
+    UINTN             PC;
+  };
+} BORAX_EXIT;
+
+EFI_STATUS
+EFIAPI
+BoraxTaskPushExit (
+  IN BORAX_TASK   *Task,
+  IN UINTN        PC,
+  OUT BORAX_EXIT  **Exit
+  );
+
+EFI_STATUS
+EFIAPI
+BoraxTaskTakeExit (
+  IN BORAX_TASK    *Task,
+  IN BORAX_OBJECT  Exit
+  );
+
+EFI_STATUS
+EFIAPI
+BoraxTaskPopDynamic (
+  IN BORAX_TASK    *Task,
+  IN UINTN         Depth,
+  IN BORAX_OBJECT  TargetExit,
+  OUT BOOLEAN      *Intercepted
   );
 
 typedef struct {

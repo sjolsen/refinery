@@ -365,8 +365,7 @@ FormatSimpleVector (
         }
 
         Task->Registers.VR->Values[0] = *Object;
-        BoraxTaskExitFunction (Task);
-        return EFI_SUCCESS;
+        return BoraxTaskExitFunction (Task);
       }
     }
 
@@ -456,8 +455,7 @@ FormatStandardClass (
         return Status;
       }
 
-      BoraxTaskExitFunction (Task);
-      return EFI_SUCCESS;
+      return BoraxTaskExitFunction (Task);
 
     default:
       return EFI_INVALID_PARAMETER;
@@ -590,8 +588,7 @@ FormatObjectRecord (
         }
 
         Task->Registers.VR->Values[0] = *Object;
-        BoraxTaskExitFunction (Task);
-        return EFI_SUCCESS;
+        return BoraxTaskExitFunction (Task);
       }
     }
 
@@ -667,8 +664,7 @@ FormatRecursive (
             return Status;
           }
 
-          BoraxTaskExitFunction (Task);
-          return EFI_SUCCESS;
+          return BoraxTaskExitFunction (Task);
 
         case BORAX_DISCRIM_UNBOUND:
           Status = BufferWrite (Buffer, L"<UNBOUND>");
@@ -676,8 +672,7 @@ FormatRecursive (
             return Status;
           }
 
-          BoraxTaskExitFunction (Task);
-          return EFI_SUCCESS;
+          return BoraxTaskExitFunction (Task);
 
         case BORAX_DISCRIM_CHARACTER:
         {
@@ -692,8 +687,7 @@ FormatRecursive (
             return Status;
           }
 
-          BoraxTaskExitFunction (Task);
-          return EFI_SUCCESS;
+          return BoraxTaskExitFunction (Task);
         }
 
         case BORAX_DISCRIM_CONS:
@@ -737,8 +731,7 @@ FormatRecursive (
             }
           }
 
-          BoraxTaskExitFunction (Task);
-          return EFI_SUCCESS;
+          return BoraxTaskExitFunction (Task);
         }
 
         case BORAX_DISCRIM_OBJECT_RECORD:
@@ -751,8 +744,7 @@ FormatRecursive (
               return Status;
             }
 
-            BoraxTaskExitFunction (Task);
-            return EFI_SUCCESS;
+            return BoraxTaskExitFunction (Task);
           } else if (Record->Class == Ctx->ClassSymbol) {
             SYMBOL  *Symbol;
 
@@ -783,8 +775,7 @@ FormatRecursive (
               return Status;
             }
 
-            BoraxTaskExitFunction (Task);
-            return EFI_SUCCESS;
+            return BoraxTaskExitFunction (Task);
           } else if (Record->Class == Ctx->ClassSimpleVector) {
             return BoraxTaskEnterFunctionTail (Task, Ctx->FormatSimpleVector);
           } else if (Record->Class == Ctx->ClassStandardClass) {
@@ -800,8 +791,7 @@ FormatRecursive (
             return Status;
           }
 
-          BoraxTaskExitFunction (Task);
-          return EFI_SUCCESS;
+          return BoraxTaskExitFunction (Task);
 
         case BORAX_DISCRIM_PIN:
           Status = BufferWrite (Buffer, L"<PIN>");
@@ -809,8 +799,7 @@ FormatRecursive (
             return Status;
           }
 
-          BoraxTaskExitFunction (Task);
-          return EFI_SUCCESS;
+          return BoraxTaskExitFunction (Task);
 
         case BORAX_DISCRIM_MOVED:
           Status = BufferWrite (Buffer, L"<MOVED>");
@@ -818,8 +807,7 @@ FormatRecursive (
             return Status;
           }
 
-          BoraxTaskExitFunction (Task);
-          return EFI_SUCCESS;
+          return BoraxTaskExitFunction (Task);
 
         case BORAX_DISCRIM_UNINITIALIZED:
           Status = BufferWrite (Buffer, L"<UNINITIALIZED>");
@@ -827,8 +815,7 @@ FormatRecursive (
             return Status;
           }
 
-          BoraxTaskExitFunction (Task);
-          return EFI_SUCCESS;
+          return BoraxTaskExitFunction (Task);
 
         default:
           Status = BufferWrite (Buffer, L"<ILLEGAL>");
@@ -836,8 +823,7 @@ FormatRecursive (
             return Status;
           }
 
-          BoraxTaskExitFunction (Task);
-          return EFI_SUCCESS;
+          return BoraxTaskExitFunction (Task);
       }
     }
 
@@ -889,8 +875,7 @@ FormatRecursive (
       }
 
       Task->Registers.VR->Values[0] = *SavedObject;
-      BoraxTaskExitFunction (Task);
-      return EFI_SUCCESS;
+      return BoraxTaskExitFunction (Task);
     }
 
     default:
