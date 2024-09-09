@@ -259,6 +259,8 @@ BoraxInterpreterCleanup (
 
     TaskEnd (Task);
   }
+
+  BoraxReleasePinRecord (&Interp->Record);
 }
 
 EFI_STATUS
