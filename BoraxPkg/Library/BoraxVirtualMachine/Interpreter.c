@@ -195,22 +195,56 @@ TaskEnd (
   BoraxReleasePinRecord (&Task->Record);
 }
 
-VOID
+EFI_STATUS
 EFIAPI
 BoraxInterpreterInit (
-  OUT BORAX_INTERPRETER  *Interp,
   IN BORAX_ALLOCATOR     *Alloc,
-  IN BORAX_PIN           *GlobalEnvironment
+  IN BORAX_OBJECT        GlobalEnvironment,
+  OUT BORAX_INTERPRETER  **Interp
   )
 {
-  Interp->Alloc             = Alloc;
-  Interp->GlobalEnvironment = GlobalEnvironment;
-  Interp->GcPageThreshold   = MAX (
-                                GC_PAGE_THRESHOLD_MIN,
-                                GC_PAGE_THRESHOLD_FACTOR * Alloc->UsedPages
-                                );
-  InitializeListHead (&Interp->TaskList);
+  EFI_STATUS         Status;
+  BORAX_INTERPRETER  *NewInterp;
+
+  Status = BoraxAllocatePinRecord (
+             Alloc,
+             BORAX_WIDETAG_INTERPRETER,
+             sizeof (BORAX_INTERPRETER),
+             (BORAX_PIN_RECORD **)&NewInterp
+             );
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  NewInterp->Alloc             = Alloc;
+  NewInterp->GlobalEnvironment = GlobalEnvironment;
+  NewInterp->GcPageThreshold   = MAX (
+                                   GC_PAGE_THRESHOLD_MIN,
+                                   GC_PAGE_THRESHOLD_FACTOR * Alloc->UsedPages
+                                   );
+  InitializeListHead (&NewInterp->TaskList);
+
+  *Interp = NewInterp;
+  return EFI_SUCCESS;
 }
+
+STATIC EFI_STATUS
+EFIAPI
+InterpreterSubObjects (
+  IN BORAX_OBJECT_HEADER          *Object,
+  IN VOID                         *Ctx,
+  IN BORAX_GC_SUBOBJECT_CALLBACK  Callback
+  )
+{
+  BORAX_INTERPRETER  *Interp = (BORAX_INTERPRETER *)Object;
+
+  return Callback (Ctx, &Interp->GlobalEnvironment);
+}
+
+CONST BORAX_GC_HOOKS  gInterpreterGcHooks = {
+  .Copy       = &BoraxGcHookNoCopy,  // pin record
+  .SubObjects = &InterpreterSubObjects,
+};
 
 VOID
 EFIAPI
@@ -351,7 +385,7 @@ BoraxGlobalEnvironment (
   OUT BORAX_GLOBAL_ENVIRONMENT  **Env
   )
 {
-  return BORAX_GET_OBJECT_RECORD (Interp->GlobalEnvironment->Object, Env);
+  return BORAX_GET_OBJECT_RECORD (Interp->GlobalEnvironment, Env);
 }
 
 EFI_STATUS

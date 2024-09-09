@@ -10,8 +10,7 @@
 #include <Library/MemoryAllocationLib.h>
 #include <Library/UefiLib.h>
 
-STATIC BORAX_ALLOCATOR    gAlloc;
-STATIC BORAX_INTERPRETER  gInterp;
+STATIC BORAX_ALLOCATOR  gAlloc;
 
 typedef struct {
   BORAX_RECORD    Record;
@@ -916,9 +915,10 @@ STATIC CONST FUNCTION_DESCRIPTOR  gFormatRecursive = {
 STATIC EFI_STATUS
 EFIAPI
 PrintLabelled (
-  IN BORAX_PIN     *LispContext,
-  IN BUFFER        *Buffer,
-  IN CONST CHAR16  *SymbolName
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_PIN          *LispContext,
+  IN BUFFER             *Buffer,
+  IN CONST CHAR16       *SymbolName
   )
 {
   EFI_STATUS             Status;
@@ -953,7 +953,7 @@ PrintLabelled (
     return Status;
   }
 
-  Status = BoraxMakeMultipleValues (&gInterp, 1, &Args);
+  Status = BoraxMakeMultipleValues (Interp, 1, &Args);
   if (EFI_ERROR (Status)) {
     return Status;
   }
@@ -961,7 +961,7 @@ PrintLabelled (
   Args->Values[0] = Symbol->Value;
 
   Status = BoraxInterpreterSpawn (
-             &gInterp,
+             Interp,
              NULL,
              NULL,
              Ctx->FormatRecursive,
@@ -971,7 +971,7 @@ PrintLabelled (
     return Status;
   }
 
-  Status = BoraxInterpreterRun (&gInterp, &IORequests);
+  Status = BoraxInterpreterRun (Interp, &IORequests);
   if (EFI_ERROR (Status)) {
     return Status;
   }
@@ -1028,8 +1028,9 @@ MakeFunction (
 STATIC EFI_STATUS
 EFIAPI
 InitializeEnvironment (
-  IN BUFFER      *Content,
-  OUT BORAX_PIN  **LispContext
+  IN BORAX_INTERPRETER  *Interp,
+  IN BUFFER             *Content,
+  OUT BORAX_PIN         **LispContext
   )
 {
   EFI_STATUS  Status;
@@ -1042,7 +1043,7 @@ InitializeEnvironment (
   LISP_CONTEXT   *Ctx;
   BUFFER_HANDLE  *Buffer;
 
-  Status = BoraxGlobalEnvironment (&gInterp, &Env);
+  Status = BoraxGlobalEnvironment (Interp, &Env);
   if (EFI_ERROR (Status)) {
     return Status;
   }
@@ -1237,23 +1238,25 @@ ImageLoadContent (
   (VOID)BufferWrite (Content, InitialImagePath);
   (VOID)BufferWrite (Content, L"\n");
 
-  BoraxInterpreterInit (&gInterp, &gAlloc, GlobalEnvironment);
-  Interp = &gInterp;
-
-  Status = InitializeEnvironment (Content, &Ctx);
+  Status = BoraxInterpreterInit (&gAlloc, GlobalEnvironment->Object, &Interp);
   if (EFI_ERROR (Status)) {
     goto cleanup;
   }
 
-  (VOID)PrintLabelled (Ctx, Content, L"NUMBERS");
-  (VOID)PrintLabelled (Ctx, Content, L"STUFF");
-  (VOID)PrintLabelled (Ctx, Content, L"LETTERS");
-  (VOID)PrintLabelled (Ctx, Content, L"HELLO");
-  (VOID)PrintLabelled (Ctx, Content, L"SUM-LIST");
+  Status = InitializeEnvironment (Interp, Content, &Ctx);
+  if (EFI_ERROR (Status)) {
+    goto cleanup;
+  }
+
+  (VOID)PrintLabelled (Interp, Ctx, Content, L"NUMBERS");
+  (VOID)PrintLabelled (Interp, Ctx, Content, L"STUFF");
+  (VOID)PrintLabelled (Interp, Ctx, Content, L"LETTERS");
+  (VOID)PrintLabelled (Interp, Ctx, Content, L"HELLO");
+  (VOID)PrintLabelled (Interp, Ctx, Content, L"SUM-LIST");
 
 cleanup:
   if (Interp != NULL) {
-    BoraxInterpreterCleanup (&gInterp);
+    BoraxInterpreterCleanup (Interp);
   }
 
   if (InitialImage != NULL) {

@@ -171,18 +171,19 @@
  */
 
 typedef struct {
-  BORAX_ALLOCATOR    *Alloc;
-  BORAX_PIN          *GlobalEnvironment;
-  UINTN              GcPageThreshold;
-  LIST_ENTRY         TaskList;
+  BORAX_PIN_RECORD    Record;
+  BORAX_ALLOCATOR     *Alloc;
+  BORAX_OBJECT        GlobalEnvironment;
+  UINTN               GcPageThreshold;
+  LIST_ENTRY          TaskList;
 } BORAX_INTERPRETER;
 
-VOID
+EFI_STATUS
 EFIAPI
 BoraxInterpreterInit (
-  OUT BORAX_INTERPRETER  *Interp,
   IN BORAX_ALLOCATOR     *Alloc,
-  IN BORAX_PIN           *GlobalEnvironment
+  IN BORAX_OBJECT        GlobalEnvironment,
+  OUT BORAX_INTERPRETER  **Interp
   );
 
 VOID
