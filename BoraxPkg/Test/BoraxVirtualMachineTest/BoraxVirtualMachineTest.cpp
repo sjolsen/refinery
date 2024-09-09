@@ -136,9 +136,9 @@ public:
     VOID  *Ptr  OPTIONAL
     )
   {
-    EFI_STATUS  Status;
-    BORAX_PIN   *Pin;
-    BORAX_OBJECT Object;
+    EFI_STATUS    Status;
+    BORAX_PIN     *Pin;
+    BORAX_OBJECT  Object;
 
     if (Ptr == NULL) {
       Object = BORAX_IMMEDIATE_UNBOUND;
@@ -468,14 +468,14 @@ TEST_F (MemoryTests, RootedObjectRecord) {
 }
 
 TEST_F (MemoryTests, CircularPin) {
-  BORAX_PIN *Raw1, *Raw2;
+  BORAX_PIN  *Raw1, *Raw2;
 
   {
-    AutoPin Pin1 = MakePin (NULL);
-    AutoPin Pin2 = MakePin (NULL);
+    AutoPin  Pin1 = MakePin (NULL);
+    AutoPin  Pin2 = MakePin (NULL);
 
-    Raw1 = Pin1.get();
-    Raw2 = Pin2.get();
+    Raw1 = Pin1.get ();
+    Raw2 = Pin2.get ();
 
     Raw1->Object = BORAX_MAKE_POINTER (Raw2);
     Raw2->Object = BORAX_MAKE_POINTER (Raw1);
