@@ -1037,10 +1037,7 @@ InitializeEnvironment (
   LISP_CONTEXT   *Ctx;
   BUFFER_HANDLE  *Buffer;
 
-  Status = BoraxGlobalEnvironment (Interp, &Env);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
+  Env = Interp->GlobalEnvironment;
 
   Status = EarlyFindPackage (Env, L"COMMON-LISP", &CommonLisp);
   if (EFI_ERROR (Status)) {

@@ -20,6 +20,24 @@
 
 STATIC EFI_STATUS
 EFIAPI
+VirtualSubObject (
+  IN VOID                         *Ctx,
+  IN BORAX_GC_SUBOBJECT_CALLBACK  Callback,
+  IN OUT VOID                     **Ptr
+  )
+{
+  EFI_STATUS    Status;
+  BORAX_OBJECT  Object;
+
+  Object = BORAX_MAKE_POINTER (*Ptr);
+  Status = Callback (Ctx, &Object);
+  ASSERT (BORAX_IS_POINTER (Object));
+  *Ptr = BORAX_GET_POINTER (Object);
+  return Status;
+}
+
+STATIC EFI_STATUS
+EFIAPI
 TaskStackInit (
   OUT BORAX_TASK_STACK  *Stack
   )
@@ -216,12 +234,19 @@ BoraxInterpreterInit (
     return Status;
   }
 
-  NewInterp->Alloc             = Alloc;
-  NewInterp->GlobalEnvironment = GlobalEnvironment;
-  NewInterp->GcPageThreshold   = MAX (
-                                   GC_PAGE_THRESHOLD_MIN,
-                                   GC_PAGE_THRESHOLD_FACTOR * Alloc->UsedPages
-                                   );
+  Status = BORAX_GET_OBJECT_RECORD (
+             GlobalEnvironment,
+             &NewInterp->GlobalEnvironment
+             );
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  NewInterp->Alloc           = Alloc;
+  NewInterp->GcPageThreshold = MAX (
+                                 GC_PAGE_THRESHOLD_MIN,
+                                 GC_PAGE_THRESHOLD_FACTOR * Alloc->UsedPages
+                                 );
   InitializeListHead (&NewInterp->TaskList);
 
   *Interp = NewInterp;
@@ -238,7 +263,7 @@ InterpreterSubObjects (
 {
   BORAX_INTERPRETER  *Interp = (BORAX_INTERPRETER *)Object;
 
-  return Callback (Ctx, &Interp->GlobalEnvironment);
+  return VirtualSubObject (Ctx, Callback, (VOID **)&Interp->GlobalEnvironment);
 }
 
 CONST BORAX_GC_HOOKS  gInterpreterGcHooks = {
@@ -378,16 +403,6 @@ BoraxInterpreterShutdown (
   )
 {
   // TODO
-}
-
-EFI_STATUS
-EFIAPI
-BoraxGlobalEnvironment (
-  IN BORAX_INTERPRETER          *Interp,
-  OUT BORAX_GLOBAL_ENVIRONMENT  **Env
-  )
-{
-  return BORAX_GET_OBJECT_RECORD (Interp->GlobalEnvironment, Env);
 }
 
 EFI_STATUS
@@ -996,10 +1011,9 @@ TaskSubObjects (
   IN BORAX_GC_SUBOBJECT_CALLBACK  Callback
   )
 {
-  EFI_STATUS    Status;
-  BORAX_TASK    *Task = (BORAX_TASK *)Object;
-  UINTN         I;
-  BORAX_OBJECT  VR;
+  EFI_STATUS  Status;
+  BORAX_TASK  *Task = (BORAX_TASK *)Object;
+  UINTN       I;
 
   for (I = 0; I < Task->Registers.SP; ++I) {
     UINTN  PageIndex  = I / BORAX_WORDS_PER_PAGE;
@@ -1011,12 +1025,7 @@ TaskSubObjects (
     }
   }
 
-  VR     = BORAX_MAKE_POINTER (Task->Registers.VR);
-  Status = Callback (Ctx, &VR);
-  ASSERT (BORAX_IS_POINTER (VR));
-  Task->Registers.VR = (BORAX_MULTIPLE_VALUES *)BORAX_GET_POINTER (VR);
-
-  return Status;
+  return VirtualSubObject (Ctx, Callback, (VOID **)&Task->Registers.VR);
 }
 
 CONST BORAX_GC_HOOKS  gTaskGcHooks = {
