@@ -937,34 +937,32 @@ BoraxTaskDebugStackTrace (
       }
 
       if (Printed < STACK_TRACE_LIMIT) {
-        BOOLEAN                   HaveInfo = FALSE;
         CONST BORAX_FUNCTION_OPS  *Ops;
         VOID                      *Function;
-        BORAX_FUNCTION_INFO       Info;
+        BORAX_FUNCTION_NAME       Name = { BORAX_FUNCTION_NAME_NONE };
 
         Status = BoraxFunctionOps (Frame.Code, &Ops, &Function);
         if (EFI_ERROR (Status)) {
           goto print_name;
         }
 
-        Status = Ops->Info (Function, &Info);
+        Status = Ops->Name (Function, &Name);
         if (EFI_ERROR (Status)) {
           goto print_name;
         }
 
-        HaveInfo = TRUE;
-
 print_name:
-        if (HaveInfo) {
-          DebugPrint (
-            ErrorLevel,
-            "  %.*s:%u\n",
-            Info.Name.Length,
-            Info.Name.Data,
-            Frame.PC
-            );
-        } else {
-          DebugPrint (ErrorLevel, "  <unknown>:%u\n", Frame.PC);
+        switch (Name.Tag) {
+          case BORAX_FUNCTION_NAME_C_STRING:
+            DebugPrint (ErrorLevel, "  %s:%u\n", Name.CString, Frame.PC);
+            break;
+
+          case BORAX_FUNCTION_NAME_OBJECT:
+          // TODO: implement name printing
+          // fall-through
+
+          default:
+            DebugPrint (ErrorLevel, "  <unknown>:%u\n", Frame.PC);
         }
 
         ++Printed;
@@ -1170,6 +1168,20 @@ BuiltInFunctionRun (
 
 STATIC EFI_STATUS
 EFIAPI
+BuiltInFunctionName (
+  IN VOID                  *Function,
+  OUT BORAX_FUNCTION_NAME  *Name
+  )
+{
+  BORAX_BUILT_IN_FUNCTION  *F = Function;
+
+  Name->Tag     = BORAX_FUNCTION_NAME_C_STRING;
+  Name->CString = F->Name;
+  return EFI_SUCCESS;
+}
+
+STATIC EFI_STATUS
+EFIAPI
 BuiltInFunctionInfo (
   IN VOID                  *Function,
   OUT BORAX_FUNCTION_INFO  *Info
@@ -1177,11 +1189,9 @@ BuiltInFunctionInfo (
 {
   BORAX_BUILT_IN_FUNCTION  *F = Function;
 
-  Info->Name.Data   = F->Name;
-  Info->Name.Length = StrLen (F->Name);
-  Info->Entry       = F->Entry;
-  Info->Locals      = F->Locals;
-  Info->Shared      = F->SharedLength;
+  Info->Entry  = F->Entry;
+  Info->Locals = F->Locals;
+  Info->Shared = F->SharedLength;
   return EFI_SUCCESS;
 }
 
@@ -1223,6 +1233,7 @@ BuiltInFunctionConstant (
 
 CONST BORAX_FUNCTION_OPS  gBuiltInFunctionOps = {
   .Run      = &BuiltInFunctionRun,
+  .Name     = &BuiltInFunctionName,
   .Info     = &BuiltInFunctionInfo,
   .Shared   = &BuiltInFunctionShared,
   .Constant = &BuiltInFunctionConstant,

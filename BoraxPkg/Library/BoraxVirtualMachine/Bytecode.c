@@ -12,6 +12,16 @@ BytecodeFunctionRun (
 
 STATIC EFI_STATUS
 EFIAPI
+BytecodeFunctionName (
+  IN VOID                  *Function,
+  OUT BORAX_FUNCTION_NAME  *Name
+  )
+{
+  return EFI_UNSUPPORTED;
+}
+
+STATIC EFI_STATUS
+EFIAPI
 BytecodeFunctionInfo (
   IN VOID                  *Function,
   OUT BORAX_FUNCTION_INFO  *Info
@@ -44,6 +54,7 @@ BytecodeFunctionConstant (
 
 CONST BORAX_FUNCTION_OPS  gBytecodeFunctionOps = {
   .Run      = &BytecodeFunctionRun,
+  .Name     = &BytecodeFunctionName,
   .Info     = &BytecodeFunctionInfo,
   .Shared   = &BytecodeFunctionShared,
   .Constant = &BytecodeFunctionConstant,

@@ -411,10 +411,25 @@ EFI_STATUS
   );
 
 typedef struct {
-  struct {
-    CONST CHAR16    *Data;
-    UINTN           Length;
-  } Name;
+  enum {
+    BORAX_FUNCTION_NAME_NONE = 0,
+    BORAX_FUNCTION_NAME_C_STRING,
+    BORAX_FUNCTION_NAME_OBJECT,
+  } Tag;
+  union {
+    CONST CHAR16    *CString;
+    BORAX_OBJECT    Object;
+  };
+} BORAX_FUNCTION_NAME;
+
+typedef
+EFI_STATUS
+(EFIAPI *BORAX_FUNCTION_OP_NAME)(
+  IN VOID *Function,
+  OUT BORAX_FUNCTION_NAME *Name
+  );
+
+typedef struct {
   UINTN    Entry;
   UINTN    Locals;
   UINTN    Shared;
@@ -445,6 +460,7 @@ EFI_STATUS
 
 typedef struct {
   BORAX_FUNCTION_OP_RUN         Run;
+  BORAX_FUNCTION_OP_NAME        Name;
   BORAX_FUNCTION_OP_INFO        Info;
   BORAX_FUNCTION_OP_SHARED      Shared;
   BORAX_FUNCTION_OP_CONSTANT    Constant;
