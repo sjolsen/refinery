@@ -1,6 +1,9 @@
 #ifndef BORAX_BYTECODE_H
 #define BORAX_BYTECODE_H
 
+#include <Library/BoraxInterpreter.h>
+#include <Library/BoraxMemory.h>
+
 /*
  * Why a bytecode interpreter?
  * ===========================
@@ -801,29 +804,55 @@
 
 enum {
   // Control-flow operations
-  BORAX_OPCODE_CALL,
-  BORAX_OPCODE_JUMP,
-  BORAX_OPCODE_RETURN,
-  BORAX_OPCODE_EXIT,
-  BORAX_OPCODE_THROW,
+  BORAX_OPCODE_CALL   = 0x00,
+  BORAX_OPCODE_JUMP   = 0x40,
+  BORAX_OPCODE_RETURN = 0x50,
+  BORAX_OPCODE_EXIT   = 0x60,
+  BORAX_OPCODE_THROW  = 0x70,
   // Dynamic extent operations
-  BORAX_OPCODE_PUSH_SPECIAL,
-  BORAX_OPCODE_PUSH_EXIT,
-  BORAX_OPCODE_PUSH_CATCH,
-  BORAX_OPCODE_PUSH_CLEANUP,
-  BORAX_OPCODE_POP_DYNAMIC,
+  BORAX_OPCODE_PUSH_SPECIAL = 0x80,
+  BORAX_OPCODE_PUSH_EXIT    = 0x81,
+  BORAX_OPCODE_PUSH_CATCH   = 0x82,
+  BORAX_OPCODE_PUSH_CLEANUP = 0x83,
+  BORAX_OPCODE_POP_DYNAMIC  = 0xC0,
   // Data operations
-  BORAX_OPCODE_BIND,
-  BORAX_OPCODE_CAPTURE,
-  BORAX_OPCODE_MOVE,
+  BORAX_OPCODE_BIND    = 0xD0,
+  BORAX_OPCODE_CAPTURE = 0xE0,
+  BORAX_OPCODE_MOVE    = 0xF0,
 };
 
 enum {
   // Addressing modes
-  BORAX_MODE_CONSTANT,
-  BORAX_MODE_LOCAL,
-  BORAX_MODE_SHARED,
-  BORAX_MODE_CLOSURE,
+  BORAX_MODE_CONSTANT = 0,
+  BORAX_MODE_LOCAL    = 1,
+  BORAX_MODE_SHARED   = 2,
+  BORAX_MODE_CLOSURE  = 3,
 };
+
+/*
+ * TODO: Possibly make this a built-in type
+ *
+ * Lisp objects are mutable, and function objects are used to compute stack
+ * frame layout. This layout is not stored on the stack, and so must be
+ * re-computed when re-entering a stack frame. This opens the possibility for
+ * Lisp code to corrupt the stack by modifying the Locals and Shared fields of a
+ * function while it has an active stack frame. I _believe_ this is not a
+ * memory-safety problem, since stack slot accesses for bytecode functions are
+ * always type-checked and such a modified function can only corrupt its _own_
+ * frame (the stack access instructions cannot encode access to earlier frames,
+ * and instructions accessing the corrupted frame can only execute while it is
+ * the last frame on the stack), but if I'm wrong about this then the bytecode
+ * function type will need to be made immutable, including the Shared vector.
+ */
+typedef struct {
+  BORAX_RECORD    Record;
+  BORAX_OBJECT    Name;
+  BORAX_OBJECT    Arglist;
+  BORAX_OBJECT    Entry;
+  BORAX_OBJECT    Code;
+  BORAX_OBJECT    Locals;
+  BORAX_OBJECT    Shared;
+  BORAX_OBJECT    Constants;
+} BORAX_BYTECODE_FUNCTION;
 
 #endif // BORAX_BYTECODE_H

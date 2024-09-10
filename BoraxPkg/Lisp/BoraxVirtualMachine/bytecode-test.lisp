@@ -40,7 +40,6 @@
       (assert-equalp #(0 car-cdr +)      (bytecode-constants bf))
       (assert-equalp 3                   (bytecode-locals bf))
       (assert-equalp #()                 (bytecode-shared bf))
-      (assert-equalp #()                 (bytecode-closure bf))
       (assert-equalp 'sum-list           (bytecode-name bf))
       (assert-equalp '(&rest l)          (bytecode-arglist bf))
       (assert-equalp 0                   (bytecode-entry bf)))))

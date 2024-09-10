@@ -16,6 +16,7 @@
   BoraxPkg/BoraxPkg.dec
 
 [Sources]
+  Bytecode.c
   Interpreter.c
   Memory.c
   ObjectFile.c

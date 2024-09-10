@@ -11,22 +11,20 @@
 (in-package :borax-virtual-machine/bytecode)
 
 (defclass bytecode-function ()
-  ((code :initarg :code
-         :reader bytecode)
-   (constants :initarg :constants
-              :reader bytecode-constants)
-   (locals :initarg :local
-           :reader bytecode-locals)
-   (shared :initarg :shared
-           :reader bytecode-shared)
-   (closure :initarg :closure
-            :reader bytecode-closure)
-   (name :initarg :name
+  ((name :initarg :name
          :reader bytecode-name)
    (arglist :initarg :arglist
             :reader bytecode-arglist)
    (entry :initform 0
-          :reader bytecode-entry))
+          :reader bytecode-entry)
+   (code :initarg :code
+         :reader bytecode)
+   (locals :initarg :local
+           :reader bytecode-locals)
+   (shared :initarg :shared
+           :reader bytecode-shared)
+   (constants :initarg :constants
+              :reader bytecode-constants))
   (:metaclass record-class))
 
 (defstruct storage-block
@@ -312,13 +310,12 @@
      (setf (bytecode-function ',name) *parser-state*)))
 
 (defmethod reify ((object bytecode-parser))
-  (with-slots (name lambda-list code constants locals shared closure)
+  (with-slots (name lambda-list code constants locals shared)
       object
     (make-instance 'bytecode-function
                    :code (copy-seq code)
                    :constants (copy-seq constants)
                    :local (storage-block-count locals)
                    :shared (flatten-storage-blocks shared)
-                   :closure (flatten-storage-blocks closure)
                    :name name
                    :arglist lambda-list)))

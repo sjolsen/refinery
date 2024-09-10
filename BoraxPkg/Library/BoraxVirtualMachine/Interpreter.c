@@ -1,6 +1,7 @@
 #include <Library/BoraxInterpreter.h>
 
 #include <Library/BaseLib.h>
+#include <Library/BoraxBytecode.h>
 #include <Library/BoraxMemory.h>
 #include <Library/DebugLib.h>
 #include <Library/MemoryAllocationLib.h>
@@ -149,20 +150,19 @@ TaskRun (
   )
 {
   while (Task->State == BORAX_TASK_RUNNING) {
-    EFI_STATUS               Status;
-    UINTN                    BP   = Task->Registers.BP;
-    BORAX_OBJECT             Code = BoraxTaskStackRead (Task, BP + 2);
-    BORAX_BUILT_IN_FUNCTION  *F;
+    EFI_STATUS                Status;
+    UINTN                     BP   = Task->Registers.BP;
+    BORAX_OBJECT              Code = BoraxTaskStackRead (Task, BP + 2);
+    CONST BORAX_FUNCTION_OPS  *Ops;
+    VOID                      *Function;
 
-    // TODO: Non-built-ins
-    if (BORAX_DISCRIMINATE (Code) != BORAX_DISCRIM_BUILT_IN_FUNCTION) {
-      // TODO: Error reporting
+    Status = BoraxFunctionOps (Code, &Ops, &Function);
+    if (EFI_ERROR (Status)) {
+      // TODO: error reporting
       return EFI_INVALID_PARAMETER;
     }
 
-    F = (BORAX_BUILT_IN_FUNCTION *)BORAX_GET_POINTER (Code);
-
-    Status = F->Code (Task);
+    Status = Ops->Run (Task, Function);
     if (EFI_ERROR (Status)) {
       DebugPrint (DEBUG_ERROR, "Task returned error: %r\n", Status);
       BoraxTaskDebugStackTrace (DEBUG_ERROR, Task);
@@ -525,22 +525,25 @@ BoraxTaskStackLocal (
   return BoraxTaskStackIndex (Task, Task->Registers.BP + 4 + Index);
 }
 
-BORAX_OBJECT
+EFI_STATUS
 EFIAPI
 BoraxTaskFunctionConstant (
-  IN BORAX_TASK  *Task,
-  IN UINTN       Index
+  IN BORAX_TASK     *Task,
+  IN UINTN          Index,
+  OUT BORAX_OBJECT  *Constant
   )
 {
-  BORAX_OBJECT  Function = BoraxTaskStackRead (Task, Task->Registers.BP + 2);
+  EFI_STATUS                Status;
+  BORAX_OBJECT              Code = BoraxTaskStackRead (Task, Task->Registers.BP + 2);
+  CONST BORAX_FUNCTION_OPS  *Ops;
+  VOID                      *Function;
 
-  BORAX_BUILT_IN_FUNCTION  *F;
+  Status = BoraxFunctionOps (Code, &Ops, &Function);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
 
-  // TODO: think a little harder about this API
-  ASSERT (BORAX_DISCRIMINATE (Function) == BORAX_DISCRIM_BUILT_IN_FUNCTION);
-  F = (BORAX_BUILT_IN_FUNCTION *)BORAX_GET_POINTER (Function);
-  ASSERT (Index < F->ConstantsLength);
-  return F->Constants[Index];
+  return Ops->Constant (Function, Index, Constant);
 }
 
 EFI_STATUS
@@ -550,26 +553,30 @@ BoraxTaskEnterFunction (
   IN BORAX_OBJECT  Function
   )
 {
-  EFI_STATUS               Status;
-  BORAX_BUILT_IN_FUNCTION  *F;
-  UINTN                    NewBP, NewSP;
-  UINTN                    I;
+  EFI_STATUS                Status;
+  CONST BORAX_FUNCTION_OPS  *Ops;
+  VOID                      *F;
+  BORAX_FUNCTION_INFO       Info;
+  UINTN                     NewBP, NewSP;
+  UINTN                     I;
 
-  // TODO: Non-built-ins
-  if (BORAX_DISCRIMINATE (Function) != BORAX_DISCRIM_BUILT_IN_FUNCTION) {
-    // TODO: Error reporting
-    return EFI_INVALID_PARAMETER;
+  Status = BoraxFunctionOps (Function, &Ops, &F);
+  if (EFI_ERROR (Status)) {
+    return Status;
   }
 
-  F = (BORAX_BUILT_IN_FUNCTION *)BORAX_GET_POINTER (Function);
+  Status = Ops->Info (F, &Info);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
 
   // TODO: Shared bindings
-  if (F->SharedLength != 0) {
+  if (Info.Shared != 0) {
     return EFI_UNSUPPORTED;
   }
 
   NewBP = Task->Registers.SP;
-  NewSP = NewBP + 4 + F->Locals + F->SharedLength;
+  NewSP = NewBP + 4 + Info.Locals + Info.Shared;
 
   Status = TaskStackEnsureCapacity (&Task->Stack, NewSP);
   if (EFI_ERROR (Status)) {
@@ -581,13 +588,13 @@ BoraxTaskEnterFunction (
   BoraxTaskStackWrite (Task, NewBP + 2, Function);
   BoraxTaskStackWrite (Task, NewBP + 3, BORAX_IMMEDIATE_UNBOUND);
 
-  for (I = 0; I < F->Locals; ++I) {
+  for (I = 0; I < Info.Locals; ++I) {
     BoraxTaskStackWrite (Task, NewBP + 4 + I, BORAX_IMMEDIATE_UNBOUND);
   }
 
   Task->Registers.SP = NewSP;
   Task->Registers.BP = NewBP;
-  Task->Registers.PC = F->Entry;
+  Task->Registers.PC = Info.Entry;
 
   return EFI_SUCCESS;
 }
@@ -785,20 +792,27 @@ BoraxTaskPopDynamic (
   OUT BOOLEAN      *Intercepted
   )
 {
-  UINTN                    BP, DP;
-  BORAX_OBJECT             Code;
-  BORAX_BUILT_IN_FUNCTION  *F;
+  EFI_STATUS                Status;
+  UINTN                     BP, DP;
+  BORAX_OBJECT              Code;
+  CONST BORAX_FUNCTION_OPS  *Ops;
+  VOID                      *Function;
+  BORAX_FUNCTION_INFO       Info;
 
   BP   = Task->Registers.BP;
   Code = BoraxTaskStackRead (Task, BP + 2);
 
-  // TODO: yadda yadda
-  if (BORAX_DISCRIMINATE (Code) != BORAX_DISCRIM_BUILT_IN_FUNCTION) {
-    return EFI_INVALID_PARAMETER;
+  Status = BoraxFunctionOps (Code, &Ops, &Function);
+  if (EFI_ERROR (Status)) {
+    return Status;
   }
 
-  F  = (BORAX_BUILT_IN_FUNCTION *)BORAX_GET_POINTER (Code);
-  DP = BP + 4 + F->Locals + F->SharedLength;
+  Status = Ops->Info (Function, &Info);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  DP = BP + 4 + Info.Locals + Info.Shared;
 
   if (Task->Registers.SP < DP + Depth) {
     DEBUG ((DEBUG_ERROR, "Task tried to PopDynamic to an invalid depth\n"));
@@ -923,19 +937,34 @@ BoraxTaskDebugStackTrace (
       }
 
       if (Printed < STACK_TRACE_LIMIT) {
-        switch (BORAX_DISCRIMINATE (Frame.Code)) {
-          case BORAX_DISCRIM_BUILT_IN_FUNCTION:
-          {
-            BORAX_BUILT_IN_FUNCTION  *F;
-            F = (BORAX_BUILT_IN_FUNCTION *)BORAX_GET_POINTER (Frame.Code);
+        BOOLEAN                   HaveInfo = FALSE;
+        CONST BORAX_FUNCTION_OPS  *Ops;
+        VOID                      *Function;
+        BORAX_FUNCTION_INFO       Info;
 
-            DebugPrint (ErrorLevel, "  %s:%u\n", F->Name, Frame.PC);
-            break;
-          }
+        Status = BoraxFunctionOps (Frame.Code, &Ops, &Function);
+        if (EFI_ERROR (Status)) {
+          goto print_name;
+        }
 
-          default:
-            DebugPrint (ErrorLevel, "  <unknown>:%u\n", Frame.PC);
-            break;
+        Status = Ops->Info (Function, &Info);
+        if (EFI_ERROR (Status)) {
+          goto print_name;
+        }
+
+        HaveInfo = TRUE;
+
+print_name:
+        if (HaveInfo) {
+          DebugPrint (
+            ErrorLevel,
+            "  %.*s:%u\n",
+            Info.Name.Length,
+            Info.Name.Data,
+            Frame.PC
+            );
+        } else {
+          DebugPrint (ErrorLevel, "  <unknown>:%u\n", Frame.PC);
         }
 
         ++Printed;
@@ -996,6 +1025,43 @@ CONST BORAX_GC_HOOKS  gTaskGcHooks = {
   .Copy       = &BoraxGcHookNoCopy,  // pin record
   .SubObjects = &TaskSubObjects,
 };
+
+EFI_STATUS
+EFIAPI
+BoraxFunctionOps (
+  IN BORAX_OBJECT               Function,
+  OUT CONST BORAX_FUNCTION_OPS  **Ops,
+  OUT VOID                      **This
+  )
+{
+  EFI_STATUS  Status;
+
+  // TODO: A dispatch error should signal a condition
+  switch (BORAX_DISCRIMINATE (Function)) {
+    case BORAX_DISCRIM_BUILT_IN_FUNCTION:
+      *Ops  = &gBuiltInFunctionOps;
+      *This = BORAX_GET_POINTER (Function);
+      return EFI_SUCCESS;
+
+    case BORAX_DISCRIM_OBJECT_RECORD:
+    {
+      BORAX_BYTECODE_FUNCTION  *F;
+
+      Status = BORAX_GET_OBJECT_RECORD (Function, &F);
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      // TODO: class checking
+      *Ops  = &gBytecodeFunctionOps;
+      *This = F;
+      return EFI_SUCCESS;
+    }
+
+    default:
+      return EFI_INVALID_PARAMETER;
+  }
+}
 
 EFI_STATUS
 EFIAPI
@@ -1088,6 +1154,78 @@ BuiltInFunctionSubObjects (
 CONST BORAX_GC_HOOKS  gBuiltInFunctionGcHooks = {
   .Copy       = &CopyBuiltInFunction,
   .SubObjects = &BuiltInFunctionSubObjects,
+};
+
+STATIC EFI_STATUS
+EFIAPI
+BuiltInFunctionRun (
+  IN BORAX_TASK  *Task,
+  IN VOID        *Function
+  )
+{
+  BORAX_BUILT_IN_FUNCTION  *F = Function;
+
+  return F->Code (Task);
+}
+
+STATIC EFI_STATUS
+EFIAPI
+BuiltInFunctionInfo (
+  IN VOID                  *Function,
+  OUT BORAX_FUNCTION_INFO  *Info
+  )
+{
+  BORAX_BUILT_IN_FUNCTION  *F = Function;
+
+  Info->Name.Data   = F->Name;
+  Info->Name.Length = StrLen (F->Name);
+  Info->Entry       = F->Entry;
+  Info->Locals      = F->Locals;
+  Info->Shared      = F->SharedLength;
+  return EFI_SUCCESS;
+}
+
+STATIC EFI_STATUS
+EFIAPI
+BuiltInFunctionShared (
+  IN VOID    *Function,
+  IN UINTN   Block,
+  OUT UINTN  *Count
+  )
+{
+  BORAX_BUILT_IN_FUNCTION  *F = Function;
+
+  if (Block >= F->SharedLength) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  *Count = F->Shared[Block];
+  return EFI_SUCCESS;
+}
+
+STATIC EFI_STATUS
+EFIAPI
+BuiltInFunctionConstant (
+  IN VOID           *Function,
+  IN UINTN          Index,
+  OUT BORAX_OBJECT  *Constant
+  )
+{
+  BORAX_BUILT_IN_FUNCTION  *F = Function;
+
+  if (Index >= F->ConstantsLength) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  *Constant = F->Constants[Index];
+  return EFI_SUCCESS;
+}
+
+CONST BORAX_FUNCTION_OPS  gBuiltInFunctionOps = {
+  .Run      = &BuiltInFunctionRun,
+  .Info     = &BuiltInFunctionInfo,
+  .Shared   = &BuiltInFunctionShared,
+  .Constant = &BuiltInFunctionConstant,
 };
 
 EFI_STATUS

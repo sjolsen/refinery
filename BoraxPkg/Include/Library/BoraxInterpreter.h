@@ -305,11 +305,12 @@ BoraxTaskStackLocal (
   IN UINTN       Index
   );
 
-BORAX_OBJECT
+EFI_STATUS
 EFIAPI
 BoraxTaskFunctionConstant (
-  IN BORAX_TASK  *Task,
-  IN UINTN       Index
+  IN BORAX_TASK     *Task,
+  IN UINTN          Index,
+  OUT BORAX_OBJECT  *Constant
   );
 
 EFI_STATUS
@@ -400,6 +401,64 @@ EFIAPI
 BoraxTaskDebugStackTrace (
   IN UINTN       ErrorLevel,
   IN BORAX_TASK  *Task
+  );
+
+typedef
+EFI_STATUS
+(EFIAPI *BORAX_FUNCTION_OP_RUN)(
+  IN BORAX_TASK *Task,
+  IN VOID *Function
+  );
+
+typedef struct {
+  struct {
+    CONST CHAR16    *Data;
+    UINTN           Length;
+  } Name;
+  UINTN    Entry;
+  UINTN    Locals;
+  UINTN    Shared;
+} BORAX_FUNCTION_INFO;
+
+typedef
+EFI_STATUS
+(EFIAPI *BORAX_FUNCTION_OP_INFO)(
+  IN VOID *Function,
+  OUT BORAX_FUNCTION_INFO *Info
+  );
+
+typedef
+EFI_STATUS
+(EFIAPI *BORAX_FUNCTION_OP_SHARED)(
+  IN VOID *Function,
+  IN UINTN Block,
+  OUT UINTN *Count
+  );
+
+typedef
+EFI_STATUS
+(EFIAPI *BORAX_FUNCTION_OP_CONSTANT)(
+  IN VOID *Function,
+  IN UINTN Index,
+  OUT BORAX_OBJECT *Constant
+  );
+
+typedef struct {
+  BORAX_FUNCTION_OP_RUN         Run;
+  BORAX_FUNCTION_OP_INFO        Info;
+  BORAX_FUNCTION_OP_SHARED      Shared;
+  BORAX_FUNCTION_OP_CONSTANT    Constant;
+} BORAX_FUNCTION_OPS;
+
+extern CONST BORAX_FUNCTION_OPS  gBuiltInFunctionOps;
+extern CONST BORAX_FUNCTION_OPS  gBytecodeFunctionOps;
+
+EFI_STATUS
+EFIAPI
+BoraxFunctionOps (
+  IN BORAX_OBJECT               Function,
+  OUT CONST BORAX_FUNCTION_OPS  **Ops,
+  OUT VOID                      **This
   );
 
 typedef

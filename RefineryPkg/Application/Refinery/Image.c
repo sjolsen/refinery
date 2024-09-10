@@ -274,6 +274,23 @@ WriteString (
   return BufferWriteChars (Buffer, (CHAR16 *)Record->Data, Length);
 }
 
+STATIC VOID *
+EFIAPI
+UnsafeConstant (
+  IN BORAX_TASK  *Task,
+  UINTN          Index
+  )
+{
+  EFI_STATUS    Status;
+  BORAX_OBJECT  Object;
+
+  Status = BoraxTaskFunctionConstant (Task, Index, &Object);
+  ASSERT (!EFI_ERROR (Status));
+  ASSERT (BORAX_IS_POINTER (Object));
+
+  return BORAX_GET_POINTER (Object);
+}
+
 enum {
   FSV_CONST_CTX,
   FSV_CONST_BUFFER,
@@ -297,14 +314,12 @@ FormatSimpleVector (
   IN BORAX_TASK  *Task
   )
 {
-  EFI_STATUS    Status;
-  LISP_CONTEXT  *Ctx =
-    (LISP_CONTEXT *)BORAX_GET_POINTER (BoraxTaskFunctionConstant (Task, FSV_CONST_CTX));
-  BUFFER_HANDLE  *BufferHandle =
-    (BUFFER_HANDLE *)BORAX_GET_POINTER (BoraxTaskFunctionConstant (Task, FSV_CONST_BUFFER));
-  BUFFER        *Buffer = BufferHandle->Buffer;
-  BORAX_OBJECT  *Object = BoraxTaskStackLocal (Task, FSV_LOCAL_OBJECT);
-  BORAX_OBJECT  *Index  = BoraxTaskStackLocal (Task, FSV_LOCAL_INDEX);
+  EFI_STATUS     Status;
+  LISP_CONTEXT   *Ctx          = UnsafeConstant (Task, FSV_CONST_CTX);
+  BUFFER_HANDLE  *BufferHandle = UnsafeConstant (Task, FSV_CONST_BUFFER);
+  BUFFER         *Buffer       = BufferHandle->Buffer;
+  BORAX_OBJECT   *Object       = BoraxTaskStackLocal (Task, FSV_LOCAL_OBJECT);
+  BORAX_OBJECT   *Index        = BoraxTaskStackLocal (Task, FSV_LOCAL_INDEX);
 
   switch (Task->Registers.PC) {
     case FSV_PC_START:
@@ -409,12 +424,10 @@ FormatStandardClass (
   IN BORAX_TASK  *Task
   )
 {
-  EFI_STATUS    Status;
-  LISP_CONTEXT  *Ctx =
-    (LISP_CONTEXT *)BORAX_GET_POINTER (BoraxTaskFunctionConstant (Task, FSC_CONST_CTX));
-  BUFFER_HANDLE  *BufferHandle =
-    (BUFFER_HANDLE *)BORAX_GET_POINTER (BoraxTaskFunctionConstant (Task, FSC_CONST_BUFFER));
-  BUFFER  *Buffer = BufferHandle->Buffer;
+  EFI_STATUS     Status;
+  LISP_CONTEXT   *Ctx          = UnsafeConstant (Task, FSC_CONST_CTX);
+  BUFFER_HANDLE  *BufferHandle = UnsafeConstant (Task, FSC_CONST_BUFFER);
+  BUFFER         *Buffer       = BufferHandle->Buffer;
 
   switch (Task->Registers.PC) {
     case FSC_PC_START:
@@ -500,15 +513,13 @@ FormatObjectRecord (
   IN BORAX_TASK  *Task
   )
 {
-  EFI_STATUS    Status;
-  LISP_CONTEXT  *Ctx =
-    (LISP_CONTEXT *)BORAX_GET_POINTER (BoraxTaskFunctionConstant (Task, FOR_CONST_CTX));
-  BUFFER_HANDLE  *BufferHandle =
-    (BUFFER_HANDLE *)BORAX_GET_POINTER (BoraxTaskFunctionConstant (Task, FOR_CONST_BUFFER));
-  BUFFER        *Buffer    = BufferHandle->Buffer;
-  BORAX_OBJECT  *Object    = BoraxTaskStackLocal (Task, FOR_LOCAL_OBJECT);
-  BORAX_OBJECT  *ClassName = BoraxTaskStackLocal (Task, FOR_LOCAL_CLASS_NAME);
-  BORAX_OBJECT  *Index     = BoraxTaskStackLocal (Task, FOR_LOCAL_INDEX);
+  EFI_STATUS     Status;
+  LISP_CONTEXT   *Ctx          = UnsafeConstant (Task, FOR_CONST_CTX);
+  BUFFER_HANDLE  *BufferHandle = UnsafeConstant (Task, FOR_CONST_BUFFER);
+  BUFFER         *Buffer       = BufferHandle->Buffer;
+  BORAX_OBJECT   *Object       = BoraxTaskStackLocal (Task, FOR_LOCAL_OBJECT);
+  BORAX_OBJECT   *ClassName    = BoraxTaskStackLocal (Task, FOR_LOCAL_CLASS_NAME);
+  BORAX_OBJECT   *Index        = BoraxTaskStackLocal (Task, FOR_LOCAL_INDEX);
 
   switch (Task->Registers.PC) {
     case FOR_PC_START:
@@ -635,14 +646,12 @@ FormatRecursive (
   IN BORAX_TASK  *Task
   )
 {
-  EFI_STATUS    Status;
-  LISP_CONTEXT  *Ctx =
-    (LISP_CONTEXT *)BORAX_GET_POINTER (BoraxTaskFunctionConstant (Task, FR_CONST_CTX));
-  BUFFER_HANDLE  *BufferHandle =
-    (BUFFER_HANDLE *)BORAX_GET_POINTER (BoraxTaskFunctionConstant (Task, FR_CONST_BUFFER));
-  BUFFER        *Buffer      = BufferHandle->Buffer;
-  BORAX_OBJECT  *SavedObject = BoraxTaskStackLocal (Task, FR_LOCAL_OBJECT);
-  BORAX_OBJECT  *SavedRest   = BoraxTaskStackLocal (Task, FR_LOCAL_REST);
+  EFI_STATUS     Status;
+  LISP_CONTEXT   *Ctx          = UnsafeConstant (Task, FR_CONST_CTX);
+  BUFFER_HANDLE  *BufferHandle = UnsafeConstant (Task, FR_CONST_BUFFER);
+  BUFFER         *Buffer       = BufferHandle->Buffer;
+  BORAX_OBJECT   *SavedObject  = BoraxTaskStackLocal (Task, FR_LOCAL_OBJECT);
+  BORAX_OBJECT   *SavedRest    = BoraxTaskStackLocal (Task, FR_LOCAL_REST);
 
   switch (Task->Registers.PC) {
     case FR_PC_START:
