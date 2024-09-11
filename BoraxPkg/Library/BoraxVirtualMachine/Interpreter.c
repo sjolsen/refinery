@@ -200,10 +200,6 @@ TaskEnd (
   IN BORAX_TASK  *Task
   )
 {
-  if (Task->Result != NULL) {
-    Task->Result->Object = BORAX_MAKE_POINTER (Task->Registers.VR);
-  }
-
   if (Task->Completion != NULL) {
     gBS->SignalEvent (Task->Completion);
   }
@@ -293,18 +289,14 @@ EFIAPI
 BoraxInterpreterSpawn (
   IN BORAX_INTERPRETER  *Interp,
   IN EFI_EVENT          Completion  OPTIONAL,
-  IN OUT BORAX_PIN      *Result     OPTIONAL,
   IN BORAX_OBJECT       EntryPoint,
-  IN BORAX_OBJECT       Args
+  IN BORAX_OBJECT       Args,
+  OUT BORAX_TASK        **Task      OPTIONAL
   )
 {
   EFI_STATUS        Status;
-  BORAX_TASK        *Task  = NULL;
-  BORAX_TASK_STACK  *Stack = NULL;
-
-  if ((Completion == NULL) && (Result != NULL)) {
-    return EFI_INVALID_PARAMETER;
-  }
+  BORAX_TASK        *NewTask = NULL;
+  BORAX_TASK_STACK  *Stack   = NULL;
 
   if (BORAX_DISCRIMINATE (Args) != BORAX_DISCRIM_MULTIPLE_VALUES) {
     return EFI_INVALID_PARAMETER;
@@ -314,46 +306,50 @@ BoraxInterpreterSpawn (
              Interp->Alloc,
              BORAX_WIDETAG_TASK,
              sizeof (BORAX_TASK),
-             (BORAX_PIN_RECORD **)&Task
+             (BORAX_PIN_RECORD **)&NewTask
              );
   if (EFI_ERROR (Status)) {
     goto cleanup;
   }
 
-  Status = TaskStackInit (&Task->Stack);
+  Status = TaskStackInit (&NewTask->Stack);
   if (EFI_ERROR (Status)) {
     goto cleanup;
   }
 
-  Stack = &Task->Stack;
+  Stack = &NewTask->Stack;
 
-  Task->Interp     = Interp;
-  Task->State      = BORAX_TASK_RUNNING;
-  Task->Completion = Completion;
-  Task->Result     = Result;
+  NewTask->Interp     = Interp;
+  NewTask->State      = BORAX_TASK_RUNNING;
+  NewTask->Completion = Completion;
 
-  Task->Registers.BP = 0;
-  Task->Registers.SP = 0;
-  Task->Registers.PC = 0;
-  Task->Registers.VR = (BORAX_MULTIPLE_VALUES *)BORAX_GET_POINTER (Args);
+  NewTask->Registers.BP = 0;
+  NewTask->Registers.SP = 0;
+  NewTask->Registers.PC = 0;
+  NewTask->Registers.VR = (BORAX_MULTIPLE_VALUES *)BORAX_GET_POINTER (Args);
 
-  Status = BoraxTaskEnterFunction (Task, EntryPoint);
+  Status = BoraxTaskEnterFunction (NewTask, EntryPoint);
   if (EFI_ERROR (Status)) {
     goto cleanup;
   }
 
-  InsertTailList (&Interp->TaskList, &Task->TaskList);
-  Task   = NULL;
-  Stack  = NULL;
-  Status = EFI_SUCCESS;
+  InsertTailList (&Interp->TaskList, &NewTask->TaskList);
+  if (Task != NULL) {
+    BoraxAcquirePinRecord (&NewTask->Record);
+    *Task = NewTask;
+  }
+
+  NewTask = NULL;
+  Stack   = NULL;
+  Status  = EFI_SUCCESS;
 
 cleanup:
   if (Stack != NULL) {
     TaskStackCleanup (Stack);
   }
 
-  if (Task != NULL) {
-    BoraxReleasePinRecord (&Task->Record);
+  if (NewTask != NULL) {
+    BoraxReleasePinRecord (&NewTask->Record);
   }
 
   return Status;

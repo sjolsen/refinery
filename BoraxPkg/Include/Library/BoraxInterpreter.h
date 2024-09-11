@@ -163,11 +163,11 @@
  * operational in this state and new tasks can be spawned. At any point,
  * BoraxInterpreterCleanup may be called to terminate all tasks forcefully.
  *
- * Tasks can be spawned with BoraxInterpreterSpawn. The completion event will be
- * signalled when the task exits, either normally or forcefully. The caller is
- * responsible for ownership of the pin that will hold the task result. Both the
- * completion event and result pin are optional and may be NULL, though the
- * completion event must be supplied if the result pin is.
+ * Tasks can be spawned with BoraxInterpreterSpawn. The optional completion
+ * event will be signalled when the task exits, either normally or
+ * forcefully. The caller may optionally take a reference to the created task
+ * for later retrieval of its result; the caller is responsible for releasing
+ * this pin reference.
  */
 
 typedef struct {
@@ -182,6 +182,8 @@ typedef struct {
   UINTN                       GcPageThreshold;
   LIST_ENTRY                  TaskList;
 } BORAX_INTERPRETER;
+
+typedef struct _BORAX_TASK BORAX_TASK;
 
 EFI_STATUS
 EFIAPI
@@ -202,9 +204,9 @@ EFIAPI
 BoraxInterpreterSpawn (
   IN BORAX_INTERPRETER  *Interp,
   IN EFI_EVENT          Completion  OPTIONAL,
-  IN OUT BORAX_PIN      *Result     OPTIONAL,
   IN BORAX_OBJECT       EntryPoint,
-  IN BORAX_OBJECT       Args
+  IN BORAX_OBJECT       Args,
+  OUT BORAX_TASK        **Task      OPTIONAL
   );
 
 EFI_STATUS
@@ -265,7 +267,7 @@ typedef struct {
   BORAX_MULTIPLE_VALUES    *VR;
 } BORAX_TASK_REGISTERS;
 
-typedef struct {
+struct _BORAX_TASK {
   BORAX_PIN_RECORD        Record;
   LIST_ENTRY              TaskList;
   BORAX_INTERPRETER       *Interp;
@@ -273,8 +275,7 @@ typedef struct {
   BORAX_TASK_STACK        Stack;
   BORAX_TASK_REGISTERS    Registers;
   EFI_EVENT               Completion;
-  BORAX_PIN               *Result;
-} BORAX_TASK;
+};
 
 BORAX_OBJECT
 EFIAPI

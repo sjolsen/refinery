@@ -955,10 +955,10 @@ PrintLabelled (
 
   Status = BoraxInterpreterSpawn (
              Interp,
-             NULL,
-             NULL,
+             NULL,  // Completion
              Ctx->FormatRecursive,
-             BORAX_MAKE_POINTER (Args)
+             BORAX_MAKE_POINTER (Args),
+             NULL  // Task
              );
   if (EFI_ERROR (Status)) {
     return Status;
