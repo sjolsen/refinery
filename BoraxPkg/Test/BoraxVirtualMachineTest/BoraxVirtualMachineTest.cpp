@@ -21,6 +21,15 @@ using ::testing::IsEmpty;
 using ::testing::Each;
 using ::testing::Not;
 
+bool
+operator== (
+  BORAX_OBJECT  a,
+  BORAX_OBJECT  b
+  )
+{
+  return BORAX_EQ (a, b);
+}
+
 struct PinDeleter {
   void
   operator() (
@@ -90,7 +99,7 @@ public:
   MakeCons (
     )
   {
-    return MakeCons (BORAX_IMMEDIATE_UNBOUND, BORAX_IMMEDIATE_UNBOUND);
+    return MakeCons (BORAX_UNBOUND, BORAX_UNBOUND);
   }
 
   std::vector<BORAX_CONS *>
@@ -141,7 +150,7 @@ public:
     BORAX_OBJECT  Object;
 
     if (Ptr == NULL) {
-      Object = BORAX_IMMEDIATE_UNBOUND;
+      Object = BORAX_UNBOUND;
     } else {
       Object = BORAX_MAKE_POINTER (Ptr);
     }
@@ -212,7 +221,7 @@ public:
     Status = BoraxAllocateRecord (
                &Alloc,
                BORAX_WIDETAG_WORD_RECORD,
-               BORAX_IMMEDIATE_UNBOUND,  // Class
+               BORAX_UNBOUND,  // Class
                Length,
                0,  // LengthAux
                InitialElement,
@@ -245,7 +254,7 @@ public:
   }
 };
 
-constexpr const BORAX_OBJECT  gSomeVal = 8675309 << 1; // fixnum
+constexpr const BORAX_OBJECT  gSomeVal = BORAX_MAKE_FIXNUM (8675309);
 
 TEST_F (MemoryTests, CleanupNothing) {
 }
@@ -331,8 +340,8 @@ TEST_F (MemoryTests, RootedCons) {
   BORAX_CONS  *Cons = MakeCons ();
   AutoPin     Pin   = MakePin (Cons);
 
-  Cons->Car = 42 << 1;  // fixnums
-  Cons->Cdr = 77 << 1;
+  Cons->Car = BORAX_MAKE_FIXNUM (42);
+  Cons->Cdr = BORAX_MAKE_FIXNUM (77);
 
   Collect ();
 
@@ -344,8 +353,8 @@ TEST_F (MemoryTests, RootedCons) {
   ASSERT_TRUE (BORAX_IS_CONS (Header));
   BORAX_CONS  *P = reinterpret_cast<BORAX_CONS *>(Header);
 
-  EXPECT_EQ ((UINTN)(42 << 1), P->Car);
-  EXPECT_EQ ((UINTN)(77 << 1), P->Cdr);
+  EXPECT_EQ (BORAX_MAKE_FIXNUM (42), P->Car);
+  EXPECT_EQ (BORAX_MAKE_FIXNUM (77), P->Cdr);
 }
 
 TEST_F (MemoryTests, RootedList) {
@@ -353,7 +362,7 @@ TEST_F (MemoryTests, RootedList) {
   AutoPin                    Pin    = MakePin (Conses[0]);
 
   for (size_t i = 0; i < Conses.size (); ++i) {
-    Conses[i]->Car = i << 1;  // fixnum
+    Conses[i]->Car = BORAX_MAKE_FIXNUM (i);
   }
 
   for (size_t i = 0; i < Conses.size () - 1; ++i) {
@@ -371,7 +380,7 @@ TEST_F (MemoryTests, RootedList) {
   BORAX_CONS  *P = reinterpret_cast<BORAX_CONS *>(Header);
 
   for (size_t i = 0; i < Conses.size (); ++i) {
-    EXPECT_EQ (i << 1, P->Car);
+    EXPECT_EQ (BORAX_MAKE_FIXNUM (i), P->Car);
     if (i < Conses.size () - 1) {
       ASSERT_TRUE (BORAX_IS_POINTER (P->Cdr));
       Header = BORAX_GET_POINTER (P->Cdr);
@@ -399,7 +408,7 @@ TEST_F (MemoryTests, WeakPointerIsWeak) {
   ASSERT_EQ (BORAX_WIDETAG_WEAK_POINTER, Header->WideTag);
   Wp = reinterpret_cast<BORAX_WEAK_POINTER *>(Header);
 
-  EXPECT_EQ (BORAX_IMMEDIATE_UNBOUND, Wp->Value);
+  EXPECT_EQ (BORAX_UNBOUND, Wp->Value);
 }
 
 TEST_F (MemoryTests, WeakPointerCanAccessAfterCollection) {
@@ -408,8 +417,8 @@ TEST_F (MemoryTests, WeakPointerCanAccessAfterCollection) {
   AutoPin             Pin1  = MakePin (Wp);
   AutoPin             Pin2  = MakePin (Cons);
 
-  Cons->Car = 343 << 1;  // fixnum
-  Cons->Cdr = 2401 << 1;
+  Cons->Car = BORAX_MAKE_FIXNUM (343);
+  Cons->Cdr = BORAX_MAKE_FIXNUM (2401);
 
   Collect ();
 
@@ -427,8 +436,8 @@ TEST_F (MemoryTests, WeakPointerCanAccessAfterCollection) {
   ASSERT_TRUE (BORAX_IS_CONS (Header));
   BORAX_CONS  *P = reinterpret_cast<BORAX_CONS *>(Header);
 
-  EXPECT_EQ ((UINTN)(343 << 1), P->Car);
-  EXPECT_EQ ((UINTN)(2401 << 1), P->Cdr);
+  EXPECT_EQ (BORAX_MAKE_FIXNUM (343), P->Car);
+  EXPECT_EQ (BORAX_MAKE_FIXNUM (2401), P->Cdr);
 }
 
 TEST_F (MemoryTests, RootedWordRecord) {
@@ -784,7 +793,7 @@ TEST_F (ObjectFileTests, HeaderOnlyNative) {
 
   Status = LoadObjectFile (File, &Pin);
   ASSERT_EQ (EFI_SUCCESS, Status);
-  EXPECT_EQ (static_cast<BORAX_OBJECT>(0), Pin->Object);
+  EXPECT_EQ (BORAX_MAKE_FIXNUM (0), Pin->Object);
 }
 
 TEST_F (ObjectFileTests, HeaderOnlyNonNative) {
@@ -849,54 +858,51 @@ ObjectFileTests::CheckGeneratedFileContents (
   BORAX_RECORD  *RootSelf;
 
   ASSERT_EQ (6U, Root->Length);
-  ASSERT_NO_THROW (RootSelf = TheObjectRecord (Root->Data[0]));
+  ASSERT_NO_THROW (RootSelf = TheObjectRecord (Root->Slots[0]));
   ASSERT_EQ (Root, RootSelf);
 
   // root[1] is an improper list (4 3 2 1 . 0)
   BORAX_CONS  *Cons[8];
 
-  ASSERT_NO_THROW (Cons[0] = TheCons (Root->Data[1]));
-  ASSERT_EQ (4U << 1, Cons[0]->Car);
+  ASSERT_NO_THROW (Cons[0] = TheCons (Root->Slots[1]));
+  ASSERT_EQ (BORAX_MAKE_FIXNUM (4), Cons[0]->Car);
   ASSERT_NO_THROW (Cons[1] = TheCons (Cons[0]->Cdr));
-  ASSERT_EQ (3U << 1, Cons[1]->Car);
+  ASSERT_EQ (BORAX_MAKE_FIXNUM (3), Cons[1]->Car);
   ASSERT_NO_THROW (Cons[2] = TheCons (Cons[1]->Cdr));
-  ASSERT_EQ (2U << 1, Cons[2]->Car);
+  ASSERT_EQ (BORAX_MAKE_FIXNUM (2), Cons[2]->Car);
   ASSERT_NO_THROW (Cons[3] = TheCons (Cons[2]->Cdr));
-  ASSERT_EQ (1U << 1, Cons[3]->Car);
-  ASSERT_EQ (0U << 1, Cons[3]->Cdr);
+  ASSERT_EQ (BORAX_MAKE_FIXNUM (1), Cons[3]->Car);
+  ASSERT_EQ (BORAX_MAKE_FIXNUM (0), Cons[3]->Cdr);
 
   // root[2] is a circular list #1=(8 7 6 5 . #1#)
-  ASSERT_NO_THROW (Cons[4] = TheCons (Root->Data[2]));
-  ASSERT_EQ (8U << 1, Cons[4]->Car);
+  ASSERT_NO_THROW (Cons[4] = TheCons (Root->Slots[2]));
+  ASSERT_EQ (BORAX_MAKE_FIXNUM (8), Cons[4]->Car);
   ASSERT_NO_THROW (Cons[5] = TheCons (Cons[4]->Cdr));
-  ASSERT_EQ (7U << 1, Cons[5]->Car);
+  ASSERT_EQ (BORAX_MAKE_FIXNUM (7), Cons[5]->Car);
   ASSERT_NO_THROW (Cons[6] = TheCons (Cons[5]->Cdr));
-  ASSERT_EQ (6U << 1, Cons[6]->Car);
+  ASSERT_EQ (BORAX_MAKE_FIXNUM (6), Cons[6]->Car);
   ASSERT_NO_THROW (Cons[7] = TheCons (Cons[6]->Cdr));
-  ASSERT_EQ (5U << 1, Cons[7]->Car);
+  ASSERT_EQ (BORAX_MAKE_FIXNUM (5), Cons[7]->Car);
   ASSERT_EQ (Cons[4], TheCons (Cons[7]->Cdr));
 
   // root[3] is an object vector containing fixnums
   BORAX_RECORD  *ObjectVector;
   BORAX_RECORD  *ObjectVectorClass;
 
-  ASSERT_NO_THROW (ObjectVector      = TheObjectRecord (Root->Data[3]));
+  ASSERT_NO_THROW (ObjectVector      = TheObjectRecord (Root->Slots[3]));
   ASSERT_NO_THROW (ObjectVectorClass = TheObjectRecord (ObjectVector->Class));
   ASSERT_EQ (RootClass, ObjectVectorClass);
   ASSERT_EQ (3U, ObjectVector->Length);
-  ASSERT_EQ (343U << 1, ObjectVector->Data[0]);
-  ASSERT_EQ (8675309U << 1, ObjectVector->Data[1]);
-  ASSERT_EQ (
-    static_cast<UINTN>(static_cast<INTN>(-9000) << 1),
-    ObjectVector->Data[2]
-    );
+  ASSERT_EQ (BORAX_MAKE_FIXNUM (343), ObjectVector->Slots[0]);
+  ASSERT_EQ (BORAX_MAKE_FIXNUM (8675309), ObjectVector->Slots[1]);
+  ASSERT_EQ (BORAX_MAKE_FIXNUM (-9000), ObjectVector->Slots[2]);
 
   // root[4] is a word vector
   BORAX_RECORD  *WordVector;
   BORAX_RECORD  *WordVectorClass;
 
-  ASSERT_NO_THROW (WordVector      = TheWordRecord (Root->Data[4]));
-  ASSERT_NO_THROW (WordVectorClass = TheObjectRecord (WordVector->Class));
+  ASSERT_NO_THROW (WordVector      = TheWordRecord (Root->Slots[4]));
+  ASSERT_NO_THROW (WordVectorClass = TheObjectRecord (WordVector->VectorClass));
   ASSERT_EQ (RootClass, WordVectorClass);
   ASSERT_EQ (3U, WordVector->Length);
   ASSERT_EQ (343U, WordVector->Data[0]);
@@ -908,7 +914,7 @@ ObjectFileTests::CheckGeneratedFileContents (
   BORAX_RECORD  *ByteVectorClass;
   UINT8         *ByteVectorData;
 
-  ASSERT_NO_THROW (ByteVector      = TheWordRecord (Root->Data[5]));
+  ASSERT_NO_THROW (ByteVector      = TheWordRecord (Root->Slots[5]));
   ASSERT_NO_THROW (ByteVectorClass = TheObjectRecord (ByteVector->Class));
   ASSERT_EQ (RootClass, ByteVectorClass);
   ASSERT_EQ (sizeof (UINTN), 3U + ByteVector->LengthAux);

@@ -601,10 +601,10 @@ BoraxTaskEnterFunction (
   BoraxTaskStackWrite (Task, NewBP, BORAX_MAKE_FIXNUM (Task->Registers.BP));
   BoraxTaskStackWrite (Task, NewBP + 1, BORAX_MAKE_FIXNUM (Task->Registers.PC));
   BoraxTaskStackWrite (Task, NewBP + 2, Function);
-  BoraxTaskStackWrite (Task, NewBP + 3, BORAX_IMMEDIATE_UNBOUND);
+  BoraxTaskStackWrite (Task, NewBP + 3, BORAX_UNBOUND);
 
   for (I = 0; I < Info.Locals; ++I) {
-    BoraxTaskStackWrite (Task, NewBP + 4 + I, BORAX_IMMEDIATE_UNBOUND);
+    BoraxTaskStackWrite (Task, NewBP + 4 + I, BORAX_UNBOUND);
   }
 
   Task->Registers.SP = NewSP;
@@ -654,7 +654,7 @@ BoraxTaskEnterFunctionTail (
   EFI_STATUS  Status;
   BOOLEAN     Intercepted;
 
-  Status = UnwindFrame (Task, BORAX_IMMEDIATE_UNBOUND, &Intercepted);
+  Status = UnwindFrame (Task, BORAX_UNBOUND, &Intercepted);
   if (EFI_ERROR (Status) || Intercepted) {
     return Status;
   }
@@ -671,7 +671,7 @@ BoraxTaskExitFunction (
   EFI_STATUS  Status;
   BOOLEAN     Intercepted;
 
-  Status = UnwindFrame (Task, BORAX_IMMEDIATE_UNBOUND, &Intercepted);
+  Status = UnwindFrame (Task, BORAX_UNBOUND, &Intercepted);
   if (EFI_ERROR (Status) || Intercepted) {
     return Status;
   }
@@ -777,7 +777,7 @@ BoraxTaskTakeExit (
     return EFI_INVALID_PARAMETER;
   }
 
-  if (TheExit->Task != BORAX_MAKE_POINTER (Task)) {
+  if (!BORAX_EQ (TheExit->Task, BORAX_MAKE_POINTER (Task))) {
     DEBUG ((DEBUG_ERROR, "Task tried to take an exit to another task\n"));
     return EFI_INVALID_PARAMETER;
   }
@@ -927,7 +927,7 @@ BoraxTaskDebugStackTrace (
   BORAX_STACK_FRAME           Frame;
   BOOLEAN                     Done;
 
-  BORAX_OBJECT  LastCode   = BORAX_IMMEDIATE_UNBOUND;
+  BORAX_OBJECT  LastCode   = BORAX_UNBOUND;
   UINTN         LastPC     = 0;
   UINTN         Duplicates = 0;
   UINTN         Printed    = 0;
@@ -939,7 +939,7 @@ BoraxTaskDebugStackTrace (
       break;
     }
 
-    if ((Frame.Code == LastCode) && (Frame.PC == LastPC)) {
+    if (BORAX_EQ (Frame.Code, LastCode) && (Frame.PC == LastPC)) {
       ++Duplicates;
     } else {
       if (Duplicates != 0) {

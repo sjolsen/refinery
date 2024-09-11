@@ -88,7 +88,9 @@ STATIC_ASSERT (
   #error "Don't know how large to make a halfword"
 #endif
 
-typedef UINTN BORAX_OBJECT;
+typedef struct {
+  UINTN    Guts;
+} BORAX_OBJECT;
 
 typedef enum {
   BORAX_LOWTAG_FIXNUM          = 0,
@@ -115,37 +117,41 @@ enum {
 };
 
 #define BORAX_IS_FIXNUM(_obj) \
-(((UINTN)(_obj) & BORAX_LOWTAG_MASK_FIXNUM) == BORAX_LOWTAG_FIXNUM)
+(((_obj).Guts & BORAX_LOWTAG_MASK_FIXNUM) == BORAX_LOWTAG_FIXNUM)
 
 #define BORAX_MAKE_FIXNUM(_n) \
-((INTN)(_n) << 1)
+((BORAX_OBJECT) {(UINTN)(INTN)(_n) << 1})
 
-#define BORAX_GET_FIXNUM(_n) \
-((INTN)(_n) >> 1)
+#define BORAX_GET_FIXNUM(_obj) \
+((INTN)(_obj).Guts >> 1)
 
 #define BORAX_IS_OTHER_IMMEDIATE(_obj) \
-(((_obj) & BORAX_LOWTAG_MASK_OTHER_IMMEDIATE) == BORAX_LOWTAG_OTHER_IMMEDIATE)
+(((_obj).Guts & BORAX_LOWTAG_MASK_OTHER_IMMEDIATE) == BORAX_LOWTAG_OTHER_IMMEDIATE)
 
 #define BORAX_IS_IMMEDIATE(_obj) \
 (BORAX_IS_FIXNUM(_obj) || BORAX_IS_OTHER_IMMEDIATE(_obj))
 
+#define BORAX_UNBOUND  ((BORAX_OBJECT) {BORAX_IMMEDIATE_UNBOUND})
+
 #define BORAX_IS_CHARACTER(_obj) \
-(((_obj) & BORAX_IMMEDIATE_MASK_CHARACTER) == BORAX_IMMEDIATE_CHARACTER_BEGIN)
+(((_obj).Guts & BORAX_IMMEDIATE_MASK_CHARACTER) == BORAX_IMMEDIATE_CHARACTER_BEGIN)
 
 #define BORAX_GET_CHARACTER(_obj) \
-((CHAR16)((_obj) >> 11))
+((CHAR16)((_obj).Guts >> 11))
 
 #define BORAX_IS_POINTER(_obj) \
-(((_obj) & BORAX_LOWTAG_MASK_POINTER) == BORAX_LOWTAG_POINTER)
+(((_obj).Guts & BORAX_LOWTAG_MASK_POINTER) == BORAX_LOWTAG_POINTER)
 
 #define BORAX_GET_POINTER(_obj) \
-((BORAX_OBJECT_HEADER *)((_obj) & ~BORAX_LOWTAG_MASK_POINTER))
+((BORAX_OBJECT_HEADER *)((_obj).Guts & ~BORAX_LOWTAG_MASK_POINTER))
 
 #define BORAX_MAKE_POINTER(_ptr) \
-((UINTN)(_ptr) | BORAX_LOWTAG_POINTER)
+((BORAX_OBJECT) {(UINTN)(_ptr) | BORAX_LOWTAG_POINTER})
 
 #define BORAX_IS_CONS(_ptr) \
 (((_ptr)->HeaderWords[0] & BORAX_LOWTAG_MASK_HEAP) != BORAX_LOWTAG_HEAP)
+
+#define BORAX_EQ(_a, _b)  ((_a).Guts == (_b).Guts)
 
 enum {
   BORAX_WIDETAG_WORD_RECORD       = 0x03,
@@ -192,7 +198,7 @@ enum {
  ? BORAX_DISCRIM_FIXNUM                                \
  : BORAX_IS_CHARACTER(_obj)                            \
  ? BORAX_DISCRIM_CHARACTER                             \
- : (_obj))
+ : (_obj).Guts)
 
 #define BORAX_DISCRIMINATE_POINTER(_ptr) \
 (BORAX_IS_CONS(_ptr) ? BORAX_DISCRIM_CONS : (_ptr)->WideTag)
@@ -387,6 +393,14 @@ typedef enum {
   BORAX_OBJECT_GCDATA_GREYBIT  = 1 << 1,
 } BORAX_OBJECT_GCDATA;
 
+typedef union {
+  BORAX_OBJECT_HEADER    Header;
+  struct {
+    UINTN           Word0;
+    BORAX_OBJECT    MovedTo;
+  };
+} BORAX_MOVED;
+
 typedef struct _BORAX_OBJECT_CHUNK BORAX_OBJECT_CHUNK;
 
 struct _BORAX_OBJECT_CHUNK {
@@ -578,8 +592,18 @@ typedef union {
     BORAX_HALFWORD    HalfWord0;
     BORAX_HALFWORD    LengthAux; // Extra length bits for sub-word granularity
     UINTN             Length;    // Count of words
-    BORAX_OBJECT      Class;
-    UINTN             Data[];
+    union {
+      struct {
+        // Needed for C rules on flexible members
+        BORAX_OBJECT    VectorClass;
+        UINTN           Data[];
+      };
+
+      struct {
+        BORAX_OBJECT    Class;
+        BORAX_OBJECT    Slots[];
+      };
+    };
   };
 } BORAX_RECORD;
 

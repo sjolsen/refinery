@@ -343,12 +343,14 @@ MarkObjectGrey (
       return Status;
     }
   } else {
+    BORAX_MOVED  *Moved = (BORAX_MOVED *)OldObject;
+
     // If the object was copied, mark the original "moved" and mark _both_
     // copies grey -- as further accesses to the object's original location need
     // to see that it has already been visited -- but only push the new object
     // onto the grey list
-    OldObject->WideTag        = BORAX_WIDETAG_MOVED;
-    OldObject->HeaderWords[1] = BORAX_MAKE_POINTER (NewObject);
+    Moved->Header.WideTag = BORAX_WIDETAG_MOVED;
+    Moved->MovedTo        = BORAX_MAKE_POINTER (NewObject);
 
     Status = SetObjectGcData (Alloc, OldObject, GcData);
     if (EFI_ERROR (Status)) {
@@ -395,7 +397,8 @@ UpdateSubObjectIfMoved (
   )
 {
   if (BORAX_DISCRIMINATE (*SubObject) == BORAX_DISCRIM_MOVED) {
-    *SubObject = BORAX_GET_POINTER (*SubObject)->HeaderWords[1];
+    BORAX_MOVED  *Moved = (BORAX_MOVED *)BORAX_GET_POINTER (*SubObject);
+    *SubObject = Moved->MovedTo;
   }
 
   return EFI_SUCCESS;
@@ -481,7 +484,7 @@ SweepWeakPointers (
     GcData = GetObjectGcData (Alloc, Value);
     switch (DecodeColor (Alloc, GcData)) {
       case WHITE:
-        Wp->Value = BORAX_IMMEDIATE_UNBOUND;
+        Wp->Value = BORAX_UNBOUND;
         break;
       case GREY:
         DEBUG ((DEBUG_ERROR, "grey weak referent found during sweep\n"));
@@ -1115,7 +1118,7 @@ ObjectRecordSubObjects (
   }
 
   for (I = 0; I < Record->Length; ++I) {
-    Status = Callback (Ctx, &Record->Data[I]);
+    Status = Callback (Ctx, &Record->Slots[I]);
     if (EFI_ERROR (Status)) {
       return Status;
     }

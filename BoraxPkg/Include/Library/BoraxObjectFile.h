@@ -69,18 +69,18 @@ typedef struct {
 } BXO_SECTION;
 
 typedef struct {
-  UINT8          Magic[4]; // \x7F B X O
-  UINT8          WordSize;
-  UINT8          Pad0; // 0x00
-  UINT8          Version;
-  UINT8          Pad1; // 0x00
-  UINTN          RootObject;
-  BXO_SECTION    Cons;
-  BXO_SECTION    Object;
-  BXO_SECTION    String;
-  BXO_SECTION    Package;
-  BXO_SECTION    Symbol;
-  BXO_SECTION    Class;
+  UINT8           Magic[4]; // \x7F B X O
+  UINT8           WordSize;
+  UINT8           Pad0; // 0x00
+  UINT8           Version;
+  UINT8           Pad1; // 0x00
+  BORAX_OBJECT    RootObject;
+  BXO_SECTION     Cons;
+  BXO_SECTION     Object;
+  BXO_SECTION     String;
+  BXO_SECTION     Package;
+  BXO_SECTION     Symbol;
+  BXO_SECTION     Class;
 } BXO_HEADER;
 
 /*

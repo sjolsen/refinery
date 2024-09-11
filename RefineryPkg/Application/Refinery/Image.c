@@ -214,7 +214,7 @@ GetClassName (
     return Ctx->Nil;
   }
 
-  if (Class->Record.Class != Ctx->ClassStandardClass) {
+  if (!BORAX_EQ (Class->Record.Class, Ctx->ClassStandardClass)) {
     IMAGE_ERROR ("Not an instance of STANDARD-CLASS");
     return Ctx->Nil;
   }
@@ -238,7 +238,7 @@ GetPackageName (
     return Ctx->Nil;
   }
 
-  if (Package->Record.Class != Ctx->ClassPackage) {
+  if (!BORAX_EQ (Package->Record.Class, Ctx->ClassPackage)) {
     IMAGE_ERROR ("Not an instance of PACKAGE");
     return Ctx->Nil;
   }
@@ -263,7 +263,7 @@ WriteString (
   }
 
   Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
-  if (Record->Class != Ctx->ClassString) {
+  if (!BORAX_EQ (Record->VectorClass, Ctx->ClassString)) {
     IMAGE_ERROR ("Not an instance of STRING");
     return EFI_INVALID_PARAMETER;
   }
@@ -361,7 +361,7 @@ FormatSimpleVector (
       }
 
       if (I < Record->Length) {
-        BORAX_OBJECT  Value = Record->Data[I];
+        BORAX_OBJECT  Value = Record->Slots[I];
 
         if (I != 0) {
           Status = BufferWriteChar (Buffer, L' ');
@@ -448,7 +448,7 @@ FormatStandardClass (
         return EFI_INVALID_PARAMETER;
       }
 
-      if (Class->Record.Class != Ctx->ClassStandardClass) {
+      if (!BORAX_EQ (Class->Record.Class, Ctx->ClassStandardClass)) {
         IMAGE_ERROR ("Not an instance of STANDARD-CLASS");
         return EFI_INVALID_PARAMETER;
       }
@@ -540,7 +540,7 @@ FormatObjectRecord (
       }
 
       *ClassName = GetClassName (Ctx, Record->Class);
-      if (*ClassName == Ctx->Nil) {
+      if (BORAX_EQ (*ClassName, Ctx->Nil)) {
         Status = BufferWrite (Buffer, L"<OBJECT-RECORD ");
         if (EFI_ERROR (Status)) {
           return Status;
@@ -572,7 +572,7 @@ FormatObjectRecord (
       }
 
       if (I < Record->Length) {
-        BORAX_OBJECT  Value = Record->Data[I];
+        BORAX_OBJECT  Value = Record->Slots[I];
 
         Status = BufferWriteChar (Buffer, L' ');
         if (EFI_ERROR (Status)) {
@@ -718,7 +718,7 @@ FormatRecursive (
         {
           BORAX_RECORD  *Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
 
-          if (Record->Class == Ctx->ClassString) {
+          if (BORAX_EQ (Record->Class, Ctx->ClassString)) {
             Status = BufferWriteChar (Buffer, L'"');
             if (EFI_ERROR (Status)) {
               return Status;
@@ -747,14 +747,14 @@ FormatRecursive (
         {
           BORAX_RECORD  *Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
 
-          if (Object == Ctx->Nil) {
+          if (BORAX_EQ (Object, Ctx->Nil)) {
             Status = BufferWrite (Buffer, L"NIL");
             if (EFI_ERROR (Status)) {
               return Status;
             }
 
             return BoraxTaskExitFunction (Task);
-          } else if (Record->Class == Ctx->ClassSymbol) {
+          } else if (BORAX_EQ (Record->Class, Ctx->ClassSymbol)) {
             SYMBOL  *Symbol;
 
             Status = BORAX_GET_OBJECT_RECORD (Object, &Symbol);
@@ -763,8 +763,8 @@ FormatRecursive (
               return EFI_INVALID_PARAMETER;
             }
 
-            if (Symbol->Package != Ctx->PackageCommonLisp) {
-              if (Symbol->Package != Ctx->PackageKeyword) {
+            if (!BORAX_EQ (Symbol->Package, Ctx->PackageCommonLisp)) {
+              if (!BORAX_EQ (Symbol->Package, Ctx->PackageKeyword)) {
                 BORAX_OBJECT  PackageName = GetPackageName (Ctx, Symbol->Package);
 
                 Status = WriteString (Ctx, Buffer, PackageName);
@@ -785,9 +785,9 @@ FormatRecursive (
             }
 
             return BoraxTaskExitFunction (Task);
-          } else if (Record->Class == Ctx->ClassSimpleVector) {
+          } else if (BORAX_EQ (Record->Class, Ctx->ClassSimpleVector)) {
             return BoraxTaskEnterFunctionTail (Task, Ctx->FormatSimpleVector);
-          } else if (Record->Class == Ctx->ClassStandardClass) {
+          } else if (BORAX_EQ (Record->Class, Ctx->ClassStandardClass)) {
             return BoraxTaskEnterFunctionTail (Task, Ctx->FormatStandardClass);
           } else {
             return BoraxTaskEnterFunctionTail (Task, Ctx->FormatObjectRecord);
@@ -856,7 +856,7 @@ FormatRecursive (
         Task->Registers.VR->Values[0] = Cons->Car;
         *SavedRest                    = Cons->Cdr;
         return BoraxTaskEnterFunction (Task, Ctx->FormatRecursive);
-      } else if (Rest != Ctx->Nil) {
+      } else if (!BORAX_EQ (Rest, Ctx->Nil)) {
         Status = BufferWrite (Buffer, L" . ");
         if (EFI_ERROR (Status)) {
           return Status;
@@ -989,7 +989,7 @@ MakeFunction (
   Status = BoraxMakeBuiltInFunction (
              &gAlloc,
              Desc->Name,
-             BORAX_IMMEDIATE_UNBOUND, // Arglist
+             BORAX_UNBOUND, // Arglist
              Desc->Entry,
              Desc->Code,
              Desc->Locals,
@@ -1091,7 +1091,7 @@ InitializeEnvironment (
   Status = BoraxAllocateRecord (
              &gAlloc,
              BORAX_WIDETAG_OBJECT_RECORD,
-             BORAX_IMMEDIATE_UNBOUND, // Class
+             BORAX_UNBOUND, // Class
              BORAX_RECORD_LENGTH (LISP_CONTEXT),
              0, // LengthAux
              BORAX_IMMEDIATE_UNBOUND,
