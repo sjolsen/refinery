@@ -495,7 +495,7 @@ union _BORAX_PIN_RECORD {
   BORAX_OBJECT_HEADER    Header;
   struct {
     BORAX_HALFWORD      HalfWord0;
-    BORAX_HALFWORD      Live;
+    BORAX_HALFWORD      Refcount;
     BORAX_PIN_RECORD    *Next;
   };
 };
@@ -516,6 +516,12 @@ BoraxAllocatePinRecord (
 
 VOID
 EFIAPI
+BoraxAcquirePinRecord (
+  IN BORAX_PIN_RECORD  *Record
+  );
+
+VOID
+EFIAPI
 BoraxReleasePinRecord (
   IN BORAX_PIN_RECORD  *Record
   );
@@ -526,6 +532,12 @@ BoraxAllocatePin (
   IN BORAX_ALLOCATOR  *Alloc,
   IN BORAX_OBJECT     Object,
   OUT BORAX_PIN       **Pin
+  );
+
+VOID
+EFIAPI
+BoraxAcquirePin (
+  IN BORAX_PIN  *Pin
   );
 
 VOID

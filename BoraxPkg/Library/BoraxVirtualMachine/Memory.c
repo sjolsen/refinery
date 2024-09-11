@@ -440,7 +440,7 @@ SweepPins (
 
     switch (DecodeColor (Alloc, GcData)) {
       case WHITE:
-        Live = Pin->Live;
+        Live = (Pin->Refcount != 0);
         break;
       case GREY:
         DEBUG ((DEBUG_ERROR, "grey pin found during sweep\n"));
@@ -517,7 +517,7 @@ BoraxAllocatorCollect (
   // Mark the initial set of root objects grey
   BoraxStackInit (&GreyList, Alloc->SysAlloc);
   for (Pin = Alloc->Pins; Pin != NULL; Pin = Pin->Next) {
-    if (Pin->Live) {
+    if (Pin->Refcount != 0) {
       Status = MarkObjectGrey (Alloc, &GreyList, BORAX_MAKE_POINTER (&Pin->Header));
       if (EFI_ERROR (Status)) {
         goto cleanup;
@@ -887,7 +887,7 @@ BoraxAllocatePinRecord (
   // Initialize the pin and add it to the list
   NewPin->Header.WideTag = WideTag;
   NewPin->Header.GcData  = Alloc->ToSpaceParity;
-  NewPin->Live           = TRUE;
+  NewPin->Refcount       = 1;
   NewPin->Next           = Alloc->Pins;
   Alloc->Pins            = NewPin;
 
@@ -923,11 +923,29 @@ BoraxAllocatePin (
 
 VOID
 EFIAPI
+BoraxAcquirePinRecord (
+  IN BORAX_PIN_RECORD  *Record
+  )
+{
+  ++Record->Refcount;
+}
+
+VOID
+EFIAPI
 BoraxReleasePinRecord (
   IN BORAX_PIN_RECORD  *Record
   )
 {
-  Record->Live = FALSE;
+  --Record->Refcount;
+}
+
+VOID
+EFIAPI
+BoraxAcquirePin (
+  IN BORAX_PIN  *Pin
+  )
+{
+  BoraxAcquirePinRecord (&Pin->Record);
 }
 
 VOID
