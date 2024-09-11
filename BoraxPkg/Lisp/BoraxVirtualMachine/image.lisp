@@ -67,6 +67,7 @@
           :initarg :value)))
 
 (defvar +unbound+ (make-instance 'immediate :value #x5))
+(defvar borax-vm/cl:nil (make-instance 'immediate :value #xD))
 
 (define-symbol-macro +classes+
   (slot-value (class-prototype (find-class 'borax-vm/cl:class)) 'classes))

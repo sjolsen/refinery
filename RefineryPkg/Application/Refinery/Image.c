@@ -42,7 +42,6 @@ typedef struct {
   BORAX_OBJECT    FormatRecursive;
   BORAX_OBJECT    FormatSimpleVector;
   BORAX_OBJECT    FormatStandardClass;
-  BORAX_OBJECT    Nil;
   BORAX_OBJECT    PackageCommonLisp;
   BORAX_OBJECT    PackageInitialImage;
   BORAX_OBJECT    PackageKeyword;
@@ -211,12 +210,12 @@ GetClassName (
   Status = BORAX_GET_OBJECT_RECORD (Object, &Class);
   if (EFI_ERROR (Status)) {
     IMAGE_ERROR ("Not a valid class object");
-    return Ctx->Nil;
+    return BORAX_NIL;
   }
 
   if (!BORAX_EQ (Class->Record.Class, Ctx->ClassStandardClass)) {
     IMAGE_ERROR ("Not an instance of STANDARD-CLASS");
-    return Ctx->Nil;
+    return BORAX_NIL;
   }
 
   return Class->Name;
@@ -235,12 +234,12 @@ GetPackageName (
   Status = BORAX_GET_OBJECT_RECORD (Object, &Package);
   if (EFI_ERROR (Status)) {
     IMAGE_ERROR ("Not a valid package object");
-    return Ctx->Nil;
+    return BORAX_NIL;
   }
 
   if (!BORAX_EQ (Package->Record.Class, Ctx->ClassPackage)) {
     IMAGE_ERROR ("Not an instance of PACKAGE");
-    return Ctx->Nil;
+    return BORAX_NIL;
   }
 
   return Package->Name;
@@ -540,7 +539,7 @@ FormatObjectRecord (
       }
 
       *ClassName = GetClassName (Ctx, Record->Class);
-      if (BORAX_EQ (*ClassName, Ctx->Nil)) {
+      if (BORAX_EQ (*ClassName, BORAX_NIL)) {
         Status = BufferWrite (Buffer, L"<OBJECT-RECORD ");
         if (EFI_ERROR (Status)) {
           return Status;
@@ -747,7 +746,7 @@ FormatRecursive (
         {
           BORAX_RECORD  *Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
 
-          if (BORAX_EQ (Object, Ctx->Nil)) {
+          if (BORAX_EQ (Object, BORAX_NIL)) {
             Status = BufferWrite (Buffer, L"NIL");
             if (EFI_ERROR (Status)) {
               return Status;
@@ -856,7 +855,7 @@ FormatRecursive (
         Task->Registers.VR->Values[0] = Cons->Car;
         *SavedRest                    = Cons->Cdr;
         return BoraxTaskEnterFunction (Task, Ctx->FormatRecursive);
-      } else if (!BORAX_EQ (Rest, Ctx->Nil)) {
+      } else if (!BORAX_EQ (Rest, BORAX_NIL)) {
         Status = BufferWrite (Buffer, L" . ");
         if (EFI_ERROR (Status)) {
           return Status;
@@ -1032,7 +1031,7 @@ InitializeEnvironment (
   BORAX_GLOBAL_ENVIRONMENT  *Env;
 
   PACKAGE  *CommonLisp, *InitialImage, *Keyword;
-  SYMBOL   *Nil, *Package, *SimpleVector, *StandardClass, *String, *Symbol;
+  SYMBOL   *Package, *SimpleVector, *StandardClass, *String, *Symbol;
 
   LISP_CONTEXT   *Ctx;
   BUFFER_HANDLE  *Buffer;
@@ -1054,11 +1053,6 @@ InitializeEnvironment (
   }
 
   Status = EarlyFindPackage (Env, L"KEYWORD", &Keyword);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  Status = EarlyFindSymbol (CommonLisp, L"NIL", &Nil);
   if (EFI_ERROR (Status)) {
     return Status;
   }
@@ -1106,7 +1100,6 @@ InitializeEnvironment (
   Ctx->ClassStandardClass  = StandardClass->Class;
   Ctx->ClassString         = String->Class;
   Ctx->ClassSymbol         = Symbol->Class;
-  Ctx->Nil                 = Nil->Value;
   Ctx->PackageCommonLisp   = BORAX_MAKE_POINTER (CommonLisp);
   Ctx->PackageInitialImage = BORAX_MAKE_POINTER (InitialImage);
   Ctx->PackageKeyword      = BORAX_MAKE_POINTER (Keyword);

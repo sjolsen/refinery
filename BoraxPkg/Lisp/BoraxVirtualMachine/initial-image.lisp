@@ -7,10 +7,6 @@
 
 (in-package :borax-virtual-machine/initial-image)
 
-(defclass borax-vm/cl:null ()
-  ()
-  (:metaclass record-class))
-
 (defclass borax-vm/cl:package ()
   ((name :reader borax-vm/cl:package-name
          :initarg :name)
@@ -30,14 +26,6 @@
 (defclass multiple-values ()
   ()
   (:metaclass record-class))
-
-(defclass builder ()
-  ((borax-vm/cl:nil :initform (make-instance 'borax-vm/cl:null))))
-
-(defvar *builder* nil)
-
-(define-symbol-macro borax-vm/cl:nil
-    (slot-value *builder* 'borax-vm/cl:nil))
 
 (defclass global-environment ()
   ((packages :accessor packages
@@ -92,9 +80,6 @@
 ;; TODO: If we ever end up with multiple instances of image generation code,
 ;; reify methods for CL classes will clash. This could be solved by adding a
 ;; root parameter for specialization.
-(defmethod reify ((object null))
-  borax-vm/cl:nil)
-
 (defmethod reify ((object package))
   (ensure-package object))
 
@@ -127,13 +112,12 @@
     (return (acc)))
 
 (defun make-initial-image ()
-  (let ((*builder* (make-instance 'builder)))
-    (setf (root *image*) (make-instance 'global-environment))
-    (borax-vm/cl:setq
-     borax-vm/cl:nil borax-vm/cl:nil
-     numbers '(-100 -3 0 1 2 3 4 5 43 343 8675309)
-     stuff '((1 2 3) (nil . nil) (4 5 6 . 7) :z)
-     letters #(#\A #\B #\C #\D)
-     hello "Hellorld!"
-     sum-list (bytecode-function 'sum-list))
-    (reify-image)))
+  (setf (root *image*) (make-instance 'global-environment))
+  (borax-vm/cl:setq
+   borax-vm/cl:nil borax-vm/cl:nil
+   numbers '(-100 -3 0 1 2 3 4 5 43 343 8675309)
+   stuff '((1 2 3) (nil . nil) (4 5 6 . 7) :z)
+   letters #(#\A #\B #\C #\D)
+   hello "Hellorld!"
+   sum-list (bytecode-function 'sum-list))
+  (reify-image))

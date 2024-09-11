@@ -604,7 +604,7 @@ BoraxTaskEnterFunction (
   BoraxTaskStackWrite (Task, NewBP + 3, BORAX_UNBOUND);
 
   for (I = 0; I < Info.Locals; ++I) {
-    BoraxTaskStackWrite (Task, NewBP + 4 + I, BORAX_UNBOUND);
+    BoraxTaskStackWrite (Task, NewBP + 4 + I, BORAX_NIL);
   }
 
   Task->Registers.SP = NewSP;
@@ -654,7 +654,7 @@ BoraxTaskEnterFunctionTail (
   EFI_STATUS  Status;
   BOOLEAN     Intercepted;
 
-  Status = UnwindFrame (Task, BORAX_UNBOUND, &Intercepted);
+  Status = UnwindFrame (Task, BORAX_NIL, &Intercepted);
   if (EFI_ERROR (Status) || Intercepted) {
     return Status;
   }
@@ -671,7 +671,7 @@ BoraxTaskExitFunction (
   EFI_STATUS  Status;
   BOOLEAN     Intercepted;
 
-  Status = UnwindFrame (Task, BORAX_UNBOUND, &Intercepted);
+  Status = UnwindFrame (Task, BORAX_NIL, &Intercepted);
   if (EFI_ERROR (Status) || Intercepted) {
     return Status;
   }
