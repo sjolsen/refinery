@@ -1005,7 +1005,8 @@ ErrorHandler (
       // TODO: Print this to the buffer instead
       BoraxTaskDebugStackTrace (DEBUG_ERROR, Task);
 
-      Status = BufferWrite (Buffer, L"Task encountered an error condition: ");
+      Status = BufferWrite (Buffer,
+                            L"\nTask encountered an error condition:\n  ");
       if (EFI_ERROR (Status)) {
         return SomeErrorTodo (Task->Interp);
       }
