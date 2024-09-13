@@ -714,6 +714,14 @@ FormatRecursive (
 
           return BoraxTaskExitFunction (Task);
 
+        case BORAX_DISCRIM_NIL:
+          Status = BufferWrite (Buffer, L"NIL");
+          if (EFI_ERROR (Status)) {
+            return SomeErrorTodo (Task->Interp);
+          }
+
+          return BoraxTaskExitFunction (Task);
+
         case BORAX_DISCRIM_CHARACTER:
         {
           Status = BufferWrite (Buffer, L"#\\");
@@ -778,14 +786,7 @@ FormatRecursive (
         {
           BORAX_RECORD  *Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
 
-          if (BORAX_EQ (Object, BORAX_NIL)) {
-            Status = BufferWrite (Buffer, L"NIL");
-            if (EFI_ERROR (Status)) {
-              return SomeErrorTodo (Task->Interp);
-            }
-
-            return BoraxTaskExitFunction (Task);
-          } else if (BORAX_EQ (Record->Class, Ctx->ClassSymbol)) {
+          if (BORAX_EQ (Record->Class, Ctx->ClassSymbol)) {
             SYMBOL  *Symbol;
 
             Status = BORAX_GET_OBJECT_RECORD (Object, &Symbol);

@@ -114,6 +114,7 @@
 (defgeneric reify (object)
   (:method ((object immediate)) object)
   (:method ((object object)) object)
+  (:method ((object null)) borax-vm/cl:nil)
   ;; TODO: Arbitrary-precision integers
   (:method ((object integer)) object)
   (:method ((object character)) object))
