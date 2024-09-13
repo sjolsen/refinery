@@ -79,7 +79,7 @@ BORAX_OBJECT
 EFIAPI
 BoraxPrimitiveSimpleCondition (
   IN BORAX_INTERPRETER   *Interp,
-  IN BORAX_GLOBAL        Class,
+  IN BORAX_OBJECT        Class,
   IN CONST CHAR16        *Control,
   IN UINTN               ArgsLength,
   IN CONST BORAX_OBJECT  *Args
@@ -87,7 +87,6 @@ BoraxPrimitiveSimpleCondition (
 {
   EFI_STATUS              Status;
   BORAX_OBJECT            Condition;
-  BORAX_OBJECT            ClassSimpleCondition = Interp->Globals[Class];
   BORAX_OBJECT            FormatControl;
   BORAX_OBJECT            FormatArguments;
   BORAX_SIMPLE_CONDITION  *SimpleCondition;
@@ -105,7 +104,7 @@ BoraxPrimitiveSimpleCondition (
   Status = BoraxAllocateRecord (
              Interp->Alloc,
              BORAX_WIDETAG_OBJECT_RECORD,
-             ClassSimpleCondition,
+             Class,
              BORAX_RECORD_LENGTH (BORAX_SIMPLE_CONDITION),
              0, // LengthAux
              BORAX_IMMEDIATE_UNBOUND,
@@ -125,12 +124,11 @@ EFIAPI
 BoraxPrimitiveTypeError (
   IN BORAX_INTERPRETER  *Interp,
   IN BORAX_OBJECT       Datum,
-  IN BORAX_GLOBAL       ExpectedType
+  IN BORAX_OBJECT       ExpectedType
   )
 {
   EFI_STATUS        Status;
-  BORAX_OBJECT      ClassTypeError    = Interp->Globals[BORAX_GLOBAL_CLASS_TYPE_ERROR];
-  BORAX_OBJECT      ClassExpectedType = Interp->Globals[ExpectedType];
+  BORAX_OBJECT      ClassTypeError = Interp->Globals[BORAX_GLOBAL_CLASS_TYPE_ERROR];
   BORAX_TYPE_ERROR  *TypeError;
 
   Status = BoraxAllocateRecord (
@@ -147,7 +145,7 @@ BoraxPrimitiveTypeError (
   }
 
   TypeError->Datum        = Datum;
-  TypeError->ExpectedType = ClassExpectedType;
+  TypeError->ExpectedType = ExpectedType;
   return BORAX_MAKE_POINTER (TypeError);
 }
 
@@ -155,18 +153,17 @@ BORAX_OBJECT
 EFIAPI
 BoraxPrimitiveCellError (
   IN BORAX_INTERPRETER  *Interp,
-  IN BORAX_GLOBAL       Class,
+  IN BORAX_OBJECT       Class,
   IN BORAX_OBJECT       Name
   )
 {
   EFI_STATUS        Status;
-  BORAX_OBJECT      ClassCellError = Interp->Globals[Class];
   BORAX_CELL_ERROR  *CellError;
 
   Status = BoraxAllocateRecord (
              Interp->Alloc,
              BORAX_WIDETAG_OBJECT_RECORD,
-             ClassCellError,
+             Class,
              BORAX_RECORD_LENGTH (BORAX_CELL_ERROR),
              0, // LengthAux
              BORAX_IMMEDIATE_UNBOUND,
@@ -200,7 +197,7 @@ LocationError (
 
   return BoraxPrimitiveCellError (
            Interp,
-           BORAX_GLOBAL_CLASS_LOCATION_ERROR,
+           Interp->Globals[BORAX_GLOBAL_CLASS_LOCATION_ERROR],
            Name
            );
 }

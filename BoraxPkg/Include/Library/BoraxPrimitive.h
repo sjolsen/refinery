@@ -51,7 +51,7 @@ BORAX_OBJECT
 EFIAPI
 BoraxPrimitiveSimpleCondition (
   IN BORAX_INTERPRETER   *Interp,
-  IN BORAX_GLOBAL        Class,
+  IN BORAX_OBJECT        Class,
   IN CONST CHAR16        *Control,
   IN UINTN               ArgsLength,
   IN CONST BORAX_OBJECT  *Args
@@ -68,7 +68,7 @@ EFIAPI
 BoraxPrimitiveTypeError (
   IN BORAX_INTERPRETER  *Interp,
   IN BORAX_OBJECT       Datum,
-  IN BORAX_GLOBAL       ExpectedType
+  IN BORAX_OBJECT       ExpectedType
   );
 
 typedef struct {
@@ -80,7 +80,7 @@ BORAX_OBJECT
 EFIAPI
 BoraxPrimitiveCellError (
   IN BORAX_INTERPRETER  *Interp,
-  IN BORAX_GLOBAL       Class,
+  IN BORAX_OBJECT       Class,
   IN BORAX_OBJECT       Name
   );
 

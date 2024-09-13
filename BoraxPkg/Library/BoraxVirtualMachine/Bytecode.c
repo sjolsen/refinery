@@ -11,7 +11,7 @@ BytecodeFunctionRun (
 {
   return BoraxPrimitiveSimpleCondition (
            Task->Interp,
-           BORAX_GLOBAL_CLASS_SIMPLE_ERROR,
+           Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
            L"Not implemented: BytecodeFunctionRun",
            0,
            NULL
@@ -28,7 +28,7 @@ BytecodeFunctionName (
 {
   return BoraxPrimitiveSimpleCondition (
            Interp,
-           BORAX_GLOBAL_CLASS_SIMPLE_ERROR,
+           Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
            L"Not implemented: BytecodeFunctionName",
            0,
            NULL
@@ -45,7 +45,7 @@ BytecodeFunctionInfo (
 {
   return BoraxPrimitiveSimpleCondition (
            Interp,
-           BORAX_GLOBAL_CLASS_SIMPLE_ERROR,
+           Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
            L"Not implemented: BytecodeFunctionInfo",
            0,
            NULL
@@ -63,7 +63,7 @@ BytecodeFunctionShared (
 {
   return BoraxPrimitiveSimpleCondition (
            Interp,
-           BORAX_GLOBAL_CLASS_SIMPLE_ERROR,
+           Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
            L"Not implemented: BytecodeFunctionShared",
            0,
            NULL
@@ -81,7 +81,7 @@ BytecodeFunctionConstant (
 {
   return BoraxPrimitiveSimpleCondition (
            Interp,
-           BORAX_GLOBAL_CLASS_SIMPLE_ERROR,
+           Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
            L"Not implemented: BytecodeFunctionConstant",
            0,
            NULL

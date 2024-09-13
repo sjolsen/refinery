@@ -214,27 +214,13 @@ GetClassName (
 
   Status = BORAX_GET_OBJECT_RECORD (Object, &Class);
   if (EFI_ERROR (Status)) {
-    // TODO: Don't use primitive APIs here. Also TYPE-ERROR is not a subclass of
-    // SIMPLE-CONDTION :(
-    return BoraxPrimitiveSimpleCondition (
-             Interp,
-             BORAX_GLOBAL_CLASS_TYPE_ERROR,
-             L"Not a valid class object: ~S",
-             1,
-             &Object
-             );
+    // TODO: Don't use primitive APIs here.
+    return BoraxPrimitiveTypeError (Interp, Object, Ctx->ClassStandardClass);
   }
 
   if (!BORAX_EQ (Class->Record.Class, Ctx->ClassStandardClass)) {
-    // TODO: Don't use primitive APIs here. Also TYPE-ERROR is not a subclass of
-    // SIMPLE-CONDTION :(
-    return BoraxPrimitiveSimpleCondition (
-             Interp,
-             BORAX_GLOBAL_CLASS_TYPE_ERROR,
-             L"Not an instance of STANDARD-CLASS: ~S",
-             1,
-             &Object
-             );
+    // TODO: Don't use primitive APIs here.
+    return BoraxPrimitiveTypeError (Interp, Object, Ctx->ClassStandardClass);
   }
 
   *Name = Class->Name;
@@ -334,7 +320,7 @@ SomeErrorTodo (
   // TODO: We shouldn't use primitive APIs outside of the interpreter
   return BoraxPrimitiveSimpleCondition (
            Interp,
-           BORAX_GLOBAL_CLASS_SIMPLE_ERROR,
+           Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
            L"This was an EFI status code. FIXME",
            0,
            NULL
@@ -1005,8 +991,10 @@ ErrorHandler (
       // TODO: Print this to the buffer instead
       BoraxTaskDebugStackTrace (DEBUG_ERROR, Task);
 
-      Status = BufferWrite (Buffer,
-                            L"\nTask encountered an error condition:\n  ");
+      Status = BufferWrite (
+                 Buffer,
+                 L"\nTask encountered an error condition:\n  "
+                 );
       if (EFI_ERROR (Status)) {
         return SomeErrorTodo (Task->Interp);
       }

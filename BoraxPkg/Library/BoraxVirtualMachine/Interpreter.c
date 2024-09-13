@@ -618,7 +618,7 @@ BoraxTaskBind (
     };
     return BoraxPrimitiveSimpleCondition (
              Task->Interp,
-             BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR,
+             Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR],
              L"Invalid argument count: expected ~S, got ~S",
              ARRAY_SIZE (Args),
              Args
@@ -690,7 +690,7 @@ BoraxTaskEnterFunction (
 
     return BoraxPrimitiveSimpleCondition (
              Task->Interp,
-             BORAX_GLOBAL_CLASS_SIMPLE_ERROR,
+             Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
              L"Not implemented: shared bindings (when entering ~S)",
              ARRAY_SIZE (Args),
              Args
@@ -910,7 +910,7 @@ BoraxTaskTakeExit (
 
     return BoraxPrimitiveSimpleCondition (
              Task->Interp,
-             BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR,
+             Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR],
              L"Not an exit object: ~S",
              ARRAY_SIZE (Args),
              Args
@@ -924,7 +924,7 @@ BoraxTaskTakeExit (
 
     return BoraxPrimitiveSimpleCondition (
              Task->Interp,
-             BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR,
+             Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR],
              L"Tried to take an expired exit: ~S",
              ARRAY_SIZE (Args),
              Args
@@ -936,7 +936,7 @@ BoraxTaskTakeExit (
 
     return BoraxPrimitiveSimpleCondition (
              Task->Interp,
-             BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR,
+             Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR],
              L"Tried to take an exit to another task: ~S",
              ARRAY_SIZE (Args),
              Args
@@ -979,7 +979,7 @@ BoraxTaskPopDynamic (
 
     return BoraxPrimitiveSimpleCondition (
              Task->Interp,
-             BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR,
+             Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR],
              L"Tried to PopDynamic to depth ~S, but frame has depth ~S",
              ARRAY_SIZE (Args),
              Args
@@ -1290,7 +1290,7 @@ BoraxResolveFunction (
     if (!BORAX_BOUNDP (Symbol->Function)) {
       return BoraxPrimitiveCellError (
                Interp,
-               BORAX_GLOBAL_CLASS_UNDEFINED_FUNCTION,
+               Interp->Globals[BORAX_GLOBAL_CLASS_UNDEFINED_FUNCTION],
                Resolved
                );
     }
@@ -1331,7 +1331,11 @@ not_a_symbol:
 
 not_a_function:
   // TODO: Strictly, this should be (OR FUNCTION SYMBOL)
-  return BoraxPrimitiveTypeError (Interp, Resolved, BORAX_GLOBAL_CLASS_FUNCTION);
+  return BoraxPrimitiveTypeError (
+           Interp,
+           Resolved,
+           Interp->Globals[BORAX_GLOBAL_CLASS_FUNCTION]
+           );
 }
 
 EFI_STATUS
