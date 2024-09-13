@@ -5,8 +5,8 @@
 STATIC BORAX_OBJECT
 EFIAPI
 BytecodeFunctionRun (
-  IN BORAX_TASK  *Task,
-  IN VOID        *Function
+  IN BORAX_TASK    *Task,
+  IN BORAX_OBJECT  Function
   )
 {
   return BoraxPrimitiveSimpleCondition (
@@ -22,7 +22,7 @@ STATIC BORAX_OBJECT
 EFIAPI
 BytecodeFunctionName (
   IN BORAX_INTERPRETER     *Interp,
-  IN VOID                  *Function,
+  IN BORAX_OBJECT          Function,
   OUT BORAX_FUNCTION_NAME  *Name
   )
 {
@@ -39,7 +39,7 @@ STATIC BORAX_OBJECT
 EFIAPI
 BytecodeFunctionInfo (
   IN BORAX_INTERPRETER     *Interp,
-  IN VOID                  *Function,
+  IN BORAX_OBJECT          Function,
   OUT BORAX_FUNCTION_INFO  *Info
   )
 {
@@ -56,7 +56,7 @@ STATIC BORAX_OBJECT
 EFIAPI
 BytecodeFunctionShared (
   IN BORAX_INTERPRETER  *Interp,
-  IN VOID               *Function,
+  IN BORAX_OBJECT       Function,
   IN UINTN              Block,
   OUT UINTN             *Count
   )
@@ -74,7 +74,7 @@ STATIC BORAX_OBJECT
 EFIAPI
 BytecodeFunctionConstant (
   IN BORAX_INTERPRETER  *Interp,
-  IN VOID               *Function,
+  IN BORAX_OBJECT       Function,
   IN UINTN              Index,
   OUT BORAX_OBJECT      *Constant
   )

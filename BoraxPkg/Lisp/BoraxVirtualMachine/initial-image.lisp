@@ -20,6 +20,7 @@
    (name :reader borax-vm/cl:symbol-name
          :initarg :name)
    (value :accessor borax-vm/cl:symbol-value)
+   (function :accessor borax-vm/cl:symbol-function)
    (class :accessor borax-vm/cl:find-class))
   (:metaclass record-class))
 
@@ -76,6 +77,10 @@
   (:metaclass record-class))
 
 (defclass borax-vm/cl:cell-error (borax-vm/cl:error)
+  ()
+  (:metaclass record-class))
+
+(defclass borax-vm/cl:undefined-function (borax-vm/cl:cell-error)
   ()
   (:metaclass record-class))
 
@@ -146,17 +151,21 @@
       (setf (borax-vm/cl:find-class name) class))
     class))
 
+(defparameter *package-rename-alist*
+  '((:borax-vm/cl . "COMMON-LISP")
+    ;; TODO: Make this a real package (but not the real borax-runtime package
+    ;; because that will cause a conflict when we self-host)
+    (:borax-virtual-machine/initial-image . "BORAX-RUNTIME")
+    (:borax-virtual-machine/bytecode      . "BORAX-RUNTIME")))
+
 ;; TODO: If we ever end up with multiple instances of image generation code,
 ;; reify methods for CL classes will clash. This could be solved by adding a
 ;; root parameter for specialization.
 (defmethod reify ((object package))
-  (let ((name (cond
-                ((eq (find-package :borax-vm/cl) object) "COMMON-LISP")
-                ;; TODO: Make this a real package (but not the real
-                ;; borax-runtime package because that will cause a conflict when
-                ;; we self-host)
-                ((eq (find-package :borax-virtual-machine/initial-image) object) "BORAX-RUNTIME")
-                (t (package-name object)))))
+  (let ((name (loop for (designator . name) in *package-rename-alist*
+                    when (eq object (find-package designator))
+                      do (return name)
+                    finally (return (package-name object)))))
     (ensure-package name)))
 
 (defmethod reify ((object symbol))
@@ -191,6 +200,7 @@
   (ensure-find-class 'borax-vm/cl:function)
   (ensure-find-class 'borax-vm/cl:simple-error)
   (ensure-find-class 'borax-vm/cl:type-error)
+  (ensure-find-class 'borax-vm/cl:undefined-function)
   (ensure-find-class 'simple-program-error)
   (ensure-find-class 'heap-exhausted)
   (ensure-find-class 'stack-exhausted)
@@ -206,4 +216,6 @@
    letters #(#\A #\B #\C #\D)
    hello "Hellorld!"
    sum-list (bytecode-function 'sum-list))
+  (setf (borax-vm/cl:symbol-function (reify 'sum-list))
+        (bytecode-function 'sum-list))
   (reify-image))

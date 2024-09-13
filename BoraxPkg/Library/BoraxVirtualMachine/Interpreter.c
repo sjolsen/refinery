@@ -192,7 +192,6 @@ TaskRun (
   BORAX_OBJECT              Condition;
   BORAX_OBJECT              Code;
   CONST BORAX_FUNCTION_OPS  *Ops;
-  VOID                      *Function;
 
   if (Task->State == BORAX_TASK_STARTING) {
     Task->State = BORAX_TASK_RUNNING;
@@ -204,12 +203,12 @@ TaskRun (
 
   Code = UnsafeStackRead (Task, Task->Registers.BP + BORAX_STACK_CODE);
 
-  Condition = BoraxFunctionOps (Task->Interp, Code, &Ops, &Function);
+  Condition = BoraxResolveFunction (Task->Interp, &Code, &Ops);
   if (BORAX_BOOL (Condition)) {
     goto signal;
   }
 
-  Condition = Ops->Run (Task, Function);
+  Condition = Ops->Run (Task, Code);
   if (BORAX_BOOL (Condition)) {
     goto signal;
   }
@@ -350,6 +349,7 @@ EFIAPI
 BoraxInterpreterSpawn (
   IN BORAX_INTERPRETER  *Interp,
   IN EFI_EVENT          Completion  OPTIONAL,
+  IN BORAX_OBJECT       ErrorHandler  OPTIONAL,
   IN BORAX_OBJECT       EntryPoint,
   IN BORAX_OBJECT       Args,
   OUT BORAX_TASK        **Task      OPTIONAL
@@ -380,10 +380,11 @@ BoraxInterpreterSpawn (
 
   Stack = &NewTask->Stack;
 
-  NewTask->Interp     = Interp;
-  NewTask->State      = BORAX_TASK_STARTING;
-  NewTask->EntryPoint = EntryPoint;
-  NewTask->Completion = Completion;
+  NewTask->Interp       = Interp;
+  NewTask->State        = BORAX_TASK_STARTING;
+  NewTask->ErrorHandler = ErrorHandler;
+  NewTask->EntryPoint   = EntryPoint;
+  NewTask->Completion   = Completion;
 
   NewTask->Registers.BP = 0;
   NewTask->Registers.SP = 0;
@@ -589,16 +590,73 @@ BoraxTaskReadConstant (
   BORAX_OBJECT              Condition;
   BORAX_OBJECT              Code;
   CONST BORAX_FUNCTION_OPS  *Ops;
-  VOID                      *Function;
 
   Code = UnsafeStackRead (Task, Task->Registers.BP + BORAX_STACK_CODE);
 
-  Condition = BoraxFunctionOps (Task->Interp, Code, &Ops, &Function);
+  Condition = BoraxResolveFunction (Task->Interp, &Code, &Ops);
   if (BORAX_BOOL (Condition)) {
     return Condition;
   }
 
-  return Ops->Constant (Task->Interp, Function, Index, Constant);
+  return Ops->Constant (Task->Interp, Code, Index, Constant);
+}
+
+BORAX_OBJECT
+EFIAPI
+BoraxTaskBind (
+  IN BORAX_TASK     *Task,
+  IN UINTN          SlotsLength,
+  OUT BORAX_OBJECT  **Slots
+  )
+{
+  UINTN  I;
+
+  if (Task->Registers.VR->Length != SlotsLength) {
+    BORAX_OBJECT  Args[] = {
+      BORAX_MAKE_FIXNUM (SlotsLength),
+      BORAX_MAKE_FIXNUM (Task->Registers.VR->Length),
+    };
+    return BoraxPrimitiveSimpleCondition (
+             Task->Interp,
+             BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR,
+             L"Invalid argument count: expected ~S, got ~S",
+             ARRAY_SIZE (Args),
+             Args
+             );
+  }
+
+  for (I = 0; I < SlotsLength; ++I) {
+    *Slots[I] = Task->Registers.VR->Values[I];
+  }
+
+  return BORAX_NIL;
+}
+
+BORAX_OBJECT
+EFIAPI
+BoraxTaskCoBind (
+  IN BORAX_TASK    *Task,
+  IN UINTN         SlotsLength,
+  IN BORAX_OBJECT  *Slots
+  )
+{
+  EFI_STATUS  Status;
+  UINTN       I;
+
+  Status = BoraxResizeMultipleValues (
+             Task->Interp,
+             &Task->Registers.VR,
+             SlotsLength
+             );
+  if (EFI_ERROR (Status)) {
+    return BoraxPrimitiveHeapExhausted (Task->Interp);
+  }
+
+  for (I = 0; I < SlotsLength; ++I) {
+    Task->Registers.VR->Values[I] = Slots[I];
+  }
+
+  return BORAX_NIL;
 }
 
 BORAX_OBJECT
@@ -610,17 +668,18 @@ BoraxTaskEnterFunction (
 {
   BORAX_OBJECT              Condition;
   CONST BORAX_FUNCTION_OPS  *Ops;
-  VOID                      *F;
   BORAX_FUNCTION_INFO       Info;
   UINTN                     OldBP, NewBP, NewSP;
   UINTN                     I;
 
-  Condition = BoraxFunctionOps (Task->Interp, Function, &Ops, &F);
+  // Mutably resolving the function ensures the function object proper gets
+  // written to the stack, not a symbol
+  Condition = BoraxResolveFunction (Task->Interp, &Function, &Ops);
   if (BORAX_BOOL (Condition)) {
     return Condition;
   }
 
-  Condition = Ops->Info (Task->Interp, F, &Info);
+  Condition = Ops->Info (Task->Interp, Function, &Info);
   if (BORAX_BOOL (Condition)) {
     return Condition;
   }
@@ -967,10 +1026,32 @@ BoraxTaskError (
   )
 {
   // TODO: Call ERROR and allow the condition to be handled
-  BoraxTaskDebugStackTrace (DEBUG_ERROR, Task);
+  if (BORAX_BOOL (Task->ErrorHandler)) {
+    BORAX_OBJECT  Condition2;
 
-  // Allow the task to double-fault
-  return Condition;
+    // TODO: Preserve VR when handling interpreter conditions
+    Condition2 = BoraxTaskCoBind (Task, 1, &Condition);
+    if (BORAX_BOOL (Condition2)) {
+      return Condition2;
+    }
+
+    // TODO: Guard against infinite recursion
+    return BoraxTaskEnterFunction (Task, Task->ErrorHandler);
+  } else {
+    // Allow the task to double-fault
+    return Condition;
+  }
+}
+
+VOID
+EFIAPI
+BoraxTaskAbort (
+  IN BORAX_TASK    *Task,
+  IN BORAX_OBJECT  Condition
+  )
+{
+  Task->AbortCondition = Condition;
+  Task->State          = BORAX_TASK_ABORTED;
 }
 
 BORAX_STACK_FRAME_ITERATOR
@@ -1057,15 +1138,14 @@ BoraxTaskDebugStackTrace (
       if (Printed < STACK_TRACE_LIMIT) {
         BORAX_OBJECT              Condition;
         CONST BORAX_FUNCTION_OPS  *Ops;
-        VOID                      *Function;
         BORAX_FUNCTION_NAME       Name = { BORAX_FUNCTION_NAME_NONE };
 
-        Condition = BoraxFunctionOps (Task->Interp, Frame.Code, &Ops, &Function);
+        Condition = BoraxResolveFunction (Task->Interp, &Frame.Code, &Ops);
         if (BORAX_BOOL (Condition)) {
           goto print_name;
         }
 
-        Condition = Ops->Name (Task->Interp, Function, &Name);
+        Condition = Ops->Name (Task->Interp, Frame.Code, &Name);
         if (BORAX_BOOL (Condition)) {
           goto print_name;
         }
@@ -1134,6 +1214,16 @@ TaskSubObjects (
     return Status;
   }
 
+  Status = Callback (Ctx, &Task->ErrorHandler);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = Callback (Ctx, &Task->EntryPoint);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
   switch (Task->State) {
     case BORAX_TASK_ABORTED:
       Status = Callback (Ctx, &Task->AbortCondition);
@@ -1170,43 +1260,78 @@ CONST BORAX_GC_HOOKS  gTaskGcHooks = {
 
 BORAX_OBJECT
 EFIAPI
-BoraxFunctionOps (
+BoraxResolveFunction (
   IN BORAX_INTERPRETER          *Interp,
-  IN BORAX_OBJECT               Function,
-  OUT CONST BORAX_FUNCTION_OPS  **Ops,
-  OUT VOID                      **This
+  IN OUT BORAX_OBJECT           *Function,
+  OUT CONST BORAX_FUNCTION_OPS  **Ops
   )
 {
-  EFI_STATUS  Status;
+  EFI_STATUS    Status;
+  BORAX_OBJECT  ClassBytecodeFunction = Interp->Globals[BORAX_GLOBAL_CLASS_BYTECODE_FUNCTION];
+  BORAX_OBJECT  ClassSymbol           = Interp->Globals[BORAX_GLOBAL_CLASS_SYMBOL];
+  BORAX_OBJECT  Resolved              = *Function;
 
-  // TODO: A dispatch error should signal a condition
-  switch (BORAX_DISCRIMINATE (Function)) {
+  // Do not use recursion to handle symbols in case someone has FBOUND a symbol
+  // to itself
+  if (BORAX_DISCRIMINATE (Resolved) == BORAX_DISCRIM_OBJECT_RECORD) {
+    BORAX_RECORD  *Record = (BORAX_RECORD *)BORAX_GET_POINTER (Resolved);
+    BORAX_SYMBOL  *Symbol;
+
+    if (!BORAX_EQ (Record->Class, ClassSymbol)) {
+      goto not_a_symbol;
+    }
+
+    // TODO: replace this macro with one that handles type checking too
+    Status = BORAX_GET_OBJECT_RECORD (Resolved, &Symbol);
+    if (EFI_ERROR (Status)) {
+      goto not_a_symbol;
+    }
+
+    if (!BORAX_BOUNDP (Symbol->Function)) {
+      return BoraxPrimitiveCellError (
+               Interp,
+               BORAX_GLOBAL_CLASS_UNDEFINED_FUNCTION,
+               Resolved
+               );
+    }
+
+    Resolved = Symbol->Function;
+  }
+
+not_a_symbol:
+  switch (BORAX_DISCRIMINATE (Resolved)) {
     case BORAX_DISCRIM_BUILT_IN_FUNCTION:
-      *Ops  = &gBuiltInFunctionOps;
-      *This = BORAX_GET_POINTER (Function);
+      *Function = Resolved;
+      *Ops      = &gBuiltInFunctionOps;
       return BORAX_NIL;
 
     case BORAX_DISCRIM_OBJECT_RECORD:
     {
+      BORAX_RECORD             *Record = (BORAX_RECORD *)BORAX_GET_POINTER (Resolved);
       BORAX_BYTECODE_FUNCTION  *F;
 
-      // TODO: replace this macro with one that handles type checking too
-      Status = BORAX_GET_OBJECT_RECORD (Function, &F);
-      if (EFI_ERROR (Status)) {
-        goto type_error;
+      if (!BORAX_EQ (Record->Class, ClassBytecodeFunction)) {
+        goto not_a_function;
       }
 
-      *Ops  = &gBytecodeFunctionOps;
-      *This = F;
+      // TODO: replace this macro with one that handles type checking too
+      Status = BORAX_GET_OBJECT_RECORD (Resolved, &F);
+      if (EFI_ERROR (Status)) {
+        goto not_a_function;
+      }
+
+      *Function = Resolved;
+      *Ops      = &gBytecodeFunctionOps;
       return BORAX_NIL;
     }
 
     default:
-      goto type_error;
+      goto not_a_function;
   }
 
-type_error:
-  return BoraxPrimitiveTypeError (Interp, Function, BORAX_GLOBAL_CLASS_FUNCTION);
+not_a_function:
+  // TODO: Strictly, this should be (OR FUNCTION SYMBOL)
+  return BoraxPrimitiveTypeError (Interp, Resolved, BORAX_GLOBAL_CLASS_FUNCTION);
 }
 
 EFI_STATUS
@@ -1305,11 +1430,11 @@ CONST BORAX_GC_HOOKS  gBuiltInFunctionGcHooks = {
 STATIC BORAX_OBJECT
 EFIAPI
 BuiltInFunctionRun (
-  IN BORAX_TASK  *Task,
-  IN VOID        *Function
+  IN BORAX_TASK    *Task,
+  IN BORAX_OBJECT  Function
   )
 {
-  BORAX_BUILT_IN_FUNCTION  *F = Function;
+  BORAX_BUILT_IN_FUNCTION  *F = (BORAX_BUILT_IN_FUNCTION  *)BORAX_GET_POINTER (Function);
 
   return F->Code (Task);
 }
@@ -1318,11 +1443,11 @@ STATIC BORAX_OBJECT
 EFIAPI
 BuiltInFunctionName (
   IN BORAX_INTERPRETER     *Interp,
-  IN VOID                  *Function,
+  IN BORAX_OBJECT          Function,
   OUT BORAX_FUNCTION_NAME  *Name
   )
 {
-  BORAX_BUILT_IN_FUNCTION  *F = Function;
+  BORAX_BUILT_IN_FUNCTION  *F = (BORAX_BUILT_IN_FUNCTION  *)BORAX_GET_POINTER (Function);
 
   Name->Tag     = BORAX_FUNCTION_NAME_C_STRING;
   Name->CString = F->Name;
@@ -1333,11 +1458,11 @@ STATIC BORAX_OBJECT
 EFIAPI
 BuiltInFunctionInfo (
   IN BORAX_INTERPRETER     *Interp,
-  IN VOID                  *Function,
+  IN BORAX_OBJECT          Function,
   OUT BORAX_FUNCTION_INFO  *Info
   )
 {
-  BORAX_BUILT_IN_FUNCTION  *F = Function;
+  BORAX_BUILT_IN_FUNCTION  *F = (BORAX_BUILT_IN_FUNCTION  *)BORAX_GET_POINTER (Function);
 
   Info->Entry  = F->Entry;
   Info->Locals = F->Locals;
@@ -1349,12 +1474,12 @@ STATIC BORAX_OBJECT
 EFIAPI
 BuiltInFunctionShared (
   IN BORAX_INTERPRETER  *Interp,
-  IN VOID               *Function,
+  IN BORAX_OBJECT       Function,
   IN UINTN              Block,
   OUT UINTN             *Count
   )
 {
-  BORAX_BUILT_IN_FUNCTION  *F = Function;
+  BORAX_BUILT_IN_FUNCTION  *F = (BORAX_BUILT_IN_FUNCTION  *)BORAX_GET_POINTER (Function);
 
   if (Block >= F->SharedLength) {
     return BoraxPrimitiveSharedBlockLocationError (Interp, Block);
@@ -1368,12 +1493,12 @@ STATIC BORAX_OBJECT
 EFIAPI
 BuiltInFunctionConstant (
   IN BORAX_INTERPRETER  *Interp,
-  IN VOID               *Function,
+  IN BORAX_OBJECT       Function,
   IN UINTN              Index,
   OUT BORAX_OBJECT      *Constant
   )
 {
-  BORAX_BUILT_IN_FUNCTION  *F = Function;
+  BORAX_BUILT_IN_FUNCTION  *F = (BORAX_BUILT_IN_FUNCTION  *)BORAX_GET_POINTER (Function);
 
   if (Index >= F->ConstantsLength) {
     return BoraxPrimitiveConstantLocationError (Interp, Index);

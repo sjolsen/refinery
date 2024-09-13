@@ -214,6 +214,7 @@ typedef enum {
   BORAX_GLOBAL_CLASS_SIMPLE_ERROR,
   BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR,
   BORAX_GLOBAL_CLASS_TYPE_ERROR,
+  BORAX_GLOBAL_CLASS_UNDEFINED_FUNCTION,
   // Built-in conditions
   BORAX_GLOBAL_CLASS_HEAP_EXHAUSTED,
   BORAX_GLOBAL_CLASS_STACK_EXHAUSTED,
@@ -221,6 +222,9 @@ typedef enum {
   // Standard classes
   BORAX_GLOBAL_CLASS_FUNCTION,
   BORAX_GLOBAL_CLASS_STRING,
+  BORAX_GLOBAL_CLASS_SYMBOL,
+  // Built-in classes
+  BORAX_GLOBAL_CLASS_BYTECODE_FUNCTION,
   // Keyword symbols
   BORAX_GLOBAL_KEYWORD_CONSTANT,
   BORAX_GLOBAL_KEYWORD_LOCAL,
@@ -258,10 +262,11 @@ EFI_STATUS
 EFIAPI
 BoraxInterpreterSpawn (
   IN BORAX_INTERPRETER  *Interp,
-  IN EFI_EVENT          Completion  OPTIONAL,
+  IN EFI_EVENT          Completion    OPTIONAL,
+  IN BORAX_OBJECT       ErrorHandler  OPTIONAL,
   IN BORAX_OBJECT       EntryPoint,
   IN BORAX_OBJECT       Args,
-  OUT BORAX_TASK        **Task      OPTIONAL
+  OUT BORAX_TASK        **Task        OPTIONAL
   );
 
 VOID
@@ -334,6 +339,7 @@ struct _BORAX_TASK {
   BORAX_TASK_STATE        State;
   BORAX_TASK_STACK        Stack;
   BORAX_TASK_REGISTERS    Registers;
+  BORAX_OBJECT            ErrorHandler;
   BORAX_OBJECT            EntryPoint;
   EFI_EVENT               Completion;
 
@@ -447,6 +453,13 @@ BoraxTaskError (
   IN BORAX_OBJECT  Condition
   );
 
+VOID
+EFIAPI
+BoraxTaskAbort (
+  IN BORAX_TASK    *Task,
+  IN BORAX_OBJECT  Condition
+  );
+
 typedef struct {
   UINTN           BP;
   UINTN           SP;
@@ -484,8 +497,8 @@ BoraxTaskDebugStackTrace (
 typedef
 BORAX_OBJECT
 (EFIAPI *BORAX_FUNCTION_OP_RUN)(
-  IN BORAX_TASK  *Task,
-  IN VOID        *Function
+  IN BORAX_TASK    *Task,
+  IN BORAX_OBJECT  Function
   );
 
 typedef struct {
@@ -504,7 +517,7 @@ typedef
 BORAX_OBJECT
 (EFIAPI *BORAX_FUNCTION_OP_NAME)(
   IN BORAX_INTERPRETER     *Interp,
-  IN VOID                  *Function,
+  IN BORAX_OBJECT          Function,
   OUT BORAX_FUNCTION_NAME  *Name
   );
 
@@ -518,7 +531,7 @@ typedef
 BORAX_OBJECT
 (EFIAPI *BORAX_FUNCTION_OP_INFO)(
   IN BORAX_INTERPRETER     *Interp,
-  IN VOID                  *Function,
+  IN BORAX_OBJECT          Function,
   OUT BORAX_FUNCTION_INFO  *Info
   );
 
@@ -526,7 +539,7 @@ typedef
 BORAX_OBJECT
 (EFIAPI *BORAX_FUNCTION_OP_SHARED)(
   IN BORAX_INTERPRETER  *Interp,
-  IN VOID               *Function,
+  IN BORAX_OBJECT       Function,
   IN UINTN              Block,
   OUT UINTN             *Count
   );
@@ -535,7 +548,7 @@ typedef
 BORAX_OBJECT
 (EFIAPI *BORAX_FUNCTION_OP_CONSTANT)(
   IN BORAX_INTERPRETER  *Interp,
-  IN VOID               *Function,
+  IN BORAX_OBJECT       Function,
   IN UINTN              Index,
   OUT BORAX_OBJECT      *Constant
   );
@@ -553,11 +566,10 @@ extern CONST BORAX_FUNCTION_OPS  gBytecodeFunctionOps;
 
 BORAX_OBJECT
 EFIAPI
-BoraxFunctionOps (
+BoraxResolveFunction (
   IN BORAX_INTERPRETER          *Interp,
-  IN BORAX_OBJECT               Function,
-  OUT CONST BORAX_FUNCTION_OPS  **Ops,
-  OUT VOID                      **This
+  IN OUT BORAX_OBJECT           *Function,
+  OUT CONST BORAX_FUNCTION_OPS  **Ops
   );
 
 typedef

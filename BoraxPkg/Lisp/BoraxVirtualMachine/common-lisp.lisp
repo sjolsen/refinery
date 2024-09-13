@@ -7,9 +7,9 @@
            #:class #:standard-class #:class-name #:find-class
            #:package #:package-name #:find-package
            #:symbol #:symbol-package #:symbol-name #:symbol-value
-           #:find-symbol #:intern
+           #:symbol-function #:find-symbol #:intern
            #:condition #:simple-condition #:serious-condition
-           #:storage-condition #:cell-error
+           #:storage-condition #:cell-error #:undefined-function
            #:error #:program-error #:simple-error #:type-error
            #:function
            #:setq
@@ -21,9 +21,9 @@
            #:class #:standard-class #:class-name #:find-class
            #:package #:package-name #:find-package
            #:symbol #:symbol-package #:symbol-name #:symbol-value
-           #:find-symbol #:intern
+           #:symbol-function #:find-symbol #:intern
            #:condition #:simple-condition #:serious-condition
-           #:storage-condition #:cell-error
+           #:storage-condition #:cell-error #:undefined-function
            #:error #:program-error #:simple-error #:type-error
            #:function
            #:setq

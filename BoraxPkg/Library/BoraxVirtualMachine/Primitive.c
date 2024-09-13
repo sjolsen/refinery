@@ -151,9 +151,9 @@ BoraxPrimitiveTypeError (
   return BORAX_MAKE_POINTER (TypeError);
 }
 
-STATIC BORAX_OBJECT
+BORAX_OBJECT
 EFIAPI
-CellError (
+BoraxPrimitiveCellError (
   IN BORAX_INTERPRETER  *Interp,
   IN BORAX_GLOBAL       Class,
   IN BORAX_OBJECT       Name
@@ -198,7 +198,11 @@ LocationError (
     return Condition;
   }
 
-  return CellError (Interp, BORAX_GLOBAL_CLASS_LOCATION_ERROR, Name);
+  return BoraxPrimitiveCellError (
+           Interp,
+           BORAX_GLOBAL_CLASS_LOCATION_ERROR,
+           Name
+           );
 }
 
 BORAX_OBJECT
@@ -429,71 +433,92 @@ typedef struct {
 } GLOBAL_DESC;
 
 STATIC CONST GLOBAL_DESC  gGlobalDesc[BORAX_GLOBAL_COUNT] = {
-  [BORAX_GLOBAL_PACKAGE_COMMON_LISP] =              {
+  // Standard packages
+  [BORAX_GLOBAL_PACKAGE_COMMON_LISP] =                           {
     .Tag  = GLOBAL_DESC_PACKAGE,
     .Name = L"COMMON-LISP",
   },
-  [BORAX_GLOBAL_PACKAGE_KEYWORD] =                  {
+  [BORAX_GLOBAL_PACKAGE_KEYWORD] =                               {
     .Tag  = GLOBAL_DESC_PACKAGE,
     .Name = L"KEYWORD",
   },
-  [BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME] =            {
+  // Built-in packages
+  [BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME] =                         {
     .Tag  = GLOBAL_DESC_PACKAGE,
     .Name = L"BORAX-RUNTIME",
   },
-
-  [BORAX_GLOBAL_CLASS_SIMPLE_ERROR] =               {
+  // Standard conditions
+  [BORAX_GLOBAL_CLASS_SIMPLE_ERROR] =                            {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
     .Name    = L"SIMPLE-ERROR",
   },
-  [BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR] =       {
+  [BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR] =                    {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
     .Name    = L"SIMPLE-PROGRAM-ERROR",
   },
-  [BORAX_GLOBAL_CLASS_TYPE_ERROR] =                 {
+  [BORAX_GLOBAL_CLASS_TYPE_ERROR] =                              {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
     .Name    = L"TYPE-ERROR",
   },
-  [BORAX_GLOBAL_CLASS_HEAP_EXHAUSTED] =             {
+  [BORAX_GLOBAL_CLASS_UNDEFINED_FUNCTION] =                      {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
+    .Name    = L"UNDEFINED-FUNCTION",
+  },
+  // Built-in conditions
+  [BORAX_GLOBAL_CLASS_HEAP_EXHAUSTED] =                          {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
     .Name    = L"HEAP-EXHAUSTED",
   },
-  [BORAX_GLOBAL_CLASS_STACK_EXHAUSTED] =            {
+  [BORAX_GLOBAL_CLASS_STACK_EXHAUSTED] =                         {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
     .Name    = L"STACK-EXHAUSTED",
   },
-  [BORAX_GLOBAL_CLASS_LOCATION_ERROR] =             {
+  [BORAX_GLOBAL_CLASS_LOCATION_ERROR] =                          {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
     .Name    = L"LOCATION-ERROR",
   },
-  [BORAX_GLOBAL_CLASS_FUNCTION] =                   {
+  // Standard classes
+  [BORAX_GLOBAL_CLASS_FUNCTION] =                                {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
     .Name    = L"FUNCTION",
   },
-  [BORAX_GLOBAL_CLASS_STRING] =                     {
+  [BORAX_GLOBAL_CLASS_STRING] =                                  {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
     .Name    = L"STRING",
   },
-
-  [BORAX_GLOBAL_KEYWORD_CONSTANT] =                 {
+  [BORAX_GLOBAL_CLASS_SYMBOL] =                                  {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
+    .Name    = L"SYMBOL",
+  },
+  // Built-in classes
+  [BORAX_GLOBAL_CLASS_BYTECODE_FUNCTION] =                       {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
+    .Name    = L"BYTECODE-FUNCTION",
+  },
+  // TODO: just create these
+  // Keyword symbols
+  [BORAX_GLOBAL_KEYWORD_CONSTANT] =                              {
     .Tag     = GLOBAL_DESC_SYMBOL,
     .Package = BORAX_GLOBAL_PACKAGE_KEYWORD,
     .Name    = L"CONSTANT",
   },
-  [BORAX_GLOBAL_KEYWORD_LOCAL] =                    {
+  [BORAX_GLOBAL_KEYWORD_LOCAL] =                                 {
     .Tag     = GLOBAL_DESC_SYMBOL,
     .Package = BORAX_GLOBAL_PACKAGE_KEYWORD,
     .Name    = L"LOCAL",
   },
-  [BORAX_GLOBAL_KEYWORD_SHARED] =                   {
+  [BORAX_GLOBAL_KEYWORD_SHARED] =                                {
     .Tag     = GLOBAL_DESC_SYMBOL,
     .Package = BORAX_GLOBAL_PACKAGE_KEYWORD,
     .Name    = L"SHARED",

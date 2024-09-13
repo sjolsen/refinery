@@ -29,6 +29,7 @@ typedef struct {
   BORAX_OBJECT    Package;
   BORAX_OBJECT    Name;
   BORAX_OBJECT    Value;
+  BORAX_OBJECT    Function;
   BORAX_OBJECT    Class;
 } SYMBOL;
 
@@ -39,6 +40,7 @@ typedef struct {
   BORAX_OBJECT    ClassStandardClass;
   BORAX_OBJECT    ClassString;
   BORAX_OBJECT    ClassSymbol;
+  BORAX_OBJECT    ErrorHandler;
   BORAX_OBJECT    FormatObjectRecord;
   BORAX_OBJECT    FormatRecursive;
   BORAX_OBJECT    FormatSimpleVector;
@@ -201,8 +203,10 @@ EarlyFindSymbol (
 STATIC BORAX_OBJECT
 EFIAPI
 GetClassName (
-  IN LISP_CONTEXT  *Ctx,
-  IN BORAX_OBJECT  Object
+  IN BORAX_INTERPRETER  *Interp,
+  IN LISP_CONTEXT       *Ctx,
+  IN BORAX_OBJECT       Object,
+  OUT BORAX_OBJECT      *Name
   )
 {
   EFI_STATUS      Status;
@@ -210,16 +214,31 @@ GetClassName (
 
   Status = BORAX_GET_OBJECT_RECORD (Object, &Class);
   if (EFI_ERROR (Status)) {
-    IMAGE_ERROR ("Not a valid class object");
-    return BORAX_NIL;
+    // TODO: Don't use primitive APIs here. Also TYPE-ERROR is not a subclass of
+    // SIMPLE-CONDTION :(
+    return BoraxPrimitiveSimpleCondition (
+             Interp,
+             BORAX_GLOBAL_CLASS_TYPE_ERROR,
+             L"Not a valid class object: ~S",
+             1,
+             &Object
+             );
   }
 
   if (!BORAX_EQ (Class->Record.Class, Ctx->ClassStandardClass)) {
-    IMAGE_ERROR ("Not an instance of STANDARD-CLASS");
-    return BORAX_NIL;
+    // TODO: Don't use primitive APIs here. Also TYPE-ERROR is not a subclass of
+    // SIMPLE-CONDTION :(
+    return BoraxPrimitiveSimpleCondition (
+             Interp,
+             BORAX_GLOBAL_CLASS_TYPE_ERROR,
+             L"Not an instance of STANDARD-CLASS: ~S",
+             1,
+             &Object
+             );
   }
 
-  return Class->Name;
+  *Name = Class->Name;
+  return BORAX_NIL;
 }
 
 STATIC BORAX_OBJECT
@@ -545,6 +564,7 @@ FormatObjectRecord (
   )
 {
   EFI_STATUS     Status;
+  BORAX_OBJECT   Condition;
   LISP_CONTEXT   *Ctx          = UnsafeConstant (Task, FOR_CONST_CTX);
   BUFFER_HANDLE  *BufferHandle = UnsafeConstant (Task, FOR_CONST_BUFFER);
   BUFFER         *Buffer       = BufferHandle->Buffer;
@@ -570,7 +590,11 @@ FormatObjectRecord (
         return SomeErrorTodo (Task->Interp);
       }
 
-      *ClassName = GetClassName (Ctx, Record->Class);
+      Condition = GetClassName (Task->Interp, Ctx, Record->Class, ClassName);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
       if (BORAX_EQ (*ClassName, BORAX_NIL)) {
         Status = BufferWrite (Buffer, L"<OBJECT-RECORD ");
         if (EFI_ERROR (Status)) {
@@ -938,6 +962,89 @@ STATIC CONST FUNCTION_DESCRIPTOR  gFormatRecursive = {
   },
 };
 
+enum {
+  EH_CONST_CTX,
+  EH_CONST_BUFFER,
+  EH_CONSTS
+};
+
+enum {
+  EH_LOCAL_CONDITION,
+  EH_LOCALS
+};
+
+enum {
+  EH_PC_START,
+  EH_PC_EXIT,
+  EH_PC_ENDLIST,
+};
+
+STATIC BORAX_OBJECT
+EFIAPI
+ErrorHandler (
+  IN BORAX_TASK  *Task
+  )
+{
+  EFI_STATUS     Status;
+  BORAX_OBJECT   Condition;
+  LISP_CONTEXT   *Ctx            = UnsafeConstant (Task, EH_CONST_CTX);
+  BUFFER_HANDLE  *BufferHandle   = UnsafeConstant (Task, EH_CONST_BUFFER);
+  BUFFER         *Buffer         = BufferHandle->Buffer;
+  BORAX_OBJECT   *SavedCondition = UnsafeLocal (Task, EH_LOCAL_CONDITION);
+
+  switch (Task->Registers.PC) {
+    case EH_PC_START:
+    {
+      BORAX_OBJECT  *Args[] = { SavedCondition };
+
+      Condition = BoraxTaskBind (Task, ARRAY_SIZE (Args), Args);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      // TODO: Print this to the buffer instead
+      BoraxTaskDebugStackTrace (DEBUG_ERROR, Task);
+
+      Status = BufferWrite (Buffer, L"Task encountered an error condition: ");
+      if (EFI_ERROR (Status)) {
+        return SomeErrorTodo (Task->Interp);
+      }
+
+      // Just let FormatRecursive consume the VR
+      Task->Registers.PC = EH_PC_EXIT;
+      return BoraxTaskEnterFunction (Task, Ctx->FormatRecursive);
+    }
+
+    case EH_PC_EXIT:
+    {
+      Status = BufferWrite (Buffer, L"\n  Aborting task.\n");
+      if (EFI_ERROR (Status)) {
+        return SomeErrorTodo (Task->Interp);
+      }
+
+      BoraxTaskAbort (Task, *SavedCondition);
+      return BORAX_NIL;
+    }
+
+    default:
+      return SomeErrorTodo (Task->Interp);
+  }
+}
+
+STATIC CONST FUNCTION_DESCRIPTOR  gErrorHandler = {
+  .Name      = L"ErrorHandler",
+  .Entry     = EH_PC_START,
+  .Code      = &ErrorHandler,
+  .Locals    = EH_LOCALS,
+  .Constants = {
+    FR_CONSTS,
+    (CONST CONSTANT_DESCRIPTOR[]) {
+      [FR_CONST_CTX]    = CONST_CTX,
+      [FR_CONST_BUFFER] = CONST_BUFFER,
+    },
+  },
+};
+
 STATIC EFI_STATUS
 EFIAPI
 PrintLabelled (
@@ -989,7 +1096,73 @@ PrintLabelled (
   Status = BoraxInterpreterSpawn (
              Interp,
              NULL,  // Completion
+             Ctx->ErrorHandler,
              Ctx->FormatRecursive,
+             BORAX_MAKE_POINTER (Args),
+             NULL  // Task
+             );
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  BoraxInterpreterRun (Interp, &IORequests);
+
+  return BufferWriteChar (Buffer, L'\n');
+}
+
+STATIC EFI_STATUS
+EFIAPI
+SumList (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_PIN          *LispContext,
+  IN BUFFER             *Buffer
+  )
+{
+  EFI_STATUS             Status;
+  LISP_CONTEXT           *Ctx;
+  PACKAGE                *Package;
+  SYMBOL                 *SumList;
+  SYMBOL                 *Numbers;
+  BORAX_MULTIPLE_VALUES  *Args;
+  BORAX_PIN              *IORequests;
+
+  Status = BORAX_GET_OBJECT_RECORD (LispContext->Object, &Ctx);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = BORAX_GET_OBJECT_RECORD (Ctx->PackageInitialImage, &Package);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = EarlyFindSymbol (Package, L"SUM-LIST", &SumList);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = EarlyFindSymbol (Package, L"NUMBERS", &Numbers);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = BufferWrite (Buffer, L"(SUM-LIST NUMBERS) = ");
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = BoraxMakeMultipleValues (Interp, 1, &Args);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Args->Values[0] = Numbers->Value;
+
+  Status = BoraxInterpreterSpawn (
+             Interp,
+             NULL,  // Completion
+             Ctx->ErrorHandler,
+             BORAX_MAKE_POINTER (SumList),
              BORAX_MAKE_POINTER (Args),
              NULL  // Task
              );
@@ -1182,6 +1355,16 @@ InitializeEnvironment (
     return Status;
   }
 
+  Status = MakeFunction (
+             &gErrorHandler,
+             Ctx,
+             Buffer,
+             &Ctx->ErrorHandler
+             );
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
   return BoraxAllocatePin (
            &gAlloc,
            BORAX_MAKE_POINTER (Ctx),
@@ -1264,6 +1447,7 @@ ImageLoadContent (
   (VOID)PrintLabelled (Interp, Ctx, Content, L"LETTERS");
   (VOID)PrintLabelled (Interp, Ctx, Content, L"HELLO");
   (VOID)PrintLabelled (Interp, Ctx, Content, L"SUM-LIST");
+  (VOID)SumList (Interp, Ctx, Content);
 
 cleanup:
   if (Interp != NULL) {

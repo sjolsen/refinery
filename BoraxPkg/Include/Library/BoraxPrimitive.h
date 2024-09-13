@@ -78,6 +78,14 @@ typedef struct {
 
 BORAX_OBJECT
 EFIAPI
+BoraxPrimitiveCellError (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_GLOBAL       Class,
+  IN BORAX_OBJECT       Name
+  );
+
+BORAX_OBJECT
+EFIAPI
 BoraxPrimitiveLocalLocationError (
   IN BORAX_INTERPRETER  *Interp,
   IN UINTN              Index
@@ -120,6 +128,7 @@ typedef struct {
   BORAX_OBJECT    Package;
   BORAX_OBJECT    Name;
   BORAX_OBJECT    Value;
+  BORAX_OBJECT    Function;
   BORAX_OBJECT    Class;
 } BORAX_SYMBOL;
 
