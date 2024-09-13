@@ -1004,19 +1004,19 @@ BoraxStackFrameNext (
     return FALSE;
   }
 
-  ASSERT (SP >= BP + 4);
+  ASSERT (SP >= BP + BORAX_STACK_SLOTS);
 
-  Frame->Code = UnsafeStackRead (Task, BP + 2);
+  Frame->Code = UnsafeStackRead (Task, BP + BORAX_STACK_CODE);
   Frame->BP   = BP;
   Frame->SP   = SP;
   Frame->PC   = PC;
 
-  Temp = UnsafeStackRead (Task, BP);
+  Temp = UnsafeStackRead (Task, BP + BORAX_STACK_SAVED_BP);
   ASSERT (BORAX_IS_FIXNUM (Temp));
   Iter->NextBP = BORAX_GET_FIXNUM (Temp);
   Iter->NextSP = BP;
 
-  Temp = UnsafeStackRead (Task, BP + 1);
+  Temp = UnsafeStackRead (Task, BP + BORAX_STACK_SAVED_PC);
   ASSERT (BORAX_IS_FIXNUM (Temp));
   Iter->NextPC = BORAX_GET_FIXNUM (Temp);
 
@@ -1038,6 +1038,8 @@ BoraxTaskDebugStackTrace (
   UINTN         Duplicates = 0;
   UINTN         Printed    = 0;
   UINTN         Skipped    = 0;
+
+  DebugPrint (ErrorLevel, "Task %p stack trace:\n", Task);
 
   while (BoraxStackFrameNext (&Iter, &Frame)) {
     if (BORAX_EQ (Frame.Code, LastCode) && (Frame.PC == LastPC)) {
