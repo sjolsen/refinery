@@ -3,6 +3,7 @@
 #include <Library/BoraxInterpreter.h>
 #include <Library/BoraxMemory.h>
 #include <Library/BoraxObjectFile.h>
+#include <Library/BoraxPrimitive.h>
 #include <Library/BoraxSystemAllocator.h>
 #include <Library/BundledResource.h>
 #include <Library/DebugLib.h>
@@ -273,6 +274,21 @@ WriteString (
   return BufferWriteChars (Buffer, (CHAR16 *)Record->Data, Length);
 }
 
+STATIC BORAX_OBJECT *
+EFIAPI
+UnsafeLocal (
+  IN BORAX_TASK  *Task,
+  UINTN          Index
+  )
+{
+  BORAX_OBJECT  Condition;
+  BORAX_OBJECT  *Local;
+
+  Condition = BoraxTaskAccessLocal (Task, Index, &Local);
+  ASSERT (!BORAX_BOOL (Condition));
+  return Local;
+}
+
 STATIC VOID *
 EFIAPI
 UnsafeConstant (
@@ -280,14 +296,30 @@ UnsafeConstant (
   UINTN          Index
   )
 {
-  EFI_STATUS    Status;
+  BORAX_OBJECT  Condition;
   BORAX_OBJECT  Object;
 
-  Status = BoraxTaskFunctionConstant (Task, Index, &Object);
-  ASSERT (!EFI_ERROR (Status));
+  Condition = BoraxTaskReadConstant (Task, Index, &Object);
+  ASSERT (!BORAX_BOOL (Condition));
   ASSERT (BORAX_IS_POINTER (Object));
 
   return BORAX_GET_POINTER (Object);
+}
+
+BORAX_OBJECT
+EFIAPI
+SomeErrorTodo (
+  IN BORAX_INTERPRETER  *Interp
+  )
+{
+  // TODO: We shouldn't use primitive APIs outside of the interpreter
+  return BoraxPrimitiveSimpleCondition (
+           Interp,
+           BORAX_GLOBAL_CLASS_SIMPLE_ERROR,
+           L"This was an EFI status code. FIXME",
+           0,
+           NULL
+           );
 }
 
 enum {
@@ -307,7 +339,7 @@ enum {
   FSV_PC_SLOTS,
 };
 
-STATIC EFI_STATUS
+STATIC BORAX_OBJECT
 EFIAPI
 FormatSimpleVector (
   IN BORAX_TASK  *Task
@@ -317,8 +349,8 @@ FormatSimpleVector (
   LISP_CONTEXT   *Ctx          = UnsafeConstant (Task, FSV_CONST_CTX);
   BUFFER_HANDLE  *BufferHandle = UnsafeConstant (Task, FSV_CONST_BUFFER);
   BUFFER         *Buffer       = BufferHandle->Buffer;
-  BORAX_OBJECT   *Object       = BoraxTaskStackLocal (Task, FSV_LOCAL_OBJECT);
-  BORAX_OBJECT   *Index        = BoraxTaskStackLocal (Task, FSV_LOCAL_INDEX);
+  BORAX_OBJECT   *Object       = UnsafeLocal (Task, FSV_LOCAL_OBJECT);
+  BORAX_OBJECT   *Index        = UnsafeLocal (Task, FSV_LOCAL_INDEX);
 
   switch (Task->Registers.PC) {
     case FSV_PC_START:
@@ -327,7 +359,7 @@ FormatSimpleVector (
 
       if (Task->Registers.VR->Length != 1) {
         IMAGE_ERROR ("Wrong number of arguments");
-        return EFI_INVALID_PARAMETER;
+        return SomeErrorTodo (Task->Interp);
       }
 
       *Object = Task->Registers.VR->Values[0];
@@ -335,18 +367,18 @@ FormatSimpleVector (
       Status = BORAX_GET_OBJECT_RECORD (*Object, &Record);
       if (EFI_ERROR (Status)) {
         IMAGE_ERROR ("Not a valid simple-vector object");
-        return EFI_INVALID_PARAMETER;
+        return SomeErrorTodo (Task->Interp);
       }
 
       Status = BufferWrite (Buffer, L"#(");
       if (EFI_ERROR (Status)) {
-        return Status;
+        return SomeErrorTodo (Task->Interp);
       }
 
       // Bounce through to the loop
       *Index             = BORAX_MAKE_FIXNUM (0);
       Task->Registers.PC = FSV_PC_SLOTS;
-      return EFI_SUCCESS;
+      return BORAX_NIL;
     }
 
     case FSV_PC_SLOTS:
@@ -356,7 +388,7 @@ FormatSimpleVector (
 
       Status = BoraxResizeMultipleValues (Task->Interp, &Task->Registers.VR, 1);
       if (EFI_ERROR (Status)) {
-        return Status;
+        return SomeErrorTodo (Task->Interp);
       }
 
       if (I < Record->Length) {
@@ -365,7 +397,7 @@ FormatSimpleVector (
         if (I != 0) {
           Status = BufferWriteChar (Buffer, L' ');
           if (EFI_ERROR (Status)) {
-            return Status;
+            return SomeErrorTodo (Task->Interp);
           }
         }
 
@@ -375,7 +407,7 @@ FormatSimpleVector (
       } else {
         Status = BufferWriteChar (Buffer, L')');
         if (EFI_ERROR (Status)) {
-          return Status;
+          return SomeErrorTodo (Task->Interp);
         }
 
         Task->Registers.VR->Values[0] = *Object;
@@ -384,7 +416,7 @@ FormatSimpleVector (
     }
 
     default:
-      return EFI_INVALID_PARAMETER;
+      return SomeErrorTodo (Task->Interp);
   }
 }
 
@@ -417,7 +449,7 @@ enum {
   FSC_PC_END,
 };
 
-STATIC EFI_STATUS
+STATIC BORAX_OBJECT
 EFIAPI
 FormatStandardClass (
   IN BORAX_TASK  *Task
@@ -436,7 +468,7 @@ FormatStandardClass (
 
       if (Task->Registers.VR->Length != 1) {
         IMAGE_ERROR ("Wrong number of arguments");
-        return EFI_INVALID_PARAMETER;
+        return SomeErrorTodo (Task->Interp);
       }
 
       Object = Task->Registers.VR->Values[0];
@@ -444,17 +476,17 @@ FormatStandardClass (
       Status = BORAX_GET_OBJECT_RECORD (Object, &Class);
       if (EFI_ERROR (Status)) {
         IMAGE_ERROR ("Not a valid class object");
-        return EFI_INVALID_PARAMETER;
+        return SomeErrorTodo (Task->Interp);
       }
 
       if (!BORAX_EQ (Class->Record.Class, Ctx->ClassStandardClass)) {
         IMAGE_ERROR ("Not an instance of STANDARD-CLASS");
-        return EFI_INVALID_PARAMETER;
+        return SomeErrorTodo (Task->Interp);
       }
 
       Status = BufferWrite (Buffer, L"<STANDARD-CLASS ");
       if (EFI_ERROR (Status)) {
-        return Status;
+        return SomeErrorTodo (Task->Interp);
       }
 
       Task->Registers.VR->Values[0] = Class->Name;
@@ -464,13 +496,13 @@ FormatStandardClass (
     case FSC_PC_END:
       Status = BufferWriteChar (Buffer, L'>');
       if (EFI_ERROR (Status)) {
-        return Status;
+        return SomeErrorTodo (Task->Interp);
       }
 
       return BoraxTaskExitFunction (Task);
 
     default:
-      return EFI_INVALID_PARAMETER;
+      return SomeErrorTodo (Task->Interp);
   }
 }
 
@@ -506,7 +538,7 @@ enum {
   FOR_PC_SLOTS,
 };
 
-STATIC EFI_STATUS
+STATIC BORAX_OBJECT
 EFIAPI
 FormatObjectRecord (
   IN BORAX_TASK  *Task
@@ -516,9 +548,9 @@ FormatObjectRecord (
   LISP_CONTEXT   *Ctx          = UnsafeConstant (Task, FOR_CONST_CTX);
   BUFFER_HANDLE  *BufferHandle = UnsafeConstant (Task, FOR_CONST_BUFFER);
   BUFFER         *Buffer       = BufferHandle->Buffer;
-  BORAX_OBJECT   *Object       = BoraxTaskStackLocal (Task, FOR_LOCAL_OBJECT);
-  BORAX_OBJECT   *ClassName    = BoraxTaskStackLocal (Task, FOR_LOCAL_CLASS_NAME);
-  BORAX_OBJECT   *Index        = BoraxTaskStackLocal (Task, FOR_LOCAL_INDEX);
+  BORAX_OBJECT   *Object       = UnsafeLocal (Task, FOR_LOCAL_OBJECT);
+  BORAX_OBJECT   *ClassName    = UnsafeLocal (Task, FOR_LOCAL_CLASS_NAME);
+  BORAX_OBJECT   *Index        = UnsafeLocal (Task, FOR_LOCAL_INDEX);
 
   switch (Task->Registers.PC) {
     case FOR_PC_START:
@@ -527,7 +559,7 @@ FormatObjectRecord (
 
       if (Task->Registers.VR->Length != 1) {
         IMAGE_ERROR ("Wrong number of arguments");
-        return EFI_INVALID_PARAMETER;
+        return SomeErrorTodo (Task->Interp);
       }
 
       *Object = Task->Registers.VR->Values[0];
@@ -535,21 +567,21 @@ FormatObjectRecord (
       Status = BORAX_GET_OBJECT_RECORD (*Object, &Record);
       if (EFI_ERROR (Status)) {
         IMAGE_ERROR ("Not a valid object record");
-        return Status;
+        return SomeErrorTodo (Task->Interp);
       }
 
       *ClassName = GetClassName (Ctx, Record->Class);
       if (BORAX_EQ (*ClassName, BORAX_NIL)) {
         Status = BufferWrite (Buffer, L"<OBJECT-RECORD ");
         if (EFI_ERROR (Status)) {
-          return Status;
+          return SomeErrorTodo (Task->Interp);
         }
 
         Task->Registers.VR->Values[0] = Record->Class;
       } else {
         Status = BufferWriteChar (Buffer, L'<');
         if (EFI_ERROR (Status)) {
-          return Status;
+          return SomeErrorTodo (Task->Interp);
         }
 
         Task->Registers.VR->Values[0] = *ClassName;
@@ -567,7 +599,7 @@ FormatObjectRecord (
 
       Status = BoraxResizeMultipleValues (Task->Interp, &Task->Registers.VR, 1);
       if (EFI_ERROR (Status)) {
-        return Status;
+        return SomeErrorTodo (Task->Interp);
       }
 
       if (I < Record->Length) {
@@ -575,17 +607,17 @@ FormatObjectRecord (
 
         Status = BufferWriteChar (Buffer, L' ');
         if (EFI_ERROR (Status)) {
-          return Status;
+          return SomeErrorTodo (Task->Interp);
         }
 
         Status = BufferWriteInt (Buffer, I);
         if (EFI_ERROR (Status)) {
-          return Status;
+          return SomeErrorTodo (Task->Interp);
         }
 
         Status = BufferWriteChar (Buffer, L'=');
         if (EFI_ERROR (Status)) {
-          return Status;
+          return SomeErrorTodo (Task->Interp);
         }
 
         *Index                        = BORAX_MAKE_FIXNUM (I + 1);
@@ -594,7 +626,7 @@ FormatObjectRecord (
       } else {
         Status = BufferWriteChar (Buffer, L'>');
         if (EFI_ERROR (Status)) {
-          return Status;
+          return SomeErrorTodo (Task->Interp);
         }
 
         Task->Registers.VR->Values[0] = *Object;
@@ -603,7 +635,7 @@ FormatObjectRecord (
     }
 
     default:
-      return EFI_INVALID_PARAMETER;
+      return SomeErrorTodo (Task->Interp);
   }
 }
 
@@ -639,7 +671,7 @@ enum {
   FR_PC_ENDLIST,
 };
 
-STATIC EFI_STATUS
+STATIC BORAX_OBJECT
 EFIAPI
 FormatRecursive (
   IN BORAX_TASK  *Task
@@ -649,8 +681,8 @@ FormatRecursive (
   LISP_CONTEXT   *Ctx          = UnsafeConstant (Task, FR_CONST_CTX);
   BUFFER_HANDLE  *BufferHandle = UnsafeConstant (Task, FR_CONST_BUFFER);
   BUFFER         *Buffer       = BufferHandle->Buffer;
-  BORAX_OBJECT   *SavedObject  = BoraxTaskStackLocal (Task, FR_LOCAL_OBJECT);
-  BORAX_OBJECT   *SavedRest    = BoraxTaskStackLocal (Task, FR_LOCAL_REST);
+  BORAX_OBJECT   *SavedObject  = UnsafeLocal (Task, FR_LOCAL_OBJECT);
+  BORAX_OBJECT   *SavedRest    = UnsafeLocal (Task, FR_LOCAL_REST);
 
   switch (Task->Registers.PC) {
     case FR_PC_START:
@@ -659,7 +691,7 @@ FormatRecursive (
 
       if (Task->Registers.VR->Length != 1) {
         IMAGE_ERROR ("Wrong number of arguments");
-        return EFI_INVALID_PARAMETER;
+        return SomeErrorTodo (Task->Interp);
       }
 
       Object       = Task->Registers.VR->Values[0];
@@ -669,7 +701,7 @@ FormatRecursive (
         case BORAX_DISCRIM_FIXNUM:
           Status = BufferWriteInt (Buffer, BORAX_GET_FIXNUM (Object));
           if (EFI_ERROR (Status)) {
-            return Status;
+            return SomeErrorTodo (Task->Interp);
           }
 
           return BoraxTaskExitFunction (Task);
@@ -677,7 +709,7 @@ FormatRecursive (
         case BORAX_DISCRIM_UNBOUND:
           Status = BufferWrite (Buffer, L"<UNBOUND>");
           if (EFI_ERROR (Status)) {
-            return Status;
+            return SomeErrorTodo (Task->Interp);
           }
 
           return BoraxTaskExitFunction (Task);
@@ -686,13 +718,13 @@ FormatRecursive (
         {
           Status = BufferWrite (Buffer, L"#\\");
           if (EFI_ERROR (Status)) {
-            return Status;
+            return SomeErrorTodo (Task->Interp);
           }
 
           // TODO: Non-printable characters
           Status = BufferWriteChar (Buffer, BORAX_GET_CHARACTER (Object));
           if (EFI_ERROR (Status)) {
-            return Status;
+            return SomeErrorTodo (Task->Interp);
           }
 
           return BoraxTaskExitFunction (Task);
@@ -704,7 +736,7 @@ FormatRecursive (
 
           Status = BufferWriteChar (Buffer, L'(');
           if (EFI_ERROR (Status)) {
-            return Status;
+            return SomeErrorTodo (Task->Interp);
           }
 
           Task->Registers.VR->Values[0] = Cons->Car;
@@ -720,22 +752,22 @@ FormatRecursive (
           if (BORAX_EQ (Record->Class, Ctx->ClassString)) {
             Status = BufferWriteChar (Buffer, L'"');
             if (EFI_ERROR (Status)) {
-              return Status;
+              return SomeErrorTodo (Task->Interp);
             }
 
             Status = WriteString (Ctx, Buffer, Object);
             if (EFI_ERROR (Status)) {
-              return Status;
+              return SomeErrorTodo (Task->Interp);
             }
 
             Status = BufferWriteChar (Buffer, L'"');
             if (EFI_ERROR (Status)) {
-              return Status;
+              return SomeErrorTodo (Task->Interp);
             }
           } else {
             Status = BufferWrite (Buffer, L"<WORD-RECORD>");
             if (EFI_ERROR (Status)) {
-              return Status;
+              return SomeErrorTodo (Task->Interp);
             }
           }
 
@@ -749,7 +781,7 @@ FormatRecursive (
           if (BORAX_EQ (Object, BORAX_NIL)) {
             Status = BufferWrite (Buffer, L"NIL");
             if (EFI_ERROR (Status)) {
-              return Status;
+              return SomeErrorTodo (Task->Interp);
             }
 
             return BoraxTaskExitFunction (Task);
@@ -759,7 +791,7 @@ FormatRecursive (
             Status = BORAX_GET_OBJECT_RECORD (Object, &Symbol);
             if (EFI_ERROR (Status)) {
               IMAGE_ERROR ("Not a valid symbol object");
-              return EFI_INVALID_PARAMETER;
+              return SomeErrorTodo (Task->Interp);
             }
 
             if (!BORAX_EQ (Symbol->Package, Ctx->PackageCommonLisp)) {
@@ -768,19 +800,19 @@ FormatRecursive (
 
                 Status = WriteString (Ctx, Buffer, PackageName);
                 if (EFI_ERROR (Status)) {
-                  return Status;
+                  return SomeErrorTodo (Task->Interp);
                 }
               }
 
               Status = BufferWriteChar (Buffer, L':');
               if (EFI_ERROR (Status)) {
-                return Status;
+                return SomeErrorTodo (Task->Interp);
               }
             }
 
             Status = WriteString (Ctx, Buffer, Symbol->Name);
             if (EFI_ERROR (Status)) {
-              return Status;
+              return SomeErrorTodo (Task->Interp);
             }
 
             return BoraxTaskExitFunction (Task);
@@ -796,7 +828,7 @@ FormatRecursive (
         case BORAX_DISCRIM_WEAK_POINTER:
           Status = BufferWrite (Buffer, L"<WEAK-POINTER>");
           if (EFI_ERROR (Status)) {
-            return Status;
+            return SomeErrorTodo (Task->Interp);
           }
 
           return BoraxTaskExitFunction (Task);
@@ -804,7 +836,7 @@ FormatRecursive (
         case BORAX_DISCRIM_PIN:
           Status = BufferWrite (Buffer, L"<PIN>");
           if (EFI_ERROR (Status)) {
-            return Status;
+            return SomeErrorTodo (Task->Interp);
           }
 
           return BoraxTaskExitFunction (Task);
@@ -812,7 +844,7 @@ FormatRecursive (
         case BORAX_DISCRIM_MOVED:
           Status = BufferWrite (Buffer, L"<MOVED>");
           if (EFI_ERROR (Status)) {
-            return Status;
+            return SomeErrorTodo (Task->Interp);
           }
 
           return BoraxTaskExitFunction (Task);
@@ -820,7 +852,7 @@ FormatRecursive (
         case BORAX_DISCRIM_UNINITIALIZED:
           Status = BufferWrite (Buffer, L"<UNINITIALIZED>");
           if (EFI_ERROR (Status)) {
-            return Status;
+            return SomeErrorTodo (Task->Interp);
           }
 
           return BoraxTaskExitFunction (Task);
@@ -828,7 +860,7 @@ FormatRecursive (
         default:
           Status = BufferWrite (Buffer, L"<ILLEGAL>");
           if (EFI_ERROR (Status)) {
-            return Status;
+            return SomeErrorTodo (Task->Interp);
           }
 
           return BoraxTaskExitFunction (Task);
@@ -841,7 +873,7 @@ FormatRecursive (
 
       Status = BoraxResizeMultipleValues (Task->Interp, &Task->Registers.VR, 1);
       if (EFI_ERROR (Status)) {
-        return Status;
+        return SomeErrorTodo (Task->Interp);
       }
 
       if (BORAX_DISCRIMINATE (Rest) == BORAX_DISCRIM_CONS) {
@@ -849,7 +881,7 @@ FormatRecursive (
 
         Status = BufferWriteChar (Buffer, L' ');
         if (EFI_ERROR (Status)) {
-          return Status;
+          return SomeErrorTodo (Task->Interp);
         }
 
         Task->Registers.VR->Values[0] = Cons->Car;
@@ -858,7 +890,7 @@ FormatRecursive (
       } else if (!BORAX_EQ (Rest, BORAX_NIL)) {
         Status = BufferWrite (Buffer, L" . ");
         if (EFI_ERROR (Status)) {
-          return Status;
+          return SomeErrorTodo (Task->Interp);
         }
 
         Task->Registers.VR->Values[0] = Rest;
@@ -866,7 +898,7 @@ FormatRecursive (
         return BoraxTaskEnterFunction (Task, Ctx->FormatRecursive);
       } else {
         Task->Registers.PC = FR_PC_ENDLIST;
-        return EFI_SUCCESS;
+        return BORAX_NIL;
       }
     }
 
@@ -874,12 +906,12 @@ FormatRecursive (
     {
       Status = BufferWriteChar (Buffer, L')');
       if (EFI_ERROR (Status)) {
-        return Status;
+        return SomeErrorTodo (Task->Interp);
       }
 
       Status = BoraxResizeMultipleValues (Task->Interp, &Task->Registers.VR, 1);
       if (EFI_ERROR (Status)) {
-        return Status;
+        return SomeErrorTodo (Task->Interp);
       }
 
       Task->Registers.VR->Values[0] = *SavedObject;
@@ -887,7 +919,7 @@ FormatRecursive (
     }
 
     default:
-      return EFI_INVALID_PARAMETER;
+      return SomeErrorTodo (Task->Interp);
   }
 }
 
@@ -964,10 +996,7 @@ PrintLabelled (
     return Status;
   }
 
-  Status = BoraxInterpreterRun (Interp, &IORequests);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
+  BoraxInterpreterRun (Interp, &IORequests);
 
   return BufferWriteChar (Buffer, L'\n');
 }
@@ -1043,11 +1072,8 @@ InitializeEnvironment (
     return Status;
   }
 
-  Status = EarlyFindPackage (
-             Env,
-             L"BORAX-VIRTUAL-MACHINE/INITIAL-IMAGE",
-             &InitialImage
-             );
+  // TODO: clean this up
+  Status = EarlyFindPackage (Env, L"BORAX-RUNTIME", &InitialImage);
   if (EFI_ERROR (Status)) {
     return Status;
   }
@@ -1256,5 +1282,5 @@ cleanup:
   }
 
   BoraxAllocatorCleanup (&gAlloc);
-  return Status;
+  return EFI_SUCCESS;
 }

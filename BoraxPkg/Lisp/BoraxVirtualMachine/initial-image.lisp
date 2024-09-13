@@ -23,7 +23,63 @@
    (class :accessor borax-vm/cl:find-class))
   (:metaclass record-class))
 
-(defclass multiple-values ()
+(defclass borax-vm/cl:function ()
+  ()
+  (:metaclass record-class))
+
+(defclass borax-vm/cl:condition ()
+  ()
+  (:metaclass record-class))
+
+(defclass borax-vm/cl:simple-condition (borax-vm/cl:condition)
+  (format-control
+   format-arguments)
+  (:metaclass record-class))
+
+(defclass borax-vm/cl:serious-condition (borax-vm/cl:condition)
+  ()
+  (:metaclass record-class))
+
+(defclass borax-vm/cl:error (borax-vm/cl:serious-condition)
+  ()
+  (:metaclass record-class))
+
+(defclass borax-vm/cl:simple-error (borax-vm/cl:simple-condition
+                                    borax-vm/cl:error)
+  ()
+  (:metaclass record-class))
+
+(defclass borax-vm/cl:program-error (borax-vm/cl:error)
+  ()
+  (:metaclass record-class))
+
+(defclass simple-program-error (borax-vm/cl:simple-error
+                                borax-vm/cl:program-error)
+  ()
+  (:metaclass record-class))
+
+(defclass borax-vm/cl:type-error (borax-vm/cl:error)
+  (datum
+   expected-type)
+  (:metaclass record-class))
+
+(defclass borax-vm/cl:storage-condition (borax-vm/cl:serious-condition)
+  ()
+  (:metaclass record-class))
+
+(defclass heap-exhausted (borax-vm/cl:storage-condition)
+  ()
+  (:metaclass record-class))
+
+(defclass stack-exhausted (borax-vm/cl:storage-condition)
+  ()
+  (:metaclass record-class))
+
+(defclass borax-vm/cl:cell-error (borax-vm/cl:error)
+  ()
+  (:metaclass record-class))
+
+(defclass location-error (borax-vm/cl:cell-error)
   ()
   (:metaclass record-class))
 
@@ -50,16 +106,13 @@
         when (borax-vm/cl:string= (borax-vm/cl:package-name package) name)
           return package))
 
-(defun ensure-package (package)
-  (let ((name (cond
-                ((eq (find-package :borax-vm/cl) package) "COMMON-LISP")
-                (t (package-name package)))))
-    (or (borax-vm/cl:find-package name)
-        (borax-vm/cl:car
-         (borax-vm/cl:push (make-instance 'borax-vm/cl:package
-                                          :name (reify name)
-                                          :symbols borax-vm/cl:nil)
-                           (packages (root *image*)))))))
+(defun ensure-package (name)
+  (or (borax-vm/cl:find-package name)
+      (borax-vm/cl:car
+       (borax-vm/cl:push (make-instance 'borax-vm/cl:package
+                                        :name (reify name)
+                                        :symbols borax-vm/cl:nil)
+                         (packages (root *image*))))))
 
 (defun borax-vm/cl:find-symbol (name package)
   (loop for l = (package-symbols package)
@@ -77,19 +130,41 @@
                                         :package package)
                          (package-symbols package)))))
 
+(defun ensure-find-class (class)
+  ;; TODO: This typecase is necessary to prevent infinite recursion of the
+  ;; :after method on reify for borax-vm/cl:standard-class, which should
+  ;; probably be implemented a different way.
+  ;;
+  ;; TODO: Also borax-vm/cl:class should be named something else since it's a
+  ;; host object, not a reified target object.
+  (let* ((class (etypecase class
+                  (symbol (reify (find-class class)))
+                  (borax-vm/cl:class (reify class))
+                  (borax-vm/cl:standard-class class)))
+         (name (reify (borax-vm/cl:class-name class))))
+    (unless (slot-boundp name 'class)
+      (setf (borax-vm/cl:find-class name) class))
+    class))
+
 ;; TODO: If we ever end up with multiple instances of image generation code,
 ;; reify methods for CL classes will clash. This could be solved by adding a
 ;; root parameter for specialization.
 (defmethod reify ((object package))
-  (ensure-package object))
+  (let ((name (cond
+                ((eq (find-package :borax-vm/cl) object) "COMMON-LISP")
+                ;; TODO: Make this a real package (but not the real
+                ;; borax-runtime package because that will cause a conflict when
+                ;; we self-host)
+                ((eq (find-package :borax-virtual-machine/initial-image) object) "BORAX-RUNTIME")
+                (t (package-name object)))))
+    (ensure-package name)))
 
 (defmethod reify ((object symbol))
   (borax-vm/cl:intern (symbol-name object)
                       (reify (symbol-package object))))
 
 (defmethod reify :after ((object borax-vm/cl:standard-class))
-  (let* ((name (reify (borax-vm/cl:class-name object))))
-    (setf (borax-vm/cl:find-class name) object)))
+  (ensure-find-class object))
 
 (defmacro borax-vm/cl:setq (&rest items)
   (loop for (symbol value) on items by #'cddr
@@ -113,6 +188,17 @@
 
 (defun make-initial-image ()
   (setf (root *image*) (make-instance 'global-environment))
+  (ensure-find-class 'borax-vm/cl:function)
+  (ensure-find-class 'borax-vm/cl:simple-error)
+  (ensure-find-class 'borax-vm/cl:type-error)
+  (ensure-find-class 'simple-program-error)
+  (ensure-find-class 'heap-exhausted)
+  (ensure-find-class 'stack-exhausted)
+  (ensure-find-class 'location-error)
+  (let ((keyword (ensure-package "KEYWORD")))
+    (borax-vm/cl:intern "CONSTANT" keyword)
+    (borax-vm/cl:intern "LOCAL" keyword)
+    (borax-vm/cl:intern "SHARED" keyword))
   (borax-vm/cl:setq
    borax-vm/cl:nil borax-vm/cl:nil
    numbers '(-100 -3 0 1 2 3 4 5 43 343 8675309)

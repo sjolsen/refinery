@@ -1,55 +1,91 @@
 #include <Library/BoraxBytecode.h>
 
-STATIC EFI_STATUS
+#include <Library/BoraxPrimitive.h>
+
+STATIC BORAX_OBJECT
 EFIAPI
 BytecodeFunctionRun (
   IN BORAX_TASK  *Task,
   IN VOID        *Function
   )
 {
-  return EFI_UNSUPPORTED;
+  return BoraxPrimitiveSimpleCondition (
+           Task->Interp,
+           BORAX_GLOBAL_CLASS_SIMPLE_ERROR,
+           L"Not implemented: BytecodeFunctionRun",
+           0,
+           NULL
+           );
 }
 
-STATIC EFI_STATUS
+STATIC BORAX_OBJECT
 EFIAPI
 BytecodeFunctionName (
+  IN BORAX_INTERPRETER     *Interp,
   IN VOID                  *Function,
   OUT BORAX_FUNCTION_NAME  *Name
   )
 {
-  return EFI_UNSUPPORTED;
+  return BoraxPrimitiveSimpleCondition (
+           Interp,
+           BORAX_GLOBAL_CLASS_SIMPLE_ERROR,
+           L"Not implemented: BytecodeFunctionName",
+           0,
+           NULL
+           );
 }
 
-STATIC EFI_STATUS
+STATIC BORAX_OBJECT
 EFIAPI
 BytecodeFunctionInfo (
+  IN BORAX_INTERPRETER     *Interp,
   IN VOID                  *Function,
   OUT BORAX_FUNCTION_INFO  *Info
   )
 {
-  return EFI_UNSUPPORTED;
+  return BoraxPrimitiveSimpleCondition (
+           Interp,
+           BORAX_GLOBAL_CLASS_SIMPLE_ERROR,
+           L"Not implemented: BytecodeFunctionInfo",
+           0,
+           NULL
+           );
 }
 
-STATIC EFI_STATUS
+STATIC BORAX_OBJECT
 EFIAPI
 BytecodeFunctionShared (
-  IN VOID    *Function,
-  IN UINTN   Block,
-  OUT UINTN  *Count
+  IN BORAX_INTERPRETER  *Interp,
+  IN VOID               *Function,
+  IN UINTN              Block,
+  OUT UINTN             *Count
   )
 {
-  return EFI_UNSUPPORTED;
+  return BoraxPrimitiveSimpleCondition (
+           Interp,
+           BORAX_GLOBAL_CLASS_SIMPLE_ERROR,
+           L"Not implemented: BytecodeFunctionShared",
+           0,
+           NULL
+           );
 }
 
-STATIC EFI_STATUS
+STATIC BORAX_OBJECT
 EFIAPI
 BytecodeFunctionConstant (
-  IN VOID           *Function,
-  IN UINTN          Index,
-  OUT BORAX_OBJECT  *Constant
+  IN BORAX_INTERPRETER  *Interp,
+  IN VOID               *Function,
+  IN UINTN              Index,
+  OUT BORAX_OBJECT      *Constant
   )
 {
-  return EFI_UNSUPPORTED;
+  return BoraxPrimitiveSimpleCondition (
+           Interp,
+           BORAX_GLOBAL_CLASS_SIMPLE_ERROR,
+           L"Not implemented: BytecodeFunctionConstant",
+           0,
+           NULL
+           );
 }
 
 CONST BORAX_FUNCTION_OPS  gBytecodeFunctionOps = {

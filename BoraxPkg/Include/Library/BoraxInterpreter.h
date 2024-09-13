@@ -168,6 +168,35 @@
  * forcefully. The caller may optionally take a reference to the created task
  * for later retrieval of its result; the caller is responsible for releasing
  * this pin reference.
+ *
+ * Condition handling
+ * ------------------
+ *
+ * Various code paths in pseudoinstructions and the interpreter itself may need
+ * to signal a condition. To avoid C recursion in handling these conditions,
+ * pseudoinstructions and task-level interpreter APIs may indicate a condition
+ * via the return value, which is otherwise NIL. Such conditions are always
+ * signalled as if by ERROR: they cannot be handled except by non-local control
+ * transfer, and if not handled will result in the task calling INVOKE-DEBUGGER.
+ *
+ * The process of signalling an interpreter-level error condition may itself
+ * encounter an error, for instance if stack memory is exhausted by the
+ * signalling process. In such a double-fault state, the task exits immediately.
+ *
+ * Memory exhaustion conditions in particular must be handled carefully: these
+ * conditions are encoded as immediates to avoid attempting to allocate in a
+ * situation where allocation has already failed, but this prevents us from
+ * reporting any detailed information in these situations. The stack guard is
+ * disabled when signalling a stack exhaustion condition for this reason.
+ *
+ * The result of a condition-valued function is interpreted as follows:
+ *
+ *   - NIL: no condition should be signalled
+ *   - A condition object: passed as the datum argument to ERROR
+ *   - A condition class: passed as the datum argument to ERROR
+ *
+ * To support these semantics, Borax extends the concept of condition
+ * designators (CLHS §9.1.2.1) to include condition class objects.
  */
 
 typedef struct {
@@ -175,12 +204,38 @@ typedef struct {
   BORAX_OBJECT    Packages;
 } BORAX_GLOBAL_ENVIRONMENT;
 
+typedef enum {
+  // Standard packages
+  BORAX_GLOBAL_PACKAGE_COMMON_LISP,
+  BORAX_GLOBAL_PACKAGE_KEYWORD,
+  // Built-in packages
+  BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
+  // Standard conditions
+  BORAX_GLOBAL_CLASS_SIMPLE_ERROR,
+  BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR,
+  BORAX_GLOBAL_CLASS_TYPE_ERROR,
+  // Built-in conditions
+  BORAX_GLOBAL_CLASS_HEAP_EXHAUSTED,
+  BORAX_GLOBAL_CLASS_STACK_EXHAUSTED,
+  BORAX_GLOBAL_CLASS_LOCATION_ERROR,
+  // Standard classes
+  BORAX_GLOBAL_CLASS_FUNCTION,
+  BORAX_GLOBAL_CLASS_STRING,
+  // Keyword symbols
+  BORAX_GLOBAL_KEYWORD_CONSTANT,
+  BORAX_GLOBAL_KEYWORD_LOCAL,
+  BORAX_GLOBAL_KEYWORD_SHARED,
+
+  BORAX_GLOBAL_COUNT
+} BORAX_GLOBAL;
+
 typedef struct {
   BORAX_PIN_RECORD            Record;
   BORAX_ALLOCATOR             *Alloc;
   BORAX_GLOBAL_ENVIRONMENT    *GlobalEnvironment;
   UINTN                       GcPageThreshold;
   LIST_ENTRY                  TaskList;
+  BORAX_OBJECT                Globals[BORAX_GLOBAL_COUNT];
 } BORAX_INTERPRETER;
 
 typedef struct _BORAX_TASK BORAX_TASK;
@@ -209,7 +264,7 @@ BoraxInterpreterSpawn (
   OUT BORAX_TASK        **Task      OPTIONAL
   );
 
-EFI_STATUS
+VOID
 EFIAPI
 BoraxInterpreterRun (
   IN BORAX_INTERPRETER  *Interp,
@@ -249,9 +304,12 @@ BoraxResizeMultipleValues (
   );
 
 typedef enum {
+  BORAX_TASK_STARTING,
   BORAX_TASK_RUNNING,
   BORAX_TASK_PENDING,
-  BORAX_TASK_EXITED,
+  BORAX_TASK_RETURNED,
+  BORAX_TASK_ABORTED,
+  BORAX_TASK_DOUBLE_FAULTED,
 } BORAX_TASK_STATE;
 
 typedef struct {
@@ -264,6 +322,8 @@ typedef struct {
   UINTN                    BP;
   UINTN                    SP;
   UINTN                    PC;
+  UINTN                    LC;
+  UINTN                    SC;
   BORAX_MULTIPLE_VALUES    *VR;
 } BORAX_TASK_REGISTERS;
 
@@ -274,54 +334,72 @@ struct _BORAX_TASK {
   BORAX_TASK_STATE        State;
   BORAX_TASK_STACK        Stack;
   BORAX_TASK_REGISTERS    Registers;
+  BORAX_OBJECT            EntryPoint;
   EFI_EVENT               Completion;
+
+  union {
+    BORAX_OBJECT    AbortCondition;
+    struct {
+      BORAX_OBJECT    Condition1;
+      BORAX_OBJECT    Condition2;
+    } DoubleFault;
+  };
 };
-
-BORAX_OBJECT
-EFIAPI
-BoraxTaskStackRead (
-  IN BORAX_TASK  *Task,
-  IN UINTN       Index
-  );
-
-VOID
-EFIAPI
-BoraxTaskStackWrite (
-  IN BORAX_TASK    *Task,
-  IN UINTN         Index,
-  IN BORAX_OBJECT  Value
-  );
 
 BORAX_OBJECT *
 EFIAPI
-BoraxTaskStackLocal (
+BoraxTaskUnsafeStackAddress (
   IN BORAX_TASK  *Task,
   IN UINTN       Index
   );
 
-EFI_STATUS
+BORAX_OBJECT
 EFIAPI
-BoraxTaskFunctionConstant (
+BoraxTaskAccessLocal (
+  IN BORAX_TASK     *Task,
+  IN UINTN          Index,
+  OUT BORAX_OBJECT  **Local
+  );
+
+BORAX_OBJECT
+EFIAPI
+BoraxTaskReadConstant (
   IN BORAX_TASK     *Task,
   IN UINTN          Index,
   OUT BORAX_OBJECT  *Constant
   );
 
-EFI_STATUS
+BORAX_OBJECT
+EFIAPI
+BoraxTaskBind (
+  IN BORAX_TASK     *Task,
+  IN UINTN          SlotsLength,
+  OUT BORAX_OBJECT  **Slots
+  );
+
+BORAX_OBJECT
+EFIAPI
+BoraxTaskCoBind (
+  IN BORAX_TASK    *Task,
+  IN UINTN         SlotsLength,
+  IN BORAX_OBJECT  *Slots
+  );
+
+BORAX_OBJECT
 EFIAPI
 BoraxTaskEnterFunction (
   IN BORAX_TASK    *Task,
   IN BORAX_OBJECT  Function
   );
 
-EFI_STATUS
+BORAX_OBJECT
 EFIAPI
 BoraxTaskEnterFunctionTail (
   IN BORAX_TASK    *Task,
   IN BORAX_OBJECT  Function
   );
 
-EFI_STATUS
+BORAX_OBJECT
 EFIAPI
 BoraxTaskExitFunction (
   IN BORAX_TASK  *Task
@@ -338,7 +416,7 @@ typedef union {
   };
 } BORAX_EXIT;
 
-EFI_STATUS
+BORAX_OBJECT
 EFIAPI
 BoraxTaskPushExit (
   IN BORAX_TASK   *Task,
@@ -346,20 +424,27 @@ BoraxTaskPushExit (
   OUT BORAX_EXIT  **Exit
   );
 
-EFI_STATUS
+BORAX_OBJECT
 EFIAPI
 BoraxTaskTakeExit (
   IN BORAX_TASK    *Task,
   IN BORAX_OBJECT  Exit
   );
 
-EFI_STATUS
+BORAX_OBJECT
 EFIAPI
 BoraxTaskPopDynamic (
   IN BORAX_TASK    *Task,
   IN UINTN         Depth,
   IN BORAX_OBJECT  TargetExit,
   OUT BOOLEAN      *Intercepted
+  );
+
+BORAX_OBJECT
+EFIAPI
+BoraxTaskError (
+  IN BORAX_TASK    *Task,
+  IN BORAX_OBJECT  Condition
   );
 
 typedef struct {
@@ -382,11 +467,10 @@ BoraxStackFrameIterate (
   IN BORAX_TASK  *Task
   );
 
-EFI_STATUS
+BOOLEAN
 EFIAPI
 BoraxStackFrameNext (
   IN BORAX_STACK_FRAME_ITERATOR  *Iter,
-  OUT BOOLEAN                    *Done,
   OUT BORAX_STACK_FRAME          *Frame
   );
 
@@ -398,10 +482,10 @@ BoraxTaskDebugStackTrace (
   );
 
 typedef
-EFI_STATUS
+BORAX_OBJECT
 (EFIAPI *BORAX_FUNCTION_OP_RUN)(
-  IN BORAX_TASK *Task,
-  IN VOID *Function
+  IN BORAX_TASK  *Task,
+  IN VOID        *Function
   );
 
 typedef struct {
@@ -417,10 +501,11 @@ typedef struct {
 } BORAX_FUNCTION_NAME;
 
 typedef
-EFI_STATUS
+BORAX_OBJECT
 (EFIAPI *BORAX_FUNCTION_OP_NAME)(
-  IN VOID *Function,
-  OUT BORAX_FUNCTION_NAME *Name
+  IN BORAX_INTERPRETER     *Interp,
+  IN VOID                  *Function,
+  OUT BORAX_FUNCTION_NAME  *Name
   );
 
 typedef struct {
@@ -430,26 +515,29 @@ typedef struct {
 } BORAX_FUNCTION_INFO;
 
 typedef
-EFI_STATUS
+BORAX_OBJECT
 (EFIAPI *BORAX_FUNCTION_OP_INFO)(
-  IN VOID *Function,
-  OUT BORAX_FUNCTION_INFO *Info
+  IN BORAX_INTERPRETER     *Interp,
+  IN VOID                  *Function,
+  OUT BORAX_FUNCTION_INFO  *Info
   );
 
 typedef
-EFI_STATUS
+BORAX_OBJECT
 (EFIAPI *BORAX_FUNCTION_OP_SHARED)(
-  IN VOID *Function,
-  IN UINTN Block,
-  OUT UINTN *Count
+  IN BORAX_INTERPRETER  *Interp,
+  IN VOID               *Function,
+  IN UINTN              Block,
+  OUT UINTN             *Count
   );
 
 typedef
-EFI_STATUS
+BORAX_OBJECT
 (EFIAPI *BORAX_FUNCTION_OP_CONSTANT)(
-  IN VOID *Function,
-  IN UINTN Index,
-  OUT BORAX_OBJECT *Constant
+  IN BORAX_INTERPRETER  *Interp,
+  IN VOID               *Function,
+  IN UINTN              Index,
+  OUT BORAX_OBJECT      *Constant
   );
 
 typedef struct {
@@ -463,16 +551,17 @@ typedef struct {
 extern CONST BORAX_FUNCTION_OPS  gBuiltInFunctionOps;
 extern CONST BORAX_FUNCTION_OPS  gBytecodeFunctionOps;
 
-EFI_STATUS
+BORAX_OBJECT
 EFIAPI
 BoraxFunctionOps (
+  IN BORAX_INTERPRETER          *Interp,
   IN BORAX_OBJECT               Function,
   OUT CONST BORAX_FUNCTION_OPS  **Ops,
   OUT VOID                      **This
   );
 
 typedef
-EFI_STATUS
+BORAX_OBJECT
 (EFIAPI *BORAX_BUILT_IN_CODE)(
   IN BORAX_TASK *Task
   );

@@ -3,6 +3,7 @@
 #include <Library/BaseLib.h>
 #include <Library/BoraxBytecode.h>
 #include <Library/BoraxMemory.h>
+#include <Library/BoraxPrimitive.h>
 #include <Library/DebugLib.h>
 #include <Library/MemoryAllocationLib.h>
 #include <Library/UefiBootServicesTableLib.h>
@@ -34,6 +35,27 @@ VirtualSubObject (
   ASSERT (BORAX_IS_POINTER (Object));
   *Ptr = BORAX_GET_POINTER (Object);
   return Status;
+}
+
+STATIC BORAX_OBJECT
+EFIAPI
+UnsafeStackRead (
+  IN BORAX_TASK  *Task,
+  IN UINTN       Index
+  )
+{
+  return *BoraxTaskUnsafeStackAddress (Task, Index);
+}
+
+STATIC VOID
+EFIAPI
+UnsafeStackWrite (
+  IN BORAX_TASK    *Task,
+  IN UINTN         Index,
+  IN BORAX_OBJECT  Value
+  )
+{
+  *BoraxTaskUnsafeStackAddress (Task, Index) = Value;
 }
 
 STATIC EFI_STATUS
@@ -98,21 +120,21 @@ TaskStackCleanup (
   FreePool (Stack->Pages);
 }
 
-STATIC EFI_STATUS
+STATIC BORAX_OBJECT
 EFIAPI
 TaskStackEnsureCapacity (
-  IN BORAX_TASK_STACK  *Stack,
-  IN UINTN             Words
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_TASK_STACK   *Stack,
+  IN UINTN              Words
   )
 {
-  EFI_STATUS  Status;
-  UINTN       Pages          = (Words + BORAX_WORDS_PER_PAGE - 1) / BORAX_WORDS_PER_PAGE;
-  UINTN       NewPagesLength = Stack->PagesLength;
-  UINTN       I;
+  BORAX_OBJECT  Condition;
+  UINTN         Pages          = (Words + BORAX_WORDS_PER_PAGE - 1) / BORAX_WORDS_PER_PAGE;
+  UINTN         NewPagesLength = Stack->PagesLength;
+  UINTN         I;
 
   if (Pages > STACK_PAGE_MAX) {
-    DEBUG ((DEBUG_ERROR, "Stack depth limit exceeded\n"));
-    return EFI_OUT_OF_RESOURCES;
+    return BoraxPrimitiveStackExhausted (Interp);
   }
 
   // Allocate space for the page pointers
@@ -128,7 +150,7 @@ TaskStackEnsureCapacity (
                                  );
 
     if (NewPages == NULL) {
-      Status = EFI_OUT_OF_RESOURCES;
+      Condition = BoraxPrimitiveHeapExhausted (Interp);
       goto cleanup;
     }
 
@@ -140,13 +162,13 @@ TaskStackEnsureCapacity (
   for ( ; NewPagesLength < Pages; ++NewPagesLength) {
     Stack->Pages[NewPagesLength] = AllocatePages (1);
     if (Stack->Pages[NewPagesLength] == NULL) {
-      Status = EFI_OUT_OF_RESOURCES;
+      Condition = BoraxPrimitiveHeapExhausted (Interp);
       goto cleanup;
     }
   }
 
   Stack->PagesLength = NewPagesLength;
-  Status             = EFI_SUCCESS;
+  Condition          = BORAX_NIL;
 
 cleanup:
   // On error, any newly allocated pages will lie between PagesLength and
@@ -158,40 +180,52 @@ cleanup:
     Stack->Pages[I] = NULL;
   }
 
-  return Status;
+  return Condition;
 }
 
-STATIC EFI_STATUS
+STATIC VOID
 EFIAPI
 TaskRun (
   IN BORAX_TASK  *Task
   )
 {
-  while (Task->State == BORAX_TASK_RUNNING) {
-    EFI_STATUS                Status;
-    UINTN                     BP   = Task->Registers.BP;
-    BORAX_OBJECT              Code = BoraxTaskStackRead (Task, BP + 2);
-    CONST BORAX_FUNCTION_OPS  *Ops;
-    VOID                      *Function;
+  BORAX_OBJECT              Condition;
+  BORAX_OBJECT              Code;
+  CONST BORAX_FUNCTION_OPS  *Ops;
+  VOID                      *Function;
 
-    Status = BoraxFunctionOps (Code, &Ops, &Function);
-    if (EFI_ERROR (Status)) {
-      // TODO: error reporting
-      return EFI_INVALID_PARAMETER;
+  if (Task->State == BORAX_TASK_STARTING) {
+    Task->State = BORAX_TASK_RUNNING;
+    Condition   = BoraxTaskEnterFunction (Task, Task->EntryPoint);
+    if (BORAX_BOOL (Condition)) {
+      goto signal;
     }
-
-    Status = Ops->Run (Task, Function);
-    if (EFI_ERROR (Status)) {
-      DebugPrint (DEBUG_ERROR, "Task returned error: %r\n", Status);
-      BoraxTaskDebugStackTrace (DEBUG_ERROR, Task);
-      return Status;
-    }
-
-    // TODO: Only when crossing the threshold
-    BoraxAllocatorCollect (Task->Interp->Alloc);
   }
 
-  return EFI_SUCCESS;
+  Code = UnsafeStackRead (Task, Task->Registers.BP + BORAX_STACK_CODE);
+
+  Condition = BoraxFunctionOps (Task->Interp, Code, &Ops, &Function);
+  if (BORAX_BOOL (Condition)) {
+    goto signal;
+  }
+
+  Condition = Ops->Run (Task, Function);
+  if (BORAX_BOOL (Condition)) {
+    goto signal;
+  }
+
+signal:
+  if (BORAX_BOOL (Condition)) {
+    BORAX_OBJECT  Condition2 = BoraxTaskError (Task, Condition);
+    if (BORAX_BOOL (Condition2)) {
+      Task->DoubleFault.Condition1 = Condition;
+      Task->DoubleFault.Condition2 = Condition2;
+      Task->State                  = BORAX_TASK_DOUBLE_FAULTED;
+    }
+  }
+
+  // TODO: Only when crossing the threshold
+  BoraxAllocatorCollect (Task->Interp->Alloc);
 }
 
 STATIC VOID
@@ -218,7 +252,7 @@ BoraxInterpreterInit (
   )
 {
   EFI_STATUS         Status;
-  BORAX_INTERPRETER  *NewInterp;
+  BORAX_INTERPRETER  *NewInterp = NULL;
 
   Status = BoraxAllocatePinRecord (
              Alloc,
@@ -227,7 +261,7 @@ BoraxInterpreterInit (
              (BORAX_PIN_RECORD **)&NewInterp
              );
   if (EFI_ERROR (Status)) {
-    return Status;
+    goto cleanup;
   }
 
   Status = BORAX_GET_OBJECT_RECORD (
@@ -235,7 +269,7 @@ BoraxInterpreterInit (
              &NewInterp->GlobalEnvironment
              );
   if (EFI_ERROR (Status)) {
-    return Status;
+    goto cleanup;
   }
 
   NewInterp->Alloc           = Alloc;
@@ -245,8 +279,21 @@ BoraxInterpreterInit (
                                  );
   InitializeListHead (&NewInterp->TaskList);
 
-  *Interp = NewInterp;
-  return EFI_SUCCESS;
+  Status = BoraxGlobalInit (NewInterp);
+  if (EFI_ERROR (Status)) {
+    goto cleanup;
+  }
+
+  *Interp   = NewInterp;
+  NewInterp = NULL;
+  Status    = EFI_SUCCESS;
+
+cleanup:
+  if (NewInterp != NULL) {
+    BoraxReleasePinRecord (&NewInterp->Record);
+  }
+
+  return Status;
 }
 
 STATIC EFI_STATUS
@@ -257,9 +304,23 @@ InterpreterSubObjects (
   IN BORAX_GC_SUBOBJECT_CALLBACK  Callback
   )
 {
+  EFI_STATUS         Status;
   BORAX_INTERPRETER  *Interp = (BORAX_INTERPRETER *)Object;
+  UINTN              I;
 
-  return VirtualSubObject (Ctx, Callback, (VOID **)&Interp->GlobalEnvironment);
+  Status = VirtualSubObject (Ctx, Callback, (VOID **)&Interp->GlobalEnvironment);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  for (I = 0; I < BORAX_GLOBAL_COUNT; ++I) {
+    Status = Callback (Ctx, &Interp->Globals[I]);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+  }
+
+  return EFI_SUCCESS;
 }
 
 CONST BORAX_GC_HOOKS  gInterpreterGcHooks = {
@@ -320,18 +381,16 @@ BoraxInterpreterSpawn (
   Stack = &NewTask->Stack;
 
   NewTask->Interp     = Interp;
-  NewTask->State      = BORAX_TASK_RUNNING;
+  NewTask->State      = BORAX_TASK_STARTING;
+  NewTask->EntryPoint = EntryPoint;
   NewTask->Completion = Completion;
 
   NewTask->Registers.BP = 0;
   NewTask->Registers.SP = 0;
   NewTask->Registers.PC = 0;
+  NewTask->Registers.LC = 0;
+  NewTask->Registers.SC = 0;
   NewTask->Registers.VR = (BORAX_MULTIPLE_VALUES *)BORAX_GET_POINTER (Args);
-
-  Status = BoraxTaskEnterFunction (NewTask, EntryPoint);
-  if (EFI_ERROR (Status)) {
-    goto cleanup;
-  }
 
   InsertTailList (&Interp->TaskList, &NewTask->TaskList);
   if (Task != NULL) {
@@ -355,14 +414,13 @@ cleanup:
   return Status;
 }
 
-EFI_STATUS
+VOID
 EFIAPI
 BoraxInterpreterRun (
   IN BORAX_INTERPRETER  *Interp,
   OUT BORAX_PIN         **IORequests
   )
 {
-  EFI_STATUS  Status;
   LIST_ENTRY  *Entry, *NextEntry;
   BOOLEAN     WorkDone;
 
@@ -372,16 +430,12 @@ BoraxInterpreterRun (
     BASE_LIST_FOR_EACH_SAFE (Entry, NextEntry, &Interp->TaskList) {
       BORAX_TASK  *Task = BASE_CR (Entry, BORAX_TASK, TaskList);
 
-      if (Task->State == BORAX_TASK_RUNNING) {
+      while (Task->State <= BORAX_TASK_RUNNING) {
         WorkDone = TRUE;
-        Status   = TaskRun (Task);
-        if (EFI_ERROR (Status)) {
-          // TODO: principled error handling
-          return Status;
-        }
+        TaskRun (Task);
       }
 
-      if (Task->State == BORAX_TASK_EXITED) {
+      if (Task->State >= BORAX_TASK_RETURNED) {
         TaskEnd (Task);
       }
     }
@@ -389,7 +443,6 @@ BoraxInterpreterRun (
 
   // TODO
   *IORequests = NULL;
-  return EFI_SUCCESS;
 }
 
 VOID
@@ -491,9 +544,9 @@ CONST BORAX_GC_HOOKS  gMultipleValuesGcHooks = {
   .SubObjects = &MultipleValuesSubObjects,
 };
 
-STATIC BORAX_OBJECT *
+BORAX_OBJECT *
 EFIAPI
-BoraxTaskStackIndex (
+BoraxTaskUnsafeStackAddress (
   IN BORAX_TASK  *Task,
   IN UINTN       Index
   )
@@ -501,116 +554,137 @@ BoraxTaskStackIndex (
   UINTN  PageIndex  = Index / BORAX_WORDS_PER_PAGE;
   UINTN  PageOffset = Index % BORAX_WORDS_PER_PAGE;
 
+  ASSERT (Index < Task->Registers.SP);
   ASSERT (PageIndex < Task->Stack.PagesLength);
   return &Task->Stack.Pages[PageIndex][PageOffset];
 }
 
 BORAX_OBJECT
 EFIAPI
-BoraxTaskStackRead (
-  IN BORAX_TASK  *Task,
-  IN UINTN       Index
+BoraxTaskAccessLocal (
+  IN BORAX_TASK     *Task,
+  IN UINTN          Index,
+  OUT BORAX_OBJECT  **Local
   )
 {
-  return *BoraxTaskStackIndex (Task, Index);
+  if (Index >= Task->Registers.LC) {
+    return BoraxPrimitiveLocalLocationError (Task->Interp, Index);
+  }
+
+  *Local = BoraxTaskUnsafeStackAddress (
+             Task,
+             Task->Registers.BP + BORAX_STACK_SLOTS + Index
+             );
+  return BORAX_NIL;
 }
 
-VOID
+BORAX_OBJECT
 EFIAPI
-BoraxTaskStackWrite (
-  IN BORAX_TASK    *Task,
-  IN UINTN         Index,
-  IN BORAX_OBJECT  Value
-  )
-{
-  *BoraxTaskStackIndex (Task, Index) = Value;
-}
-
-BORAX_OBJECT *
-EFIAPI
-BoraxTaskStackLocal (
-  IN BORAX_TASK  *Task,
-  IN UINTN       Index
-  )
-{
-  return BoraxTaskStackIndex (Task, Task->Registers.BP + 4 + Index);
-}
-
-EFI_STATUS
-EFIAPI
-BoraxTaskFunctionConstant (
+BoraxTaskReadConstant (
   IN BORAX_TASK     *Task,
   IN UINTN          Index,
   OUT BORAX_OBJECT  *Constant
   )
 {
-  EFI_STATUS                Status;
-  BORAX_OBJECT              Code = BoraxTaskStackRead (Task, Task->Registers.BP + 2);
+  BORAX_OBJECT              Condition;
+  BORAX_OBJECT              Code;
   CONST BORAX_FUNCTION_OPS  *Ops;
   VOID                      *Function;
 
-  Status = BoraxFunctionOps (Code, &Ops, &Function);
-  if (EFI_ERROR (Status)) {
-    return Status;
+  Code = UnsafeStackRead (Task, Task->Registers.BP + BORAX_STACK_CODE);
+
+  Condition = BoraxFunctionOps (Task->Interp, Code, &Ops, &Function);
+  if (BORAX_BOOL (Condition)) {
+    return Condition;
   }
 
-  return Ops->Constant (Function, Index, Constant);
+  return Ops->Constant (Task->Interp, Function, Index, Constant);
 }
 
-EFI_STATUS
+BORAX_OBJECT
 EFIAPI
 BoraxTaskEnterFunction (
   IN BORAX_TASK    *Task,
   IN BORAX_OBJECT  Function
   )
 {
-  EFI_STATUS                Status;
+  BORAX_OBJECT              Condition;
   CONST BORAX_FUNCTION_OPS  *Ops;
   VOID                      *F;
   BORAX_FUNCTION_INFO       Info;
-  UINTN                     NewBP, NewSP;
+  UINTN                     OldBP, NewBP, NewSP;
   UINTN                     I;
 
-  Status = BoraxFunctionOps (Function, &Ops, &F);
-  if (EFI_ERROR (Status)) {
-    return Status;
+  Condition = BoraxFunctionOps (Task->Interp, Function, &Ops, &F);
+  if (BORAX_BOOL (Condition)) {
+    return Condition;
   }
 
-  Status = Ops->Info (F, &Info);
-  if (EFI_ERROR (Status)) {
-    return Status;
+  Condition = Ops->Info (Task->Interp, F, &Info);
+  if (BORAX_BOOL (Condition)) {
+    return Condition;
   }
 
   // TODO: Shared bindings
   if (Info.Shared != 0) {
-    return EFI_UNSUPPORTED;
+    BORAX_OBJECT  Args[] = { Function };
+
+    return BoraxPrimitiveSimpleCondition (
+             Task->Interp,
+             BORAX_GLOBAL_CLASS_SIMPLE_ERROR,
+             L"Not implemented: shared bindings (when entering ~S)",
+             ARRAY_SIZE (Args),
+             Args
+             );
   }
 
+  OldBP = Task->Registers.BP;
   NewBP = Task->Registers.SP;
-  NewSP = NewBP + 4 + Info.Locals + Info.Shared;
+  NewSP = NewBP + BORAX_STACK_SLOTS + Info.Locals + Info.Shared;
 
-  Status = TaskStackEnsureCapacity (&Task->Stack, NewSP);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  BoraxTaskStackWrite (Task, NewBP, BORAX_MAKE_FIXNUM (Task->Registers.BP));
-  BoraxTaskStackWrite (Task, NewBP + 1, BORAX_MAKE_FIXNUM (Task->Registers.PC));
-  BoraxTaskStackWrite (Task, NewBP + 2, Function);
-  BoraxTaskStackWrite (Task, NewBP + 3, BORAX_UNBOUND);
-
-  for (I = 0; I < Info.Locals; ++I) {
-    BoraxTaskStackWrite (Task, NewBP + 4 + I, BORAX_NIL);
+  Condition = TaskStackEnsureCapacity (Task->Interp, &Task->Stack, NewSP);
+  if (BORAX_BOOL (Condition)) {
+    return Condition;
   }
 
   Task->Registers.SP = NewSP;
   Task->Registers.BP = NewBP;
-  Task->Registers.PC = Info.Entry;
 
-  return EFI_SUCCESS;
+  UnsafeStackWrite (
+    Task,
+    NewBP + BORAX_STACK_SAVED_BP,
+    BORAX_MAKE_FIXNUM (OldBP)
+    );
+  UnsafeStackWrite (
+    Task,
+    NewBP + BORAX_STACK_SAVED_PC,
+    BORAX_MAKE_FIXNUM (Task->Registers.PC)
+    );
+  UnsafeStackWrite (
+    Task,
+    NewBP + BORAX_STACK_SAVED_LC,
+    BORAX_MAKE_FIXNUM (Task->Registers.LC)
+    );
+  UnsafeStackWrite (
+    Task,
+    NewBP + BORAX_STACK_SAVED_SC,
+    BORAX_MAKE_FIXNUM (Task->Registers.SC)
+    );
+  UnsafeStackWrite (Task, NewBP + BORAX_STACK_CODE, Function);
+  UnsafeStackWrite (Task, NewBP + BORAX_STACK_CLOSURE, BORAX_UNBOUND);
+
+  for (I = 0; I < Info.Locals; ++I) {
+    UnsafeStackWrite (Task, NewBP + BORAX_STACK_SLOTS + I, BORAX_NIL);
+  }
+
+  Task->Registers.PC = Info.Entry;
+  Task->Registers.LC = Info.Locals;
+  Task->Registers.SC = Info.Shared;
+
+  return BORAX_NIL;
 }
 
-STATIC EFI_STATUS
+STATIC BORAX_OBJECT
 EFIAPI
 UnwindFrame (
   IN BORAX_TASK    *Task,
@@ -618,68 +692,78 @@ UnwindFrame (
   OUT BOOLEAN      *Intercepted
   )
 {
-  EFI_STATUS  Status;
-  UINTN       NewSP = Task->Registers.BP;
-  BOOLEAN     PopIntercepted;
+  BORAX_OBJECT  Condition;
+  UINTN         BP = Task->Registers.BP;
+  BOOLEAN       PopIntercepted;
 
-  Status = BoraxTaskPopDynamic (Task, 0, TargetExit, &PopIntercepted);
-  if (EFI_ERROR (Status)) {
-    return Status;
+  Condition = BoraxTaskPopDynamic (Task, 0, TargetExit, &PopIntercepted);
+  if (BORAX_BOOL (Condition)) {
+    return Condition;
   }
 
   if (PopIntercepted) {
     *Intercepted = TRUE;
-    return EFI_SUCCESS;
+    return BORAX_NIL;
   }
 
-  Task->Registers.SP = NewSP;
-  Task->Registers.BP = BORAX_GET_FIXNUM (BoraxTaskStackRead (Task, NewSP));
-  Task->Registers.PC = BORAX_GET_FIXNUM (BoraxTaskStackRead (Task, NewSP + 1));
+  Task->Registers.BP = BORAX_GET_FIXNUM (
+                         UnsafeStackRead (Task, BP + BORAX_STACK_SAVED_BP)
+                         );
+  Task->Registers.PC = BORAX_GET_FIXNUM (
+                         UnsafeStackRead (Task, BP + BORAX_STACK_SAVED_PC)
+                         );
+  Task->Registers.LC = BORAX_GET_FIXNUM (
+                         UnsafeStackRead (Task, BP + BORAX_STACK_SAVED_LC)
+                         );
+  Task->Registers.SC = BORAX_GET_FIXNUM (
+                         UnsafeStackRead (Task, BP + BORAX_STACK_SAVED_SC)
+                         );
+  Task->Registers.SP = BP;
 
   // TODO: Shrink the stack if appropriate
-  return EFI_SUCCESS;
+  return BORAX_NIL;
 }
 
-EFI_STATUS
+BORAX_OBJECT
 EFIAPI
 BoraxTaskEnterFunctionTail (
   IN BORAX_TASK    *Task,
   IN BORAX_OBJECT  Function
   )
 {
-  EFI_STATUS  Status;
-  BOOLEAN     Intercepted;
+  BORAX_OBJECT  Condition;
+  BOOLEAN       Intercepted;
 
-  Status = UnwindFrame (Task, BORAX_NIL, &Intercepted);
-  if (EFI_ERROR (Status) || Intercepted) {
-    return Status;
+  Condition = UnwindFrame (Task, BORAX_NIL, &Intercepted);
+  if (BORAX_BOOL (Condition) || Intercepted) {
+    return Condition;
   }
 
   return BoraxTaskEnterFunction (Task, Function);
 }
 
-EFI_STATUS
+BORAX_OBJECT
 EFIAPI
 BoraxTaskExitFunction (
   IN BORAX_TASK  *Task
   )
 {
-  EFI_STATUS  Status;
-  BOOLEAN     Intercepted;
+  BORAX_OBJECT  Condition;
+  BOOLEAN       Intercepted;
 
-  Status = UnwindFrame (Task, BORAX_NIL, &Intercepted);
-  if (EFI_ERROR (Status) || Intercepted) {
-    return Status;
+  Condition = UnwindFrame (Task, BORAX_NIL, &Intercepted);
+  if (BORAX_BOOL (Condition) || Intercepted) {
+    return Condition;
   }
 
   if (Task->Registers.SP == 0) {
-    Task->State = BORAX_TASK_EXITED;
+    Task->State = BORAX_TASK_RETURNED;
   }
 
-  return EFI_SUCCESS;
+  return BORAX_NIL;
 }
 
-EFI_STATUS
+BORAX_OBJECT
 EFIAPI
 BoraxTaskPushExit (
   IN BORAX_TASK   *Task,
@@ -687,13 +771,14 @@ BoraxTaskPushExit (
   OUT BORAX_EXIT  **Exit
   )
 {
-  EFI_STATUS  Status;
-  UINTN       NewSP = Task->Registers.SP + 1;
-  BORAX_EXIT  *NewExit;
+  EFI_STATUS    Status;
+  BORAX_OBJECT  Condition;
+  UINTN         NewSP = Task->Registers.SP + 1;
+  BORAX_EXIT    *NewExit;
 
-  Status = TaskStackEnsureCapacity (&Task->Stack, NewSP);
-  if (EFI_ERROR (Status)) {
-    return Status;
+  Condition = TaskStackEnsureCapacity (Task->Interp, &Task->Stack, NewSP);
+  if (BORAX_BOOL (Condition)) {
+    return Condition;
   }
 
   Status = BoraxAllocateObject (
@@ -702,7 +787,7 @@ BoraxTaskPushExit (
              (BORAX_OBJECT_HEADER **)&NewExit
              );
   if (EFI_ERROR (Status)) {
-    return Status;
+    return BoraxPrimitiveHeapExhausted (Task->Interp);
   }
 
   NewExit->Valid = TRUE;
@@ -710,11 +795,11 @@ BoraxTaskPushExit (
   NewExit->BP    = Task->Registers.BP;
   NewExit->PC    = PC;
 
-  BoraxTaskStackWrite (Task, Task->Registers.SP, BORAX_MAKE_POINTER (NewExit));
   Task->Registers.SP = NewSP;
+  UnsafeStackWrite (Task, NewSP - 1, BORAX_MAKE_POINTER (NewExit));
 
   *Exit = NewExit;
-  return EFI_SUCCESS;
+  return BORAX_NIL;
 }
 
 STATIC EFI_STATUS
@@ -751,39 +836,60 @@ CONST BORAX_GC_HOOKS  gExitGcHooks = {
   .SubObjects = &ExitSubObjects,
 };
 
-EFI_STATUS
+BORAX_OBJECT
 EFIAPI
 BoraxTaskTakeExit (
   IN BORAX_TASK    *Task,
   IN BORAX_OBJECT  Exit
   )
 {
-  EFI_STATUS  Status;
-  BORAX_EXIT  *TheExit;
+  BORAX_OBJECT  Condition;
+  BORAX_EXIT    *TheExit;
 
   if (BORAX_DISCRIMINATE (Exit) != BORAX_DISCRIM_EXIT) {
-    DEBUG ((DEBUG_ERROR, "Not an exit object\n"));
-    return EFI_INVALID_PARAMETER;
+    BORAX_OBJECT  Args[] = { Exit };
+
+    return BoraxPrimitiveSimpleCondition (
+             Task->Interp,
+             BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR,
+             L"Not an exit object: ~S",
+             ARRAY_SIZE (Args),
+             Args
+             );
   }
 
   TheExit = (BORAX_EXIT *)BORAX_GET_POINTER (Exit);
 
   if (!TheExit->Valid) {
-    DEBUG ((DEBUG_ERROR, "Task tried to take an expired exit\n"));
-    return EFI_INVALID_PARAMETER;
+    BORAX_OBJECT  Args[] = { Exit };
+
+    return BoraxPrimitiveSimpleCondition (
+             Task->Interp,
+             BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR,
+             L"Tried to take an expired exit: ~S",
+             ARRAY_SIZE (Args),
+             Args
+             );
   }
 
   if (!BORAX_EQ (TheExit->Task, BORAX_MAKE_POINTER (Task))) {
-    DEBUG ((DEBUG_ERROR, "Task tried to take an exit to another task\n"));
-    return EFI_INVALID_PARAMETER;
+    BORAX_OBJECT  Args[] = { Exit };
+
+    return BoraxPrimitiveSimpleCondition (
+             Task->Interp,
+             BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR,
+             L"Tried to take an exit to another task: ~S",
+             ARRAY_SIZE (Args),
+             Args
+             );
   }
 
   while (Task->Registers.BP > TheExit->BP) {
     BOOLEAN  Intercepted;
 
-    Status = UnwindFrame (Task, Exit, &Intercepted);
-    if (EFI_ERROR (Status) || Intercepted) {
-      return Status;
+    Condition = UnwindFrame (Task, Exit, &Intercepted);
+    if (BORAX_BOOL (Condition) || Intercepted) {
+      return Condition;
     }
   }
 
@@ -791,10 +897,10 @@ BoraxTaskTakeExit (
 
   // The exit remains valid
   Task->Registers.PC = TheExit->PC;
-  return EFI_SUCCESS;
+  return BORAX_NIL;
 }
 
-EFI_STATUS
+BORAX_OBJECT
 EFIAPI
 BoraxTaskPopDynamic (
   IN BORAX_TASK    *Task,
@@ -803,35 +909,26 @@ BoraxTaskPopDynamic (
   OUT BOOLEAN      *Intercepted
   )
 {
-  EFI_STATUS                Status;
-  UINTN                     BP, DP;
-  BORAX_OBJECT              Code;
-  CONST BORAX_FUNCTION_OPS  *Ops;
-  VOID                      *Function;
-  BORAX_FUNCTION_INFO       Info;
-
-  BP   = Task->Registers.BP;
-  Code = BoraxTaskStackRead (Task, BP + 2);
-
-  Status = BoraxFunctionOps (Code, &Ops, &Function);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  Status = Ops->Info (Function, &Info);
-  if (EFI_ERROR (Status)) {
-    return Status;
-  }
-
-  DP = BP + 4 + Info.Locals + Info.Shared;
+  UINTN  DP = Task->Registers.BP + BORAX_STACK_SLOTS
+              + Task->Registers.LC + Task->Registers.SC;
 
   if (Task->Registers.SP < DP + Depth) {
-    DEBUG ((DEBUG_ERROR, "Task tried to PopDynamic to an invalid depth\n"));
-    return EFI_INVALID_PARAMETER;
+    BORAX_OBJECT  Args[] = {
+      BORAX_MAKE_FIXNUM (Depth),
+      BORAX_MAKE_FIXNUM (Task->Registers.SP - DP),
+    };
+
+    return BoraxPrimitiveSimpleCondition (
+             Task->Interp,
+             BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR,
+             L"Tried to PopDynamic to depth ~S, but frame has depth ~S",
+             ARRAY_SIZE (Args),
+             Args
+             );
   }
 
   while (Task->Registers.SP > DP + Depth) {
-    BORAX_OBJECT  Dynamic = BoraxTaskStackRead (Task, Task->Registers.SP - 1);
+    BORAX_OBJECT  Dynamic = UnsafeStackRead (Task, Task->Registers.SP - 1);
 
     switch (BORAX_DISCRIMINATE (Dynamic)) {
       case BORAX_DISCRIM_EXIT:
@@ -844,15 +941,36 @@ BoraxTaskPopDynamic (
       // TODO: make sure to set Intercepted when entering a cleanup
 
       default:
-        DEBUG ((DEBUG_ERROR, "Invalid dynamic extent\n"));
-        return EFI_VOLUME_CORRUPTED;
+        // If the stack were to be corrupted to the point that we find something
+        // other than a dynamic extent here, it could potentially result in us
+        // failing to pop a special variable binding -- which would be
+        // annoying -- or failing to invalidate a non-local exit, which could be
+        // catastrophic. The memory safety of the C code depends on the stack
+        // not being corrupted this way; we do not attempt to handle this
+        // situation safely because if it happens, we've already lost.
+        ASSERT (FALSE);
+        break;
     }
 
     --Task->Registers.SP;
   }
 
   *Intercepted = FALSE;
-  return EFI_SUCCESS;
+  return BORAX_NIL;
+}
+
+BORAX_OBJECT
+EFIAPI
+BoraxTaskError (
+  IN BORAX_TASK    *Task,
+  IN BORAX_OBJECT  Condition
+  )
+{
+  // TODO: Call ERROR and allow the condition to be handled
+  BoraxTaskDebugStackTrace (DEBUG_ERROR, Task);
+
+  // Allow the task to double-fault
+  return Condition;
 }
 
 BORAX_STACK_FRAME_ITERATOR
@@ -869,11 +987,10 @@ BoraxStackFrameIterate (
   };
 }
 
-EFI_STATUS
+BOOLEAN
 EFIAPI
 BoraxStackFrameNext (
   IN BORAX_STACK_FRAME_ITERATOR  *Iter,
-  OUT BOOLEAN                    *Done,
   OUT BORAX_STACK_FRAME          *Frame
   )
 {
@@ -884,32 +1001,26 @@ BoraxStackFrameNext (
   BORAX_OBJECT  Temp;
 
   if (SP == 0) {
-    *Done = TRUE;
-    return EFI_SUCCESS;
+    return FALSE;
   }
 
-  if (SP < BP + 4) {
-    DebugPrint (DEBUG_ERROR, "Corrupted BP/SP [%u:%u]\n", BP, SP);
-    // TODO: Better error codes
-    return EFI_VOLUME_CORRUPTED;
-  }
+  ASSERT (SP >= BP + 4);
 
-  Frame->Code = BoraxTaskStackRead (Task, BP + 2);
+  Frame->Code = UnsafeStackRead (Task, BP + 2);
   Frame->BP   = BP;
   Frame->SP   = SP;
   Frame->PC   = PC;
 
-  Temp = BoraxTaskStackRead (Task, BP);
+  Temp = UnsafeStackRead (Task, BP);
   ASSERT (BORAX_IS_FIXNUM (Temp));
   Iter->NextBP = BORAX_GET_FIXNUM (Temp);
   Iter->NextSP = BP;
 
-  Temp = BoraxTaskStackRead (Task, BP + 1);
+  Temp = UnsafeStackRead (Task, BP + 1);
   ASSERT (BORAX_IS_FIXNUM (Temp));
   Iter->NextPC = BORAX_GET_FIXNUM (Temp);
 
-  *Done = FALSE;
-  return EFI_SUCCESS;
+  return TRUE;
 }
 
 VOID
@@ -921,7 +1032,6 @@ BoraxTaskDebugStackTrace (
 {
   BORAX_STACK_FRAME_ITERATOR  Iter = BoraxStackFrameIterate (Task);
   BORAX_STACK_FRAME           Frame;
-  BOOLEAN                     Done;
 
   BORAX_OBJECT  LastCode   = BORAX_UNBOUND;
   UINTN         LastPC     = 0;
@@ -929,12 +1039,7 @@ BoraxTaskDebugStackTrace (
   UINTN         Printed    = 0;
   UINTN         Skipped    = 0;
 
-  while (TRUE) {
-    EFI_STATUS  Status = BoraxStackFrameNext (&Iter, &Done, &Frame);
-    if (EFI_ERROR (Status) || Done) {
-      break;
-    }
-
+  while (BoraxStackFrameNext (&Iter, &Frame)) {
     if (BORAX_EQ (Frame.Code, LastCode) && (Frame.PC == LastPC)) {
       ++Duplicates;
     } else {
@@ -948,17 +1053,18 @@ BoraxTaskDebugStackTrace (
       }
 
       if (Printed < STACK_TRACE_LIMIT) {
+        BORAX_OBJECT              Condition;
         CONST BORAX_FUNCTION_OPS  *Ops;
         VOID                      *Function;
         BORAX_FUNCTION_NAME       Name = { BORAX_FUNCTION_NAME_NONE };
 
-        Status = BoraxFunctionOps (Frame.Code, &Ops, &Function);
-        if (EFI_ERROR (Status)) {
+        Condition = BoraxFunctionOps (Task->Interp, Frame.Code, &Ops, &Function);
+        if (BORAX_BOOL (Condition)) {
           goto print_name;
         }
 
-        Status = Ops->Name (Function, &Name);
-        if (EFI_ERROR (Status)) {
+        Condition = Ops->Name (Task->Interp, Function, &Name);
+        if (BORAX_BOOL (Condition)) {
           goto print_name;
         }
 
@@ -1021,7 +1127,38 @@ TaskSubObjects (
     }
   }
 
-  return VirtualSubObject (Ctx, Callback, (VOID **)&Task->Registers.VR);
+  Status = VirtualSubObject (Ctx, Callback, (VOID **)&Task->Registers.VR);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  switch (Task->State) {
+    case BORAX_TASK_ABORTED:
+      Status = Callback (Ctx, &Task->AbortCondition);
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      break;
+
+    case BORAX_TASK_DOUBLE_FAULTED:
+      Status = Callback (Ctx, &Task->DoubleFault.Condition1);
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      Status = Callback (Ctx, &Task->DoubleFault.Condition2);
+      if (EFI_ERROR (Status)) {
+        return Status;
+      }
+
+      break;
+
+    default:
+      break;
+  }
+
+  return EFI_SUCCESS;
 }
 
 CONST BORAX_GC_HOOKS  gTaskGcHooks = {
@@ -1029,9 +1166,10 @@ CONST BORAX_GC_HOOKS  gTaskGcHooks = {
   .SubObjects = &TaskSubObjects,
 };
 
-EFI_STATUS
+BORAX_OBJECT
 EFIAPI
 BoraxFunctionOps (
+  IN BORAX_INTERPRETER          *Interp,
   IN BORAX_OBJECT               Function,
   OUT CONST BORAX_FUNCTION_OPS  **Ops,
   OUT VOID                      **This
@@ -1044,26 +1182,29 @@ BoraxFunctionOps (
     case BORAX_DISCRIM_BUILT_IN_FUNCTION:
       *Ops  = &gBuiltInFunctionOps;
       *This = BORAX_GET_POINTER (Function);
-      return EFI_SUCCESS;
+      return BORAX_NIL;
 
     case BORAX_DISCRIM_OBJECT_RECORD:
     {
       BORAX_BYTECODE_FUNCTION  *F;
 
+      // TODO: replace this macro with one that handles type checking too
       Status = BORAX_GET_OBJECT_RECORD (Function, &F);
       if (EFI_ERROR (Status)) {
-        return Status;
+        goto type_error;
       }
 
-      // TODO: class checking
       *Ops  = &gBytecodeFunctionOps;
       *This = F;
-      return EFI_SUCCESS;
+      return BORAX_NIL;
     }
 
     default:
-      return EFI_INVALID_PARAMETER;
+      goto type_error;
   }
+
+type_error:
+  return BoraxPrimitiveTypeError (Interp, Function, BORAX_GLOBAL_CLASS_FUNCTION);
 }
 
 EFI_STATUS
@@ -1159,7 +1300,7 @@ CONST BORAX_GC_HOOKS  gBuiltInFunctionGcHooks = {
   .SubObjects = &BuiltInFunctionSubObjects,
 };
 
-STATIC EFI_STATUS
+STATIC BORAX_OBJECT
 EFIAPI
 BuiltInFunctionRun (
   IN BORAX_TASK  *Task,
@@ -1171,9 +1312,10 @@ BuiltInFunctionRun (
   return F->Code (Task);
 }
 
-STATIC EFI_STATUS
+STATIC BORAX_OBJECT
 EFIAPI
 BuiltInFunctionName (
+  IN BORAX_INTERPRETER     *Interp,
   IN VOID                  *Function,
   OUT BORAX_FUNCTION_NAME  *Name
   )
@@ -1182,12 +1324,13 @@ BuiltInFunctionName (
 
   Name->Tag     = BORAX_FUNCTION_NAME_C_STRING;
   Name->CString = F->Name;
-  return EFI_SUCCESS;
+  return BORAX_NIL;
 }
 
-STATIC EFI_STATUS
+STATIC BORAX_OBJECT
 EFIAPI
 BuiltInFunctionInfo (
+  IN BORAX_INTERPRETER     *Interp,
   IN VOID                  *Function,
   OUT BORAX_FUNCTION_INFO  *Info
   )
@@ -1197,43 +1340,45 @@ BuiltInFunctionInfo (
   Info->Entry  = F->Entry;
   Info->Locals = F->Locals;
   Info->Shared = F->SharedLength;
-  return EFI_SUCCESS;
+  return BORAX_NIL;
 }
 
-STATIC EFI_STATUS
+STATIC BORAX_OBJECT
 EFIAPI
 BuiltInFunctionShared (
-  IN VOID    *Function,
-  IN UINTN   Block,
-  OUT UINTN  *Count
+  IN BORAX_INTERPRETER  *Interp,
+  IN VOID               *Function,
+  IN UINTN              Block,
+  OUT UINTN             *Count
   )
 {
   BORAX_BUILT_IN_FUNCTION  *F = Function;
 
   if (Block >= F->SharedLength) {
-    return EFI_INVALID_PARAMETER;
+    return BoraxPrimitiveSharedBlockLocationError (Interp, Block);
   }
 
   *Count = F->Shared[Block];
-  return EFI_SUCCESS;
+  return BORAX_NIL;
 }
 
-STATIC EFI_STATUS
+STATIC BORAX_OBJECT
 EFIAPI
 BuiltInFunctionConstant (
-  IN VOID           *Function,
-  IN UINTN          Index,
-  OUT BORAX_OBJECT  *Constant
+  IN BORAX_INTERPRETER  *Interp,
+  IN VOID               *Function,
+  IN UINTN              Index,
+  OUT BORAX_OBJECT      *Constant
   )
 {
   BORAX_BUILT_IN_FUNCTION  *F = Function;
 
   if (Index >= F->ConstantsLength) {
-    return EFI_INVALID_PARAMETER;
+    return BoraxPrimitiveConstantLocationError (Interp, Index);
   }
 
   *Constant = F->Constants[Index];
-  return EFI_SUCCESS;
+  return BORAX_NIL;
 }
 
 CONST BORAX_FUNCTION_OPS  gBuiltInFunctionOps = {

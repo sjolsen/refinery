@@ -20,6 +20,7 @@
   Interpreter.c
   Memory.c
   ObjectFile.c
+  Primitive.c
   Stack.c
   Stack.h
   SystemAllocator.c

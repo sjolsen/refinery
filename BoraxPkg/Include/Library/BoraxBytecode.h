@@ -308,6 +308,10 @@
  *         |  Closure pointer   |
  *         +--------------------+
  *         |    Code pointer    |
+ *         +--------------------+
+ *         |      Saved SC      |
+ *         +--------------------+
+ *         |      Saved LC      |
  *         +--------------------|
  *         |      Saved PC      |
  *         +--------------------+
@@ -803,6 +807,16 @@
  */
 
 enum {
+  BORAX_STACK_SAVED_BP = 0,
+  BORAX_STACK_SAVED_PC = 1,
+  BORAX_STACK_SAVED_LC = 2,
+  BORAX_STACK_SAVED_SC = 3,
+  BORAX_STACK_CODE     = 4,
+  BORAX_STACK_CLOSURE  = 5,
+  BORAX_STACK_SLOTS    = 6,
+};
+
+enum {
   // Control-flow operations
   BORAX_OPCODE_CALL   = 0x00,
   BORAX_OPCODE_JUMP   = 0x40,
@@ -836,13 +850,8 @@ enum {
  * frame layout. This layout is not stored on the stack, and so must be
  * re-computed when re-entering a stack frame. This opens the possibility for
  * Lisp code to corrupt the stack by modifying the Locals and Shared fields of a
- * function while it has an active stack frame. I _believe_ this is not a
- * memory-safety problem, since stack slot accesses for bytecode functions are
- * always type-checked and such a modified function can only corrupt its _own_
- * frame (the stack access instructions cannot encode access to earlier frames,
- * and instructions accessing the corrupted frame can only execute while it is
- * the last frame on the stack), but if I'm wrong about this then the bytecode
- * function type will need to be made immutable, including the Shared vector.
+ * function while it has an active stack frame. The memory safety of the C code
+ * depends on the stack not being corrupted this way (see PopDynamic).
  */
 typedef struct {
   BORAX_RECORD    Record;

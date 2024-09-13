@@ -8,6 +8,10 @@
            #:package #:package-name #:find-package
            #:symbol #:symbol-package #:symbol-name #:symbol-value
            #:find-symbol #:intern
+           #:condition #:simple-condition #:serious-condition
+           #:storage-condition #:cell-error
+           #:error #:program-error #:simple-error #:type-error
+           #:function
            #:setq
            #:simple-vector
            #:string #:string=)
@@ -18,6 +22,10 @@
            #:package #:package-name #:find-package
            #:symbol #:symbol-package #:symbol-name #:symbol-value
            #:find-symbol #:intern
+           #:condition #:simple-condition #:serious-condition
+           #:storage-condition #:cell-error
+           #:error #:program-error #:simple-error #:type-error
+           #:function
            #:setq
            #:simple-vector
            #:string #:string=))
