@@ -1113,6 +1113,7 @@ SumList (
   SYMBOL                 *SumList;
   SYMBOL                 *Numbers;
   BORAX_MULTIPLE_VALUES  *Args;
+  BORAX_TASK             *Task;
   BORAX_PIN              *IORequests;
 
   Status = BORAX_GET_OBJECT_RECORD (LispContext->Object, &Ctx);
@@ -1153,7 +1154,7 @@ SumList (
              Ctx->ErrorHandler,
              BORAX_MAKE_POINTER (SumList),
              BORAX_MAKE_POINTER (Args),
-             NULL  // Task
+             &Task
              );
   if (EFI_ERROR (Status)) {
     return Status;
@@ -1161,6 +1162,22 @@ SumList (
 
   BoraxInterpreterRun (Interp, &IORequests);
 
+  if (Task->State == BORAX_TASK_RETURNED) {
+    if (Task->Registers.VR->Length != 1) {
+      (VOID)BufferWrite (Buffer, L"Task returned ");
+      (VOID)BufferWriteInt (Buffer, Task->Registers.VR->Length);
+      (VOID)BufferWrite (Buffer, L" values");
+    } else if (!BORAX_IS_FIXNUM (Task->Registers.VR->Values[0])) {
+      (VOID)BufferWrite (Buffer, L"Task returned a non-integer value");
+    } else {
+      (VOID)BufferWriteInt (
+              Buffer,
+              BORAX_GET_FIXNUM (Task->Registers.VR->Values[0])
+              );
+    }
+  }
+
+  BoraxReleasePinRecord (&Task->Record);
   return BufferWriteChar (Buffer, L'\n');
 }
 
