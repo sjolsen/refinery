@@ -313,7 +313,9 @@
   (with-slots (name lambda-list code constants locals shared)
       object
     (make-instance 'bytecode-function
-                   :code (copy-seq code)
+                   ;; TODO: use :type or something to do this at the CLOS level
+                   :code (make-instance 'simple-vector-unsigned-byte-8
+                                        :data (copy-seq code))
                    :constants (copy-seq constants)
                    :local (storage-block-count locals)
                    :shared (flatten-storage-blocks shared)

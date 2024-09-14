@@ -11,7 +11,7 @@
            #:condition #:simple-condition #:serious-condition
            #:storage-condition #:cell-error #:undefined-function
            #:error #:program-error #:simple-error #:type-error
-           #:function
+           #:fixnum #:function
            #:setq
            #:simple-vector
            #:string #:string=)
@@ -25,7 +25,7 @@
            #:condition #:simple-condition #:serious-condition
            #:storage-condition #:cell-error #:undefined-function
            #:error #:program-error #:simple-error #:type-error
-           #:function
+           #:fixnum #:function
            #:setq
            #:simple-vector
            #:string #:string=))

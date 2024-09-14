@@ -20,7 +20,9 @@
            #:record-object #:record-class
            #:record-slots #:do-record-slots
            ;; borax-vm/cl:simple-vector
-           #:vector-data))
+           #:vector-data #:word-record-object #:word-record-class
+           #:element-size #:encoder
+           #:simple-vector-unsigned-byte-8))
 
 (in-package :borax-virtual-machine/image)
 
@@ -363,12 +365,58 @@
                  :data (make-array (length object)
                                    :initial-contents object)))
 
-(defclass borax-vm/cl:string (borax-vm/cl:simple-vector)
+(defclass word-record-object (borax-vm/cl:simple-vector)
   ()
   (:metaclass borax-vm/cl:class))
 
-(defmethod sub-objects ((object borax-vm/cl:string))
+(defclass word-record-class (borax-vm/cl:class)
+  ;; TODO: handle bit vectors too
+  ((element-size :type fixnum
+                 :reader element-size
+                 :initarg :element-size)
+   (encoder :reader encoder
+            :initarg :encoder
+            :initform #'identity)))
+
+(defmethod default-direct-superclass ((class word-record-class))
+  (find-class 'word-record-object))
+
+(defun initialize-word-record-class (call-next-method class initargs)
+  (destructuring-bind (&rest initargs
+                       &key
+                         (element-size nil element-size-p)
+                         (encoder nil encoder-p)
+                       &allow-other-keys)
+      initargs
+    (when element-size-p
+      (destructuring-bind (form) element-size
+        (push (eval form) initargs)
+        (push :element-size initargs)))
+    (when encoder-p
+      (destructuring-bind (form) encoder
+        (push (eval form) initargs)
+        (push :encoder initargs)))
+    (apply call-next-method class initargs)))
+
+(defmethod initialize-instance :around ((class word-record-class) &rest initargs)
+  (initialize-word-record-class #'call-next-method class initargs))
+
+(defmethod reinitialize-instance :around ((class word-record-class) &rest initargs)
+  (initialize-word-record-class #'call-next-method class initargs))
+
+(defmethod sub-objects ((object word-record-object))
   nil)
+
+(defclass simple-vector-unsigned-byte-8 ()
+  ()
+  (:metaclass word-record-class)
+  (:element-size 1))
+
+(defclass borax-vm/cl:string ()
+  ()
+  (:metaclass word-record-class)
+  (:element-size 2)
+  (:encoder #'char-code))
 
 (defmethod reify ((object string))
   (make-instance 'borax-vm/cl:string :data object))

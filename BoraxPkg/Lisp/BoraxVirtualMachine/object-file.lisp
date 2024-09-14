@@ -73,13 +73,14 @@
 (defmethod get-object-section ((object borax-vm/cl:simple-vector))
   (values 'object-section :size (+ 3 (length (vector-data object)))))
 
-(defmethod get-object-section ((object borax-vm/cl:string))
-  (with-slots (memory-model) *image*
-    (with-slots (word-bytes) memory-model
-      (let* ((chars (length (vector-data object)))
-             (bytes (* 2 chars))
-             (words (ceiling bytes word-bytes)))
-        (values 'object-section :size (+ 3 words))))))
+(defmethod get-object-section ((object word-record-object))
+  (with-slots (element-size) (class-of object)
+    (with-slots (memory-model) *image*
+      (with-slots (word-bytes) memory-model
+        (let* ((items (length (vector-data object)))
+               (bytes (* element-size items))
+               (words (ceiling bytes word-bytes)))
+          (values 'object-section :size (+ 3 words)))))))
 
 (defgeneric allocate-in-section (section object &key &allow-other-keys))
 
@@ -212,21 +213,22 @@
   (write-translation (image-class (class-of object)))
   (map nil #'write-translation (vector-data object)))
 
-(defmethod write-object ((object borax-vm/cl:string))
+(defmethod write-object ((object word-record-object))
   (write-halfword +word-record-widetag+)
-  (with-slots (memory-model) *image*
-    (with-slots (word-bytes) memory-model
-      (let* ((chars (length (vector-data object)))
-             (bytes (* 2 chars)))
-        (multiple-value-bind (words remainder)
-            (ceiling bytes word-bytes)
-          ;; length-aux
-          (write-halfword (floor (abs remainder) 2))
-          ;; length
-          (write-word words)))))
-  (write-translation (image-class (class-of object)))
-  (loop for char across (vector-data object)
-        do (write-integer (char-code char) 2)))
+  (with-slots (element-size encoder) (class-of object)
+    (with-slots (memory-model) *image*
+      (with-slots (word-bytes) memory-model
+        (let* ((items (length (vector-data object)))
+               (bytes (* element-size items)))
+          (multiple-value-bind (words remainder)
+              (ceiling bytes word-bytes)
+            ;; length-aux
+            (write-halfword (floor (abs remainder) element-size))
+            ;; length
+            (write-word words)))))
+    (write-translation (image-class (class-of object)))
+    (loop for item across (vector-data object)
+          do (write-integer (funcall encoder item) element-size))))
 
 (defun write-file (root)
   (with-slots (cons-section object-section) *allocator*

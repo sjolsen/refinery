@@ -24,6 +24,10 @@
    (class :accessor borax-vm/cl:find-class))
   (:metaclass record-class))
 
+(defclass borax-vm/cl:fixnum ()
+  ()
+  (:metaclass borax-vm/cl:class))
+
 (defclass borax-vm/cl:function ()
   ()
   (:metaclass record-class))
@@ -155,6 +159,7 @@
   '((:borax-vm/cl . "COMMON-LISP")
     ;; TODO: Make this a real package (but not the real borax-runtime package
     ;; because that will cause a conflict when we self-host)
+    (:borax-virtual-machine/image         . "BORAX-RUNTIME")
     (:borax-virtual-machine/initial-image . "BORAX-RUNTIME")
     (:borax-virtual-machine/bytecode      . "BORAX-RUNTIME")))
 
@@ -197,14 +202,18 @@
 
 (defun make-initial-image ()
   (setf (root *image*) (make-instance 'global-environment))
+  (ensure-find-class 'borax-vm/cl:fixnum)
   (ensure-find-class 'borax-vm/cl:function)
+  (ensure-find-class 'borax-vm/cl:package)
   (ensure-find-class 'borax-vm/cl:simple-error)
+  (ensure-find-class 'borax-vm/cl:simple-vector)
   (ensure-find-class 'borax-vm/cl:type-error)
   (ensure-find-class 'borax-vm/cl:undefined-function)
   (ensure-find-class 'simple-program-error)
   (ensure-find-class 'heap-exhausted)
   (ensure-find-class 'stack-exhausted)
   (ensure-find-class 'location-error)
+  (ensure-find-class 'simple-vector-unsigned-byte-8)
   (let ((keyword (ensure-package "KEYWORD")))
     (borax-vm/cl:intern "CONSTANT" keyword)
     (borax-vm/cl:intern "LOCAL" keyword)
