@@ -123,6 +123,14 @@ typedef struct {
   BORAX_OBJECT    Symbols;
 } BORAX_PACKAGE;
 
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitivePackageName (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Package,
+  OUT BORAX_OBJECT      *Name
+  );
+
 typedef struct {
   BORAX_RECORD    Record;
   BORAX_OBJECT    Package;
@@ -132,9 +140,52 @@ typedef struct {
   BORAX_OBJECT    Class;
 } BORAX_SYMBOL;
 
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveSymbolPackage (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Symbol,
+  OUT BORAX_OBJECT      *Package
+  );
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveSymbolName (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Symbol,
+  OUT BORAX_OBJECT      *Name
+  );
+
 typedef struct {
   BORAX_RECORD    Record;
   BORAX_OBJECT    Name;
 } BORAX_STANDARD_CLASS;
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveSimpleVectorData (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Vector,
+  OUT UINTN             *Length,
+  OUT BORAX_OBJECT      **Data
+  );
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveSimpleVectorU8Data (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Vector,
+  OUT UINTN             *Length,
+  OUT UINT8             **Data
+  );
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveStringData (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       String,
+  OUT UINTN             *Length,
+  OUT CHAR16            **Data
+  );
 
 #endif // BORAX_PRIMITIVE_H

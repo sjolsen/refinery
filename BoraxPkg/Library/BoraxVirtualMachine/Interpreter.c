@@ -1142,26 +1142,88 @@ BoraxTaskDebugStackTrace (
 
         Condition = BoraxResolveFunction (Task->Interp, &Frame.Code, &Ops);
         if (BORAX_BOOL (Condition)) {
-          goto print_name;
+          goto name_unknown;
         }
 
         Condition = Ops->Name (Task->Interp, Frame.Code, &Name);
         if (BORAX_BOOL (Condition)) {
-          goto print_name;
+          goto name_unknown;
         }
 
-print_name:
         switch (Name.Tag) {
           case BORAX_FUNCTION_NAME_C_STRING:
             DebugPrint (ErrorLevel, "  %s:%u\n", Name.CString, Frame.PC);
             break;
 
           case BORAX_FUNCTION_NAME_OBJECT:
-          // TODO: implement name printing
-          // fall-through
+          {
+            BORAX_OBJECT  Package, PackageName, SymbolName;
+            UINTN         PackageLength, SymbolLength;
+            CHAR16        *PackageData, *SymbolData;
+
+            Condition = BoraxPrimitiveSymbolPackage (
+                          Task->Interp,
+                          Name.Object,
+                          &Package
+                          );
+            if (BORAX_BOOL (Condition)) {
+              goto name_unknown;
+            }
+
+            Condition = BoraxPrimitivePackageName (
+                          Task->Interp,
+                          Package,
+                          &PackageName
+                          );
+            if (BORAX_BOOL (Condition)) {
+              goto name_unknown;
+            }
+
+            Condition = BoraxPrimitiveStringData (
+                          Task->Interp,
+                          PackageName,
+                          &PackageLength,
+                          &PackageData
+                          );
+            if (BORAX_BOOL (Condition)) {
+              goto name_unknown;
+            }
+
+            Condition = BoraxPrimitiveSymbolName (
+                          Task->Interp,
+                          Name.Object,
+                          &SymbolName
+                          );
+            if (BORAX_BOOL (Condition)) {
+              goto name_unknown;
+            }
+
+            Condition = BoraxPrimitiveStringData (
+                          Task->Interp,
+                          SymbolName,
+                          &SymbolLength,
+                          &SymbolData
+                          );
+            if (BORAX_BOOL (Condition)) {
+              goto name_unknown;
+            }
+
+            DebugPrint (
+              ErrorLevel,
+              "  %.*s:%.*s:%u\n",
+              PackageLength,
+              PackageData,
+              SymbolLength,
+              SymbolData,
+              Frame.PC
+              );
+            break;
+          }
 
           default:
+name_unknown:
             DebugPrint (ErrorLevel, "  <unknown>:%u\n", Frame.PC);
+            break;
         }
 
         ++Printed;

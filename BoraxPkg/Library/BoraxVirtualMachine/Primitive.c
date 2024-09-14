@@ -3,6 +3,7 @@
 #include <Library/BaseLib.h>
 #include <Library/BaseMemoryLib.h>
 #include <Library/DebugLib.h>
+#include <Library/SafeIntLib.h>
 
 // TODO: Log to a user-defined location
 #define PRIMITIVE_ERROR(_fmt, ...) \
@@ -291,13 +292,235 @@ BoraxPrimitiveHeapExhausted (
   return BORAX_MAKE_POINTER (HeapExhausted);
 }
 
-STATIC UINTN
+BORAX_OBJECT
 EFIAPI
-StringLength (
-  IN BORAX_RECORD  *Record
+BoraxPrimitivePackageName (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Package,
+  OUT BORAX_OBJECT      *Name
   )
 {
-  return (Record->Length * sizeof (UINTN)) / sizeof (CHAR16) - Record->LengthAux;
+  BORAX_OBJECT   ClassPackage = Interp->Globals[BORAX_GLOBAL_CLASS_PACKAGE];
+  BORAX_PACKAGE  *ThePackage;
+
+  if (BORAX_DISCRIMINATE (Package) != BORAX_DISCRIM_OBJECT_RECORD) {
+    return BoraxPrimitiveTypeError (Interp, Package, ClassPackage);
+  }
+
+  ThePackage = (BORAX_PACKAGE *)BORAX_GET_POINTER (Package);
+
+  if (!BORAX_EQ (ThePackage->Record.Class, ClassPackage)) {
+    return BoraxPrimitiveTypeError (Interp, Package, ClassPackage);
+  }
+
+  *Name = ThePackage->Name;
+  return BORAX_NIL;
+}
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveSymbolPackage (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Symbol,
+  OUT BORAX_OBJECT      *Package
+  )
+{
+  BORAX_OBJECT  ClassSymbol = Interp->Globals[BORAX_GLOBAL_CLASS_SYMBOL];
+  BORAX_SYMBOL  *TheSymbol;
+
+  if (BORAX_DISCRIMINATE (Symbol) != BORAX_DISCRIM_OBJECT_RECORD) {
+    return BoraxPrimitiveTypeError (Interp, Symbol, ClassSymbol);
+  }
+
+  TheSymbol = (BORAX_SYMBOL *)BORAX_GET_POINTER (Symbol);
+
+  if (!BORAX_EQ (TheSymbol->Record.Class, ClassSymbol)) {
+    return BoraxPrimitiveTypeError (Interp, Symbol, ClassSymbol);
+  }
+
+  *Package = TheSymbol->Package;
+  return BORAX_NIL;
+}
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveSymbolName (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Symbol,
+  OUT BORAX_OBJECT      *Name
+  )
+{
+  BORAX_OBJECT  ClassSymbol = Interp->Globals[BORAX_GLOBAL_CLASS_SYMBOL];
+  BORAX_SYMBOL  *TheSymbol;
+
+  if (BORAX_DISCRIMINATE (Symbol) != BORAX_DISCRIM_OBJECT_RECORD) {
+    return BoraxPrimitiveTypeError (Interp, Symbol, ClassSymbol);
+  }
+
+  TheSymbol = (BORAX_SYMBOL *)BORAX_GET_POINTER (Symbol);
+
+  if (!BORAX_EQ (TheSymbol->Record.Class, ClassSymbol)) {
+    return BoraxPrimitiveTypeError (Interp, Symbol, ClassSymbol);
+  }
+
+  *Name = TheSymbol->Name;
+  return BORAX_NIL;
+}
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveSimpleVectorData (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Vector,
+  OUT UINTN             *Length,
+  OUT BORAX_OBJECT      **Data
+  )
+{
+  BORAX_OBJECT  ClassSimpleVector = Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_VECTOR];
+  BORAX_RECORD  *Record;
+
+  if (BORAX_DISCRIMINATE (Vector) != BORAX_DISCRIM_OBJECT_RECORD) {
+    return BoraxPrimitiveTypeError (Interp, Vector, ClassSimpleVector);
+  }
+
+  Record = (BORAX_RECORD *)BORAX_GET_POINTER (Vector);
+
+  if (!BORAX_EQ (Record->Class, ClassSimpleVector)) {
+    return BoraxPrimitiveTypeError (Interp, Vector, ClassSimpleVector);
+  }
+
+  *Data   = Record->Slots;
+  *Length = Record->Length;
+  return BORAX_NIL;
+}
+
+// TODO: This only works for byte-sized elements (not bit-sized elements)
+STATIC EFI_STATUS
+EFIAPI
+EarlyVectorLength (
+  IN BORAX_RECORD  *Record,
+  IN UINTN         ElementSize,
+  OUT UINTN        *Length
+  )
+{
+  EFI_STATUS  Status;
+  UINTN       Bytes, Capacity, Actual;
+
+  Status = SafeUintnMult (Record->Length, sizeof (UINTN), &Bytes);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  // Callers are responsible for ensuring this cannot truncate
+  Capacity = Bytes / ElementSize;
+
+  Status = SafeUintnSub (Capacity, Record->LengthAux, &Actual);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  *Length = Actual;
+  return EFI_SUCCESS;
+}
+
+// TODO: This only works for byte-sized elements (not bit-sized elements)
+STATIC BORAX_OBJECT
+EFIAPI
+VectorLength (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_RECORD       *Record,
+  IN UINTN              ElementSize,
+  OUT UINTN             *Length
+  )
+{
+  EFI_STATUS  Status;
+
+  Status = EarlyVectorLength (Record, ElementSize, Length);
+  if (EFI_ERROR (Status)) {
+    // We probably don't want to try to print the object...
+    return BoraxPrimitiveSimpleCondition (
+             Interp,
+             Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
+             L"Malformed LengthAux in vector object",
+             0,
+             NULL
+             );
+  }
+
+  return BORAX_NIL;
+}
+
+STATIC BORAX_OBJECT
+EFIAPI
+SimpleVectorSubtypeData (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Class,
+  IN UINTN              ElementSize,
+  IN BORAX_OBJECT       Vector,
+  OUT UINTN             *Length,
+  OUT VOID              **Data
+  )
+{
+  BORAX_OBJECT  Condition;
+  BORAX_RECORD  *Record;
+  UINTN         TheLength;
+
+  if (BORAX_DISCRIMINATE (Vector) != BORAX_DISCRIM_WORD_RECORD) {
+    return BoraxPrimitiveTypeError (Interp, Vector, Class);
+  }
+
+  Record = (BORAX_RECORD *)BORAX_GET_POINTER (Vector);
+
+  if (!BORAX_EQ (Record->VectorClass, Class)) {
+    return BoraxPrimitiveTypeError (Interp, Vector, Class);
+  }
+
+  Condition = VectorLength (Interp, Record, ElementSize, &TheLength);
+  if (BORAX_BOOL (Condition)) {
+    return Condition;
+  }
+
+  *Data   = Record->Data;
+  *Length = TheLength;
+  return BORAX_NIL;
+}
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveSimpleVectorU8Data (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Vector,
+  OUT UINTN             *Length,
+  OUT UINT8             **Data
+  )
+{
+  return SimpleVectorSubtypeData (
+           Interp,
+           Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_VECTOR_UNSIGNED_BYTE_8],
+           sizeof (UINT8),
+           Vector,
+           Length,
+           (VOID **)Data
+           );
+}
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveStringData (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       String,
+  OUT UINTN             *Length,
+  OUT CHAR16            **Data
+  )
+{
+  return SimpleVectorSubtypeData (
+           Interp,
+           Interp->Globals[BORAX_GLOBAL_CLASS_STRING],
+           sizeof (CHAR16),
+           String,
+           Length,
+           (VOID **)Data
+           );
 }
 
 STATIC EFI_STATUS
@@ -320,7 +543,12 @@ EarlyStringEqual (
     return Status;
   }
 
-  Chars1 = StringLength (Record);
+  Status = EarlyVectorLength (Record, sizeof (CHAR16), &Chars1);
+  if (EFI_ERROR (Status)) {
+    PRIMITIVE_ERROR ("Malformed LengthAux");
+    return Status;
+  }
+
   Chars2 = StrLen (Name2);
   if (Chars1 != Chars2) {
     *Match = FALSE;
@@ -431,91 +659,111 @@ typedef struct {
 
 STATIC CONST GLOBAL_DESC  gGlobalDesc[BORAX_GLOBAL_COUNT] = {
   // Standard packages
-  [BORAX_GLOBAL_PACKAGE_COMMON_LISP] =                           {
+  [BORAX_GLOBAL_PACKAGE_COMMON_LISP] =                                                  {
     .Tag  = GLOBAL_DESC_PACKAGE,
     .Name = L"COMMON-LISP",
   },
-  [BORAX_GLOBAL_PACKAGE_KEYWORD] =                               {
+  [BORAX_GLOBAL_PACKAGE_KEYWORD] =                                                      {
     .Tag  = GLOBAL_DESC_PACKAGE,
     .Name = L"KEYWORD",
   },
   // Built-in packages
-  [BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME] =                         {
+  [BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME] =                                                {
     .Tag  = GLOBAL_DESC_PACKAGE,
     .Name = L"BORAX-RUNTIME",
   },
   // Standard conditions
-  [BORAX_GLOBAL_CLASS_SIMPLE_ERROR] =                            {
+  [BORAX_GLOBAL_CLASS_SIMPLE_ERROR] =                                                   {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
     .Name    = L"SIMPLE-ERROR",
   },
-  [BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR] =                    {
+  [BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR] =                                           {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
     .Name    = L"SIMPLE-PROGRAM-ERROR",
   },
-  [BORAX_GLOBAL_CLASS_TYPE_ERROR] =                              {
+  [BORAX_GLOBAL_CLASS_TYPE_ERROR] =                                                     {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
     .Name    = L"TYPE-ERROR",
   },
-  [BORAX_GLOBAL_CLASS_UNDEFINED_FUNCTION] =                      {
+  [BORAX_GLOBAL_CLASS_UNDEFINED_FUNCTION] =                                             {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
     .Name    = L"UNDEFINED-FUNCTION",
   },
   // Built-in conditions
-  [BORAX_GLOBAL_CLASS_HEAP_EXHAUSTED] =                          {
+  [BORAX_GLOBAL_CLASS_HEAP_EXHAUSTED] =                                                 {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
     .Name    = L"HEAP-EXHAUSTED",
   },
-  [BORAX_GLOBAL_CLASS_STACK_EXHAUSTED] =                         {
+  [BORAX_GLOBAL_CLASS_STACK_EXHAUSTED] =                                                {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
     .Name    = L"STACK-EXHAUSTED",
   },
-  [BORAX_GLOBAL_CLASS_LOCATION_ERROR] =                          {
+  [BORAX_GLOBAL_CLASS_LOCATION_ERROR] =                                                 {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
     .Name    = L"LOCATION-ERROR",
   },
   // Standard classes
-  [BORAX_GLOBAL_CLASS_FUNCTION] =                                {
+  [BORAX_GLOBAL_CLASS_FIXNUM] =                                                         {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
+    .Name    = L"FIXNUM",
+  },
+  [BORAX_GLOBAL_CLASS_FUNCTION] =                                                       {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
     .Name    = L"FUNCTION",
   },
-  [BORAX_GLOBAL_CLASS_STRING] =                                  {
+  [BORAX_GLOBAL_CLASS_PACKAGE] =                                                        {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
+    .Name    = L"PACKAGE",
+  },
+  [BORAX_GLOBAL_CLASS_SIMPLE_VECTOR] =                                                  {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
+    .Name    = L"SIMPLE-VECTOR",
+  },
+  [BORAX_GLOBAL_CLASS_STRING] =                                                         {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
     .Name    = L"STRING",
   },
-  [BORAX_GLOBAL_CLASS_SYMBOL] =                                  {
+  [BORAX_GLOBAL_CLASS_SYMBOL] =                                                         {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
     .Name    = L"SYMBOL",
   },
   // Built-in classes
-  [BORAX_GLOBAL_CLASS_BYTECODE_FUNCTION] =                       {
+  [BORAX_GLOBAL_CLASS_BYTECODE_FUNCTION] =                                              {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
     .Name    = L"BYTECODE-FUNCTION",
   },
+  [BORAX_GLOBAL_CLASS_SIMPLE_VECTOR_UNSIGNED_BYTE_8] =                                  {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
+    .Name    = L"SIMPLE-VECTOR-UNSIGNED-BYTE-8",
+  },
   // TODO: just create these
   // Keyword symbols
-  [BORAX_GLOBAL_KEYWORD_CONSTANT] =                              {
+  [BORAX_GLOBAL_KEYWORD_CONSTANT] =                                                     {
     .Tag     = GLOBAL_DESC_SYMBOL,
     .Package = BORAX_GLOBAL_PACKAGE_KEYWORD,
     .Name    = L"CONSTANT",
   },
-  [BORAX_GLOBAL_KEYWORD_LOCAL] =                                 {
+  [BORAX_GLOBAL_KEYWORD_LOCAL] =                                                        {
     .Tag     = GLOBAL_DESC_SYMBOL,
     .Package = BORAX_GLOBAL_PACKAGE_KEYWORD,
     .Name    = L"LOCAL",
   },
-  [BORAX_GLOBAL_KEYWORD_SHARED] =                                {
+  [BORAX_GLOBAL_KEYWORD_SHARED] =                                                       {
     .Tag     = GLOBAL_DESC_SYMBOL,
     .Package = BORAX_GLOBAL_PACKAGE_KEYWORD,
     .Name    = L"SHARED",
