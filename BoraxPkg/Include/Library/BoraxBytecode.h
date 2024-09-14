@@ -601,8 +601,8 @@
  * encoding," follows:
  *
  * An N-bit field is interpreted as an unsigned integer. If the field value is
- * less than 2^(N-1), the encoded value is the field value. If the field value
- * is equal to 2^(N-1), the encoded value is the value of a continuation
+ * less than 2^N - 1, the encoded value is the field value. If the field value
+ * is equal to 2^N - 1, the encoded value is the value of a continuation
  * byte.
  *
  * For simplicity, the value encoded by the continuation bytes is not biased, so
@@ -611,8 +611,8 @@
  *
  * Future directions:
  *
- * - If needed, this encoding scheme could be extended by using 2^(N-2) to
- *   indicate one continuation byte and 2^(N-1) to indicate two. This would be a
+ * - If needed, this encoding scheme could be extended by using 2^N - 2 to
+ *   indicate one continuation byte and 2^N - 1 to indicate two. This would be a
  *   breaking change.
  *
  * Opcodes
@@ -836,11 +836,17 @@ enum {
 };
 
 enum {
+  // Call flags
+  BORAX_CALL_FLAG_FAST = 1 << 4,
+  BORAX_CALL_FLAG_TAIL = 1 << 5,
+};
+
+enum {
   // Addressing modes
-  BORAX_MODE_CONSTANT = 0,
-  BORAX_MODE_LOCAL    = 1,
-  BORAX_MODE_SHARED   = 2,
-  BORAX_MODE_CLOSURE  = 3,
+  BORAX_MODE_CONSTANT = 0x00,
+  BORAX_MODE_LOCAL    = 0x40,
+  BORAX_MODE_SHARED   = 0x80,
+  BORAX_MODE_CLOSURE  = 0xC0,
 };
 
 /*

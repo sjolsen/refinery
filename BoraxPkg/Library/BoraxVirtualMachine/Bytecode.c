@@ -1,5 +1,6 @@
 #include <Library/BoraxBytecode.h>
 
+#include <Library/DebugLib.h>
 #include <Library/BoraxPrimitive.h>
 
 STATIC BORAX_OBJECT
@@ -48,6 +49,193 @@ GetFixnum (
   return BORAX_NIL;
 }
 
+typedef struct {
+  BORAX_TASK    *Task;
+  UINTN         CodeLength;
+  UINT8         *CodeData;
+  UINTN         Pos;
+} PARSER_STATE;
+
+STATIC BORAX_OBJECT
+EFIAPI
+ReadByte (
+  IN PARSER_STATE  *State,
+  OUT UINT8        *Byte
+  )
+{
+  if (State->Pos >= State->CodeLength) {
+    BORAX_OBJECT  Args[] = { BORAX_MAKE_FIXNUM (State->Pos) };
+    return BoraxPrimitiveSimpleCondition (
+             State->Task->Interp,
+             State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
+             L"Code index out of bounds: ~S",
+             ARRAY_SIZE (Args),
+             Args
+             );
+  }
+
+  *Byte = State->CodeData[State->Pos++];
+  DEBUG ((DEBUG_ERROR, "Read byte %02x\n", *Byte));
+  return BORAX_NIL;
+}
+
+STATIC BORAX_OBJECT
+EFIAPI
+DecodeField (
+  IN PARSER_STATE  *State,
+  IN OUT UINT8     *Field,
+  IN UINTN         Bits
+  )
+{
+  UINTN  Limit = (1 << Bits) - 1;
+
+  if (*Field == Limit) {
+    return ReadByte (State, Field);
+  } else {
+    return BORAX_NIL;
+  }
+}
+
+typedef struct {
+  UINT8    Mode;
+  UINT8    Block;
+  UINT8    Index;
+} LOCATION;
+
+STATIC BORAX_OBJECT
+EFIAPI
+ReadLocation (
+  IN PARSER_STATE  *State,
+  OUT LOCATION     *Location
+  )
+{
+  BORAX_OBJECT  Condition;
+  UINT8         Operand;
+  UINT8         Mode, Block, Index;
+
+  Condition = ReadByte (State, &Operand);
+  if (BORAX_BOOL (Condition)) {
+    return Condition;
+  }
+
+  Mode = Operand & 0xC0;
+
+  switch (Mode) {
+    case BORAX_MODE_CONSTANT:
+    case BORAX_MODE_LOCAL:
+      Block = 0;
+      Index = Operand & 0x3F;
+
+      Condition = DecodeField (State, &Index, 6);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      break;
+
+    case BORAX_MODE_SHARED:
+    case BORAX_MODE_CLOSURE:
+      Block = (Operand >> 3) & 0x07;
+      Index = (Operand >> 0) & 0x07;
+
+      Condition = DecodeField (State, &Block, 3);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = DecodeField (State, &Index, 3);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      break;
+  }
+
+  Location->Mode  = Mode;
+  Location->Block = Block;
+  Location->Index = Index;
+  return BORAX_NIL;
+}
+
+STATIC BORAX_OBJECT
+EFIAPI
+BindLocation (
+  IN PARSER_STATE  *State,
+  IN BORAX_OBJECT  Value
+  )
+{
+  BORAX_OBJECT  Condition;
+  LOCATION      Location;
+
+  Condition = ReadLocation (State, &Location);
+  if (BORAX_BOOL (Condition)) {
+    return Condition;
+  }
+
+  switch (Location.Mode) {
+    case BORAX_MODE_CONSTANT:
+    {
+      BORAX_OBJECT  Args[] = { BORAX_MAKE_FIXNUM (Location.Index) };
+
+      return BoraxPrimitiveSimpleCondition (
+               State->Task->Interp,
+               State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR],
+               L"Tried to BIND location (CONSTANT ~S)",
+               ARRAY_SIZE (Args),
+               Args
+               );
+    }
+
+    case BORAX_MODE_LOCAL:
+    {
+      BORAX_OBJECT  *Local;
+
+      Condition = BoraxTaskAccessLocal (State->Task, Location.Index, &Local);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      *Local = Value;
+      return BORAX_NIL;
+    }
+
+    case BORAX_MODE_SHARED:
+    {
+      BORAX_OBJECT  Args[] = {
+        BORAX_MAKE_FIXNUM (Location.Block),
+        BORAX_MAKE_FIXNUM (Location.Index),
+      };
+
+      return BoraxPrimitiveSimpleCondition (
+               State->Task->Interp,
+               State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
+               L"Not implemented: access to location (SHARED ~S ~S)",
+               ARRAY_SIZE (Args),
+               Args
+               );
+    }
+
+    case BORAX_MODE_CLOSURE:
+    {
+      BORAX_OBJECT  Args[] = {
+        BORAX_MAKE_FIXNUM (Location.Block),
+        BORAX_MAKE_FIXNUM (Location.Index),
+      };
+
+      return BoraxPrimitiveSimpleCondition (
+               State->Task->Interp,
+               State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
+               L"Not implemented: access to location (CLOSURE ~S ~S)",
+               ARRAY_SIZE (Args),
+               Args
+               );
+    }
+
+    default:
+      UNREACHABLE ();
+  }
+}
+
 STATIC BORAX_OBJECT
 EFIAPI
 BytecodeFunctionRun (
@@ -55,10 +243,16 @@ BytecodeFunctionRun (
   IN BORAX_OBJECT  Function
   )
 {
+  EFI_STATUS               Status;
   BORAX_OBJECT             Condition;
   BORAX_BYTECODE_FUNCTION  *F;
-  UINTN                    CodeLength;
-  UINT8                    *CodeData;
+  PARSER_STATE             State;
+  UINT8                    Opcode;
+  BOOLEAN                  Fast, Tail;
+  UINTN                    I;
+
+  State.Task = Task;
+  State.Pos  = Task->Registers.PC;
 
   Condition = GetBytecodeFunction (Task->Interp, Function, &F);
   if (BORAX_BOOL (Condition)) {
@@ -68,20 +262,115 @@ BytecodeFunctionRun (
   Condition = BoraxPrimitiveSimpleVectorU8Data (
                 Task->Interp,
                 F->Code,
-                &CodeLength,
-                &CodeData
+                &State.CodeLength,
+                &State.CodeData
                 );
   if (BORAX_BOOL (Condition)) {
     return Condition;
   }
 
-  return BoraxPrimitiveSimpleCondition (
-           Task->Interp,
-           Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
-           L"Not implemented: BytecodeFunctionRun",
-           0,
-           NULL
-           );
+  // Read opcode byte
+  Condition = ReadByte (&State, &Opcode);
+  if (BORAX_BOOL (Condition)) {
+    return Condition;
+  }
+
+  // Handle fast/tail flags
+  if ((Opcode & 0xC0) == BORAX_OPCODE_CALL) {
+    Fast    = Opcode & BORAX_CALL_FLAG_FAST;
+    Tail    = Opcode & BORAX_CALL_FLAG_TAIL;
+    Opcode &= 0xCF;
+  }
+
+  // Dispatch on high nibble
+  switch (Opcode & 0xF0) {
+    case BORAX_OPCODE_BIND:
+    {
+      UINTN  Length  = Task->Registers.VR->Length;
+      UINT8  Opcount = Opcode & 0x0F;
+
+      Condition = DecodeField (&State, &Opcount, 4);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      switch (Opcount) {
+        case 0:
+          // no-op
+          break;
+
+        case 1:
+          // TODO: Either copy the VR or document the fact that binding clears
+          // it. It's probably never useful to access the VR after binding it.
+          Condition = BindLocation (
+                        &State,
+                        BORAX_MAKE_POINTER (Task->Registers.VR)
+                        );
+          if (BORAX_BOOL (Condition)) {
+            return Condition;
+          }
+
+          // TODO: Maybe make BoraxMakeMultipleValues return a condition
+          Status = BoraxMakeMultipleValues (
+                     Task->Interp,
+                     0,
+                     &Task->Registers.VR
+                     );
+          if (EFI_ERROR (Status)) {
+            return BoraxPrimitiveHeapExhausted (Task->Interp);
+          }
+
+          break;
+
+        default:
+          Opcount -= 2;
+
+          for (I = 0; I < Opcount; ++I) {
+            BORAX_OBJECT  Value;
+
+            if (I < Length) {
+              Value = Task->Registers.VR->Values[I];
+            } else {
+              Value = BORAX_NIL;
+            }
+
+            Condition = BindLocation (&State, Value);
+            if (BORAX_BOOL (Condition)) {
+              return Condition;
+            }
+          }
+      }
+
+      Task->Registers.PC = State.Pos;
+      return BORAX_NIL;
+    }
+
+    /* // TODO: Consider more carefully the consequence of encountering an error */
+    /* // after invalidating the VR */
+    /* // TODO: Also maybe make BoraxResizeMultipleValues return a condition */
+    /* Status = BoraxResizeMultipleValues ( */
+    /*   Task->Interp, */
+    /*   &Task->Registers.VR, */
+    /*   Opcount */
+    /*   ); */
+    /* if (EFI_ERROR (Status)) { */
+    /*   return BoraxPrimitiveHeapExhausted (Task->Interp); */
+    /* } */
+
+    default:
+    {
+      BORAX_OBJECT  Args[] = { BORAX_MAKE_FIXNUM (Opcode) };
+      (VOID)Fast;
+      (VOID)Tail;
+      return BoraxPrimitiveSimpleCondition (
+               Task->Interp,
+               Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
+               L"Not implemented: instruction ~2,'0X",
+               ARRAY_SIZE (Args),
+               Args
+               );
+    }
+  }
 }
 
 STATIC BORAX_OBJECT
