@@ -849,6 +849,13 @@ enum {
   BORAX_MODE_CLOSURE  = 0xC0,
 };
 
+enum {
+  // Condition flags
+  BORAX_CFLAG_UNCONDITIONAL   = 0,
+  BORAX_CFLAG_BOOLEAN         = 1,
+  BORAX_CFLAG_NEGATED_BOOLEAN = 2,
+};
+
 /*
  * TODO: Possibly make this a built-in type
  *

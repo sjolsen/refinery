@@ -65,9 +65,10 @@ ReadByte (
 {
   if (State->Pos >= State->CodeLength) {
     BORAX_OBJECT  Args[] = { BORAX_MAKE_FIXNUM (State->Pos) };
+    // TODO: Dedicated error type
     return BoraxPrimitiveSimpleCondition (
              State->Task->Interp,
-             State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
+             State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR],
              L"Code index out of bounds: ~S",
              ARRAY_SIZE (Args),
              Args
@@ -159,51 +160,36 @@ ReadLocation (
 
 STATIC BORAX_OBJECT
 EFIAPI
-BindLocation (
-  IN PARSER_STATE  *State,
-  IN BORAX_OBJECT  Value
+LoadLocation (
+  IN PARSER_STATE    *State,
+  IN CONST LOCATION  *Location,
+  OUT BORAX_OBJECT   *Value
   )
 {
   BORAX_OBJECT  Condition;
-  LOCATION      Location;
 
-  Condition = ReadLocation (State, &Location);
-  if (BORAX_BOOL (Condition)) {
-    return Condition;
-  }
-
-  switch (Location.Mode) {
+  switch (Location->Mode) {
     case BORAX_MODE_CONSTANT:
-    {
-      BORAX_OBJECT  Args[] = { BORAX_MAKE_FIXNUM (Location.Index) };
-
-      return BoraxPrimitiveSimpleCondition (
-               State->Task->Interp,
-               State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR],
-               L"Tried to BIND location (CONSTANT ~S)",
-               ARRAY_SIZE (Args),
-               Args
-               );
-    }
+      return BoraxTaskReadConstant (State->Task, Location->Index, Value);
 
     case BORAX_MODE_LOCAL:
     {
       BORAX_OBJECT  *Local;
 
-      Condition = BoraxTaskAccessLocal (State->Task, Location.Index, &Local);
+      Condition = BoraxTaskAccessLocal (State->Task, Location->Index, &Local);
       if (BORAX_BOOL (Condition)) {
         return Condition;
       }
 
-      *Local = Value;
+      *Value = *Local;
       return BORAX_NIL;
     }
 
     case BORAX_MODE_SHARED:
     {
       BORAX_OBJECT  Args[] = {
-        BORAX_MAKE_FIXNUM (Location.Block),
-        BORAX_MAKE_FIXNUM (Location.Index),
+        BORAX_MAKE_FIXNUM (Location->Block),
+        BORAX_MAKE_FIXNUM (Location->Index),
       };
 
       return BoraxPrimitiveSimpleCondition (
@@ -218,8 +204,8 @@ BindLocation (
     case BORAX_MODE_CLOSURE:
     {
       BORAX_OBJECT  Args[] = {
-        BORAX_MAKE_FIXNUM (Location.Block),
-        BORAX_MAKE_FIXNUM (Location.Index),
+        BORAX_MAKE_FIXNUM (Location->Block),
+        BORAX_MAKE_FIXNUM (Location->Index),
       };
 
       return BoraxPrimitiveSimpleCondition (
@@ -233,6 +219,148 @@ BindLocation (
 
     default:
       UNREACHABLE ();
+  }
+}
+
+STATIC BORAX_OBJECT
+EFIAPI
+StoreLocation (
+  IN PARSER_STATE    *State,
+  IN CONST LOCATION  *Location,
+  IN BORAX_OBJECT    Value
+  )
+{
+  BORAX_OBJECT  Condition;
+
+  switch (Location->Mode) {
+    case BORAX_MODE_CONSTANT:
+    {
+      BORAX_OBJECT  Args[] = { BORAX_MAKE_FIXNUM (Location->Index) };
+
+      // TODO: Should this be a location-error?
+      return BoraxPrimitiveSimpleCondition (
+               State->Task->Interp,
+               State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR],
+               L"Tried to BIND location (CONSTANT ~S)",
+               ARRAY_SIZE (Args),
+               Args
+               );
+    }
+
+    case BORAX_MODE_LOCAL:
+    {
+      BORAX_OBJECT  *Local;
+
+      Condition = BoraxTaskAccessLocal (State->Task, Location->Index, &Local);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      *Local = Value;
+      return BORAX_NIL;
+    }
+
+    case BORAX_MODE_SHARED:
+    {
+      BORAX_OBJECT  Args[] = {
+        BORAX_MAKE_FIXNUM (Location->Block),
+        BORAX_MAKE_FIXNUM (Location->Index),
+      };
+
+      return BoraxPrimitiveSimpleCondition (
+               State->Task->Interp,
+               State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
+               L"Not implemented: access to location (SHARED ~S ~S)",
+               ARRAY_SIZE (Args),
+               Args
+               );
+    }
+
+    case BORAX_MODE_CLOSURE:
+    {
+      BORAX_OBJECT  Args[] = {
+        BORAX_MAKE_FIXNUM (Location->Block),
+        BORAX_MAKE_FIXNUM (Location->Index),
+      };
+
+      return BoraxPrimitiveSimpleCondition (
+               State->Task->Interp,
+               State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
+               L"Not implemented: access to location (CLOSURE ~S ~S)",
+               ARRAY_SIZE (Args),
+               Args
+               );
+    }
+
+    default:
+      UNREACHABLE ();
+  }
+}
+
+STATIC BORAX_OBJECT
+EFIAPI
+ProcessCondition (
+  IN PARSER_STATE  *State,
+  IN UINT8         CFlag,
+  OUT BOOLEAN      *DoIt
+  )
+{
+  BORAX_OBJECT  Condition;
+
+  switch (CFlag) {
+    case BORAX_CFLAG_UNCONDITIONAL:
+      *DoIt = TRUE;
+      return BORAX_NIL;
+
+    case BORAX_CFLAG_BOOLEAN:
+    {
+      LOCATION      Location;
+      BORAX_OBJECT  Value;
+
+      Condition = ReadLocation (State, &Location);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = LoadLocation (State, &Location, &Value);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      *DoIt = BORAX_BOOL (Value);
+      return BORAX_NIL;
+    }
+
+    case BORAX_CFLAG_NEGATED_BOOLEAN:
+    {
+      LOCATION      Location;
+      BORAX_OBJECT  Value;
+
+      Condition = ReadLocation (State, &Location);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = LoadLocation (State, &Location, &Value);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      *DoIt = !BORAX_BOOL (Value);
+      return BORAX_NIL;
+    }
+
+    default:
+    {
+      BORAX_OBJECT  Args[] = { BORAX_MAKE_FIXNUM (CFlag) };
+      return BoraxPrimitiveSimpleCondition (
+               State->Task->Interp,
+               State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR],
+               L"Illegal condition flag: ~S",
+               ARRAY_SIZE (Args),
+               Args
+               );
+    }
   }
 }
 
@@ -300,10 +428,19 @@ BytecodeFunctionRun (
           break;
 
         case 1:
+        {
+          LOCATION  Location;
+
+          Condition = ReadLocation (&State, &Location);
+          if (BORAX_BOOL (Condition)) {
+            return Condition;
+          }
+
           // TODO: Either copy the VR or document the fact that binding clears
           // it. It's probably never useful to access the VR after binding it.
-          Condition = BindLocation (
+          Condition = StoreLocation (
                         &State,
+                        &Location,
                         BORAX_MAKE_POINTER (Task->Registers.VR)
                         );
           if (BORAX_BOOL (Condition)) {
@@ -321,12 +458,14 @@ BytecodeFunctionRun (
           }
 
           break;
+        }
 
         default:
           Opcount -= 2;
 
           for (I = 0; I < Opcount; ++I) {
             BORAX_OBJECT  Value;
+            LOCATION      Location;
 
             if (I < Length) {
               Value = Task->Registers.VR->Values[I];
@@ -334,7 +473,12 @@ BytecodeFunctionRun (
               Value = BORAX_NIL;
             }
 
-            Condition = BindLocation (&State, Value);
+            Condition = ReadLocation (&State, &Location);
+            if (BORAX_BOOL (Condition)) {
+              return Condition;
+            }
+
+            Condition = StoreLocation (&State, &Location, Value);
             if (BORAX_BOOL (Condition)) {
               return Condition;
             }
@@ -356,6 +500,45 @@ BytecodeFunctionRun (
     /* if (EFI_ERROR (Status)) { */
     /*   return BoraxPrimitiveHeapExhausted (Task->Interp); */
     /* } */
+
+    case BORAX_OPCODE_MOVE:
+    {
+      UINT8    CFlag = Opcode & 0x0F;
+      BOOLEAN  DoIt;
+
+      Condition = ProcessCondition (&State, CFlag, &DoIt);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      if (DoIt) {
+        LOCATION      Dst, Src;
+        BORAX_OBJECT  Value;
+
+        Condition = ReadLocation (&State, &Dst);
+        if (BORAX_BOOL (Condition)) {
+          return Condition;
+        }
+
+        Condition = ReadLocation (&State, &Src);
+        if (BORAX_BOOL (Condition)) {
+          return Condition;
+        }
+
+        Condition = LoadLocation (&State, &Src, &Value);
+        if (BORAX_BOOL (Condition)) {
+          return Condition;
+        }
+
+        Condition = StoreLocation (&State, &Dst, Value);
+        if (BORAX_BOOL (Condition)) {
+          return Condition;
+        }
+      }
+
+      Task->Registers.PC = State.Pos;
+      return BORAX_NIL;
+    }
 
     default:
     {
@@ -465,13 +648,32 @@ BytecodeFunctionConstant (
   OUT BORAX_OBJECT      *Constant
   )
 {
-  return BoraxPrimitiveSimpleCondition (
-           Interp,
-           Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
-           L"Not implemented: BytecodeFunctionConstant",
-           0,
-           NULL
-           );
+  BORAX_OBJECT             Condition;
+  BORAX_BYTECODE_FUNCTION  *F;
+  UINTN                    Length;
+  BORAX_OBJECT             *Data;
+
+  Condition = GetBytecodeFunction (Interp, Function, &F);
+  if (BORAX_BOOL (Condition)) {
+    return Condition;
+  }
+
+  Condition = BoraxPrimitiveSimpleVectorData (
+                Interp,
+                F->Constants,
+                &Length,
+                &Data
+                );
+  if (BORAX_BOOL (Condition)) {
+    return Condition;
+  }
+
+  if (Index >= Length) {
+    return BoraxPrimitiveConstantLocationError (Interp, Index);
+  }
+
+  *Constant = Data[Index];
+  return BORAX_NIL;
 }
 
 CONST BORAX_FUNCTION_OPS  gBytecodeFunctionOps = {
