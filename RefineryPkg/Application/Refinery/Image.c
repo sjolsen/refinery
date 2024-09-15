@@ -391,7 +391,7 @@ FormatSimpleVector (
       BORAX_RECORD  *Record = (BORAX_RECORD *)BORAX_GET_POINTER (*Object);
       UINTN         I       = BORAX_GET_FIXNUM (*Index);
 
-      Status = BoraxResizeMultipleValues (Task->Interp, &Task->Registers.VR, 1);
+      Status = BoraxResizeMultipleValues (Task->Interp, 1, &Task->Registers.VR);
       if (EFI_ERROR (Status)) {
         return SomeErrorTodo (Task->Interp);
       }
@@ -607,7 +607,7 @@ FormatObjectRecord (
       BORAX_RECORD  *Record = (BORAX_RECORD *)BORAX_GET_POINTER (*Object);
       UINTN         I       = BORAX_GET_FIXNUM (*Index);
 
-      Status = BoraxResizeMultipleValues (Task->Interp, &Task->Registers.VR, 1);
+      Status = BoraxResizeMultipleValues (Task->Interp, 1, &Task->Registers.VR);
       if (EFI_ERROR (Status)) {
         return SomeErrorTodo (Task->Interp);
       }
@@ -882,7 +882,7 @@ FormatRecursive (
     {
       BORAX_OBJECT  Rest = *SavedRest;
 
-      Status = BoraxResizeMultipleValues (Task->Interp, &Task->Registers.VR, 1);
+      Status = BoraxResizeMultipleValues (Task->Interp, 1, &Task->Registers.VR);
       if (EFI_ERROR (Status)) {
         return SomeErrorTodo (Task->Interp);
       }
@@ -920,7 +920,7 @@ FormatRecursive (
         return SomeErrorTodo (Task->Interp);
       }
 
-      Status = BoraxResizeMultipleValues (Task->Interp, &Task->Registers.VR, 1);
+      Status = BoraxResizeMultipleValues (Task->Interp, 1, &Task->Registers.VR);
       if (EFI_ERROR (Status)) {
         return SomeErrorTodo (Task->Interp);
       }

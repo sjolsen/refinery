@@ -30,7 +30,11 @@
 
 (defclass borax-vm/cl:function ()
   ()
-  (:metaclass record-class))
+  (:metaclass borax-vm/cl:class))
+
+(defclass multiple-values ()
+  ()
+  (:metaclass borax-vm/cl:class))
 
 (defclass borax-vm/cl:condition ()
   ()
@@ -209,11 +213,12 @@
   (ensure-find-class 'borax-vm/cl:simple-vector)
   (ensure-find-class 'borax-vm/cl:type-error)
   (ensure-find-class 'borax-vm/cl:undefined-function)
-  (ensure-find-class 'simple-program-error)
   (ensure-find-class 'heap-exhausted)
-  (ensure-find-class 'stack-exhausted)
   (ensure-find-class 'location-error)
+  (ensure-find-class 'multiple-values)
+  (ensure-find-class 'simple-program-error)
   (ensure-find-class 'simple-vector-unsigned-byte-8)
+  (ensure-find-class 'stack-exhausted)
   (let ((keyword (ensure-package "KEYWORD")))
     (borax-vm/cl:intern "CONSTANT" keyword)
     (borax-vm/cl:intern "LOCAL" keyword)

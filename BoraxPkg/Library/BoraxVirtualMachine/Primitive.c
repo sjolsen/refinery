@@ -746,6 +746,11 @@ STATIC CONST GLOBAL_DESC  gGlobalDesc[BORAX_GLOBAL_COUNT] = {
     .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
     .Name    = L"BYTECODE-FUNCTION",
   },
+  [BORAX_GLOBAL_CLASS_MULTIPLE_VALUES] =                                                {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
+    .Name    = L"MULTIPLE-VALUES",
+  },
   [BORAX_GLOBAL_CLASS_SIMPLE_VECTOR_UNSIGNED_BYTE_8] =                                  {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,

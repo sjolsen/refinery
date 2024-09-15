@@ -485,24 +485,6 @@ BoraxMakeMultipleValues (
   return EFI_SUCCESS;
 }
 
-EFI_STATUS
-EFIAPI
-BoraxResizeMultipleValues (
-  IN BORAX_INTERPRETER          *Interp,
-  IN OUT BORAX_MULTIPLE_VALUES  **Values,
-  IN UINTN                      Length
-  )
-{
-  BORAX_MULTIPLE_VALUES  *MV = *Values;
-
-  if (Length > MV->Capacity) {
-    return BoraxMakeMultipleValues (Interp, Length, Values);
-  } else {
-    MV->Length = Length;
-    return EFI_SUCCESS;
-  }
-}
-
 STATIC EFI_STATUS
 EFIAPI
 CopyMultipleValues (
@@ -516,6 +498,39 @@ CopyMultipleValues (
                                    + sizeof (BORAX_OBJECT) * Values->Capacity;
 
   return BoraxCopyObject (Alloc, Size, OldObject, NewObject);
+}
+
+EFI_STATUS
+EFIAPI
+BoraxCopyMultipleValues (
+  IN BORAX_INTERPRETER       *Interp,
+  IN BORAX_MULTIPLE_VALUES   *In,
+  OUT BORAX_MULTIPLE_VALUES  **Out
+  )
+{
+  return CopyMultipleValues (
+           Interp->Alloc,
+           &In->Header,
+           (BORAX_OBJECT_HEADER **)Out
+           );
+}
+
+EFI_STATUS
+EFIAPI
+BoraxResizeMultipleValues (
+  IN BORAX_INTERPRETER          *Interp,
+  IN UINTN                      Length,
+  IN OUT BORAX_MULTIPLE_VALUES  **Values
+  )
+{
+  BORAX_MULTIPLE_VALUES  *MV = *Values;
+
+  if (Length > MV->Capacity) {
+    return BoraxMakeMultipleValues (Interp, Length, Values);
+  } else {
+    MV->Length = Length;
+    return EFI_SUCCESS;
+  }
 }
 
 STATIC EFI_STATUS
@@ -645,8 +660,8 @@ BoraxTaskCoBind (
 
   Status = BoraxResizeMultipleValues (
              Task->Interp,
-             &Task->Registers.VR,
-             SlotsLength
+             SlotsLength,
+             &Task->Registers.VR
              );
   if (EFI_ERROR (Status)) {
     return BoraxPrimitiveHeapExhausted (Task->Interp);

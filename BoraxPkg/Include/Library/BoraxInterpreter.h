@@ -228,6 +228,7 @@ typedef enum {
   BORAX_GLOBAL_CLASS_SYMBOL,
   // Built-in classes
   BORAX_GLOBAL_CLASS_BYTECODE_FUNCTION,
+  BORAX_GLOBAL_CLASS_MULTIPLE_VALUES,
   BORAX_GLOBAL_CLASS_SIMPLE_VECTOR_UNSIGNED_BYTE_8,
   // Keyword symbols
   BORAX_GLOBAL_KEYWORD_CONSTANT,
@@ -306,10 +307,18 @@ BoraxMakeMultipleValues (
 
 EFI_STATUS
 EFIAPI
+BoraxCopyMultipleValues (
+  IN BORAX_INTERPRETER       *Interp,
+  IN BORAX_MULTIPLE_VALUES   *In,
+  OUT BORAX_MULTIPLE_VALUES  **Out
+  );
+
+EFI_STATUS
+EFIAPI
 BoraxResizeMultipleValues (
   IN BORAX_INTERPRETER          *Interp,
-  IN OUT BORAX_MULTIPLE_VALUES  **Values,
-  IN UINTN                      Length
+  IN UINTN                      Length,
+  IN OUT BORAX_MULTIPLE_VALUES  **Values
   );
 
 typedef enum {

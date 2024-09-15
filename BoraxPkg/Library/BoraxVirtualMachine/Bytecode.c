@@ -436,6 +436,142 @@ BytecodeFunctionRun (
 
   // Dispatch on high nibble
   switch (Opcode & 0xF0) {
+    case BORAX_OPCODE_CALL:
+    {
+      UINT8         CFlag   = (Opcode >> 3) & 0x01;
+      UINT8         Opcount = (Opcode >> 0) & 0x07;
+      BOOLEAN       DoIt;
+      LOCATION      Location;
+      BORAX_OBJECT  Function;
+
+      Condition = ProcessCondition (&State, CFlag, &DoIt);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = DecodeField (&State, &Opcount, 3);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = ReadLocation (&State, &Location);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = LoadLocation (&State, &Location, &Function);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      if (DoIt) {
+        // Populate the VR
+        switch (Opcount) {
+          case 0:
+            // no-op
+            break;
+
+          case 1:
+          {
+            LOCATION      Location;
+            BORAX_OBJECT  Value;
+
+            Condition = ReadLocation (&State, &Location);
+            if (BORAX_BOOL (Condition)) {
+              return Condition;
+            }
+
+            Condition = LoadLocation (&State, &Location, &Value);
+            if (BORAX_BOOL (Condition)) {
+              return Condition;
+            }
+
+            if (BORAX_DISCRIMINATE (Value) != BORAX_DISCRIM_MULTIPLE_VALUES) {
+              return BoraxPrimitiveTypeError (
+                       Task->Interp,
+                       Value,
+                       Task->Interp->Globals[BORAX_GLOBAL_CLASS_MULTIPLE_VALUES]
+                       );
+            }
+
+            // Prevent Lisp code from mucking with the VR through a shared
+            // reference
+            Status = BoraxCopyMultipleValues (
+                       Task->Interp,
+                       (BORAX_MULTIPLE_VALUES *)BORAX_GET_POINTER (Value),
+                       &Task->Registers.VR
+                       );
+            if (EFI_ERROR (Status)) {
+              return BoraxPrimitiveHeapExhausted (Task->Interp);
+            }
+
+            break;
+          }
+
+          default:
+            Opcount -= 2;
+
+            Status = BoraxResizeMultipleValues (
+                       Task->Interp,
+                       Opcount,
+                       &Task->Registers.VR
+                       );
+
+            for (I = 0; I < Opcount; ++I) {
+              LOCATION      Location;
+              BORAX_OBJECT  *Value = &Task->Registers.VR->Values[I];
+
+              Condition = ReadLocation (&State, &Location);
+              if (BORAX_BOOL (Condition)) {
+                return Condition;
+              }
+
+              Condition = LoadLocation (&State, &Location, Value);
+              if (BORAX_BOOL (Condition)) {
+                return Condition;
+              }
+            }
+
+            break;
+        }
+
+        // Update the PC before entering the new stack frame
+        Task->Registers.PC = State.Pos;
+
+        // TODO: Handle the fast flag
+        if (Tail) {
+          return BoraxTaskEnterFunctionTail (Task, Function);
+        } else {
+          return BoraxTaskEnterFunction (Task, Function);
+        }
+      } else {
+        switch (Opcount) {
+          case 0:
+          case 1:
+            // no-op
+            break;
+
+          default:
+            Opcount -= 2;
+            break;
+        }
+
+        // Consume the rest of the instruction bytes but don't do anything with
+        // them
+        for (I = 0; I < Opcount; ++I) {
+          LOCATION  Location;
+
+          Condition = ReadLocation (&State, &Location);
+          if (BORAX_BOOL (Condition)) {
+            return Condition;
+          }
+        }
+
+        Task->Registers.PC = State.Pos;
+        return BORAX_NIL;
+      }
+    }
+
     case BORAX_OPCODE_JUMP:
     {
       UINT8    CFlag = Opcode & 0x0F;
@@ -478,25 +614,33 @@ BytecodeFunctionRun (
 
         case 1:
         {
-          LOCATION  Location;
+          LOCATION               Location;
+          BORAX_MULTIPLE_VALUES  *Values;
 
           Condition = ReadLocation (&State, &Location);
           if (BORAX_BOOL (Condition)) {
             return Condition;
           }
 
-          // TODO: Either copy the VR or document the fact that binding clears
-          // it. It's probably never useful to access the VR after binding it.
+          Status = BoraxCopyMultipleValues (
+                     Task->Interp,
+                     Task->Registers.VR,
+                     &Values
+                     );
+          if (EFI_ERROR (Status)) {
+            return BoraxPrimitiveHeapExhausted (Task->Interp);
+          }
+
           Condition = StoreLocation (
                         &State,
                         &Location,
-                        BORAX_MAKE_POINTER (Task->Registers.VR)
+                        BORAX_MAKE_POINTER (Values)
                         );
           if (BORAX_BOOL (Condition)) {
             return Condition;
           }
 
-          // TODO: Maybe make BoraxMakeMultipleValues return a condition
+          // TODO: Maybe make BoraxMakeMultipleValues et al. return a condition
           Status = BoraxMakeMultipleValues (
                      Task->Interp,
                      0,
@@ -532,6 +676,8 @@ BytecodeFunctionRun (
               return Condition;
             }
           }
+
+          break;
       }
 
       Task->Registers.PC = State.Pos;
