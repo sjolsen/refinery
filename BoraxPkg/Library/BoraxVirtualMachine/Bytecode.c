@@ -390,6 +390,116 @@ ProcessCondition (
 
 STATIC BORAX_OBJECT
 EFIAPI
+ConditionalCoBind (
+  IN PARSER_STATE  *State,
+  IN BOOLEAN       DoIt,
+  IN UINT8         Opcount
+  )
+{
+  EFI_STATUS    Status;
+  BORAX_OBJECT  Condition;
+  BORAX_TASK    *Task = State->Task;
+  UINTN         I;
+
+  if (DoIt) {
+    // Populate the VR
+    switch (Opcount) {
+      case 0:
+        // no-op
+        break;
+
+      case 1:
+      {
+        LOCATION      Location;
+        BORAX_OBJECT  Value;
+
+        Condition = ReadLocation (State, &Location);
+        if (BORAX_BOOL (Condition)) {
+          return Condition;
+        }
+
+        Condition = LoadLocation (State, &Location, &Value);
+        if (BORAX_BOOL (Condition)) {
+          return Condition;
+        }
+
+        if (BORAX_DISCRIMINATE (Value) != BORAX_DISCRIM_MULTIPLE_VALUES) {
+          return BoraxPrimitiveTypeError (
+                   Task->Interp,
+                   Value,
+                   Task->Interp->Globals[BORAX_GLOBAL_CLASS_MULTIPLE_VALUES]
+                   );
+        }
+
+        // Prevent Lisp code from mucking with the VR through a shared
+        // reference
+        Status = BoraxCopyMultipleValues (
+                   Task->Interp,
+                   (BORAX_MULTIPLE_VALUES *)BORAX_GET_POINTER (Value),
+                   &Task->Registers.VR
+                   );
+        if (EFI_ERROR (Status)) {
+          return BoraxPrimitiveHeapExhausted (Task->Interp);
+        }
+
+        break;
+      }
+
+      default:
+        Opcount -= 2;
+
+        Status = BoraxResizeMultipleValues (
+                   Task->Interp,
+                   Opcount,
+                   &Task->Registers.VR
+                   );
+
+        for (I = 0; I < Opcount; ++I) {
+          LOCATION      Location;
+          BORAX_OBJECT  *Value = &Task->Registers.VR->Values[I];
+
+          Condition = ReadLocation (State, &Location);
+          if (BORAX_BOOL (Condition)) {
+            return Condition;
+          }
+
+          Condition = LoadLocation (State, &Location, Value);
+          if (BORAX_BOOL (Condition)) {
+            return Condition;
+          }
+        }
+
+        break;
+    }
+  } else {
+    switch (Opcount) {
+      case 0:
+      case 1:
+        // no-op
+        break;
+
+      default:
+        Opcount -= 2;
+        break;
+    }
+
+    // Consume the rest of the instruction bytes but don't do anything with
+    // them
+    for (I = 0; I < Opcount; ++I) {
+      LOCATION  Location;
+
+      Condition = ReadLocation (State, &Location);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+    }
+  }
+
+  return BORAX_NIL;
+}
+
+STATIC BORAX_OBJECT
+EFIAPI
 BytecodeFunctionRun (
   IN BORAX_TASK    *Task,
   IN BORAX_OBJECT  Function
@@ -464,77 +574,12 @@ BytecodeFunctionRun (
         return Condition;
       }
 
+      Condition = ConditionalCoBind (&State, DoIt, Opcount);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
       if (DoIt) {
-        // Populate the VR
-        switch (Opcount) {
-          case 0:
-            // no-op
-            break;
-
-          case 1:
-          {
-            LOCATION      Location;
-            BORAX_OBJECT  Value;
-
-            Condition = ReadLocation (&State, &Location);
-            if (BORAX_BOOL (Condition)) {
-              return Condition;
-            }
-
-            Condition = LoadLocation (&State, &Location, &Value);
-            if (BORAX_BOOL (Condition)) {
-              return Condition;
-            }
-
-            if (BORAX_DISCRIMINATE (Value) != BORAX_DISCRIM_MULTIPLE_VALUES) {
-              return BoraxPrimitiveTypeError (
-                       Task->Interp,
-                       Value,
-                       Task->Interp->Globals[BORAX_GLOBAL_CLASS_MULTIPLE_VALUES]
-                       );
-            }
-
-            // Prevent Lisp code from mucking with the VR through a shared
-            // reference
-            Status = BoraxCopyMultipleValues (
-                       Task->Interp,
-                       (BORAX_MULTIPLE_VALUES *)BORAX_GET_POINTER (Value),
-                       &Task->Registers.VR
-                       );
-            if (EFI_ERROR (Status)) {
-              return BoraxPrimitiveHeapExhausted (Task->Interp);
-            }
-
-            break;
-          }
-
-          default:
-            Opcount -= 2;
-
-            Status = BoraxResizeMultipleValues (
-                       Task->Interp,
-                       Opcount,
-                       &Task->Registers.VR
-                       );
-
-            for (I = 0; I < Opcount; ++I) {
-              LOCATION      Location;
-              BORAX_OBJECT  *Value = &Task->Registers.VR->Values[I];
-
-              Condition = ReadLocation (&State, &Location);
-              if (BORAX_BOOL (Condition)) {
-                return Condition;
-              }
-
-              Condition = LoadLocation (&State, &Location, Value);
-              if (BORAX_BOOL (Condition)) {
-                return Condition;
-              }
-            }
-
-            break;
-        }
-
         // Update the PC before entering the new stack frame
         Task->Registers.PC = State.Pos;
 
@@ -545,28 +590,6 @@ BytecodeFunctionRun (
           return BoraxTaskEnterFunction (Task, Function);
         }
       } else {
-        switch (Opcount) {
-          case 0:
-          case 1:
-            // no-op
-            break;
-
-          default:
-            Opcount -= 2;
-            break;
-        }
-
-        // Consume the rest of the instruction bytes but don't do anything with
-        // them
-        for (I = 0; I < Opcount; ++I) {
-          LOCATION  Location;
-
-          Condition = ReadLocation (&State, &Location);
-          if (BORAX_BOOL (Condition)) {
-            return Condition;
-          }
-        }
-
         Task->Registers.PC = State.Pos;
         return BORAX_NIL;
       }
@@ -595,6 +618,35 @@ BytecodeFunctionRun (
       }
 
       return BORAX_NIL;
+    }
+
+    case BORAX_OPCODE_RETURN:
+    {
+      UINT8    CFlag   = (Opcode >> 3) & 0x01;
+      UINT8    Opcount = (Opcode >> 0) & 0x07;
+      BOOLEAN  DoIt;
+
+      Condition = ProcessCondition (&State, CFlag, &DoIt);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = DecodeField (&State, &Opcount, 3);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = ConditionalCoBind (&State, DoIt, Opcount);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      if (DoIt) {
+        return BoraxTaskExitFunction (Task);
+      } else {
+        Task->Registers.PC = State.Pos;
+        return BORAX_NIL;
+      }
     }
 
     case BORAX_OPCODE_BIND:
