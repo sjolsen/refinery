@@ -688,6 +688,7 @@ FormatRecursive (
   )
 {
   EFI_STATUS     Status;
+  BORAX_OBJECT   Condition;
   LISP_CONTEXT   *Ctx          = UnsafeConstant (Task, FR_CONST_CTX);
   BUFFER_HANDLE  *BufferHandle = UnsafeConstant (Task, FR_CONST_BUFFER);
   BUFFER         *Buffer       = BufferHandle->Buffer;
@@ -779,6 +780,47 @@ FormatRecursive (
             }
 
             Status = BufferWriteChar (Buffer, L'"');
+            if (EFI_ERROR (Status)) {
+              return SomeErrorTodo (Task->Interp);
+            }
+          } else if (BORAX_EQ (
+                       Record->Class,
+                       Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_VECTOR_UNSIGNED_BYTE_8]
+                       ))
+          {
+            UINTN  Length;
+            UINT8  *Data;
+            UINTN  I;
+
+            // TODO: Don't use primitive APIs
+            Condition = BoraxPrimitiveSimpleVectorU8Data (
+                          Task->Interp,
+                          Object,
+                          &Length,
+                          &Data
+                          );
+            if (BORAX_BOOL (Condition)) {
+              return Condition;
+            }
+
+            Status = BufferWrite (Buffer, L"<BYTE-VECTOR");
+            if (EFI_ERROR (Status)) {
+              return SomeErrorTodo (Task->Interp);
+            }
+
+            for (I = 0; I < Length; ++I) {
+              Status = BufferWriteChar (Buffer, L' ');
+              if (EFI_ERROR (Status)) {
+                return SomeErrorTodo (Task->Interp);
+              }
+
+              Status = BufferWriteHex (Buffer, Data[I], 2);
+              if (EFI_ERROR (Status)) {
+                return SomeErrorTodo (Task->Interp);
+              }
+            }
+
+            Status = BufferWriteChar (Buffer, L'>');
             if (EFI_ERROR (Status)) {
               return SomeErrorTodo (Task->Interp);
             }

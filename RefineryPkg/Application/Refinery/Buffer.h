@@ -48,4 +48,12 @@ BufferWriteInt (
   IN INTN    Value
   );
 
+EFI_STATUS
+EFIAPI
+BufferWriteHex (
+  IN BUFFER  *Buffer,
+  IN INTN    Value,
+  IN UINTN   PadTo
+  );
+
 #endif // REFINERY_BUFFER_H

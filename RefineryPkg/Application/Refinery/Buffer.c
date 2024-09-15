@@ -97,17 +97,27 @@ BufferWriteChar (
   return BufferWriteChars (Buffer, &Char, 1);
 }
 
+STATIC CONST CHAR16  Digits[] = L"0123456789ABCDEF";
+
 EFI_STATUS
 EFIAPI
-BufferWriteInt (
+BufferFormatInt (
   IN BUFFER  *Buffer,
-  IN INTN    Value
+  IN INTN    Value,
+  IN UINTN   Base,
+  IN CHAR16  PadChar,
+  IN UINTN   PadTo
   )
 {
   EFI_STATUS  Status;
   BOOLEAN     Negative;
   UINTN       UValue;
   UINTN       Start, End;
+  UINTN       Width = 0;
+
+  if (Base > 16) {
+    return EFI_INVALID_PARAMETER;
+  }
 
   // absolute value
   Negative = Value < 0;
@@ -120,13 +130,24 @@ BufferWriteInt (
   // digits
   Start = Buffer->Terminator;
   do {
-    Status = BufferWriteChar (Buffer, L'0' + (UValue % 10));
+    Status = BufferWriteChar (Buffer, Digits[UValue % Base]);
     if (EFI_ERROR (Status)) {
       goto error;
     }
 
-    UValue /= 10;
+    UValue /= Base;
+    ++Width;
   } while (UValue != 0);
+
+  // padding
+  while (Width < PadTo) {
+    Status = BufferWriteChar (Buffer, PadChar);
+    if (EFI_ERROR (Status)) {
+      goto error;
+    }
+
+    ++Width;
+  }
 
   // sign
   if (Negative) {
@@ -155,4 +176,25 @@ error:
   Buffer->Terminator  = Start;
   Buffer->Data[Start] = L'\0';
   return Status;
+}
+
+EFI_STATUS
+EFIAPI
+BufferWriteInt (
+  IN BUFFER  *Buffer,
+  IN INTN    Value
+  )
+{
+  return BufferFormatInt (Buffer, Value, 10, L' ', 0);
+}
+
+EFI_STATUS
+EFIAPI
+BufferWriteHex (
+  IN BUFFER  *Buffer,
+  IN INTN    Value,
+  IN UINTN   PadTo
+  )
+{
+  return BufferFormatInt (Buffer, Value, 16, L'0', PadTo);
 }
