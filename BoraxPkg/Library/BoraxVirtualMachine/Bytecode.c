@@ -97,6 +97,30 @@ DecodeField (
   }
 }
 
+STATIC BORAX_OBJECT
+EFIAPI
+ReadJumpTarget (
+  IN PARSER_STATE  *State,
+  OUT UINT16       *JumpTarget
+  )
+{
+  BORAX_OBJECT  Condition;
+  UINT8         Low, High;
+
+  Condition = ReadByte (State, &Low);
+  if (BORAX_BOOL (Condition)) {
+    return Condition;
+  }
+
+  Condition = ReadByte (State, &High);
+  if (BORAX_BOOL (Condition)) {
+    return Condition;
+  }
+
+  *JumpTarget = Low | (High << 8);
+  return BORAX_NIL;
+}
+
 typedef struct {
   UINT8    Mode;
   UINT8    Block;
@@ -412,6 +436,31 @@ BytecodeFunctionRun (
 
   // Dispatch on high nibble
   switch (Opcode & 0xF0) {
+    case BORAX_OPCODE_JUMP:
+    {
+      UINT8    CFlag = Opcode & 0x0F;
+      BOOLEAN  DoIt;
+      UINT16   JumpTarget;
+
+      Condition = ProcessCondition (&State, CFlag, &DoIt);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = ReadJumpTarget (&State, &JumpTarget);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      if (DoIt) {
+        Task->Registers.PC = JumpTarget;
+      } else {
+        Task->Registers.PC = State.Pos;
+      }
+
+      return BORAX_NIL;
+    }
+
     case BORAX_OPCODE_BIND:
     {
       UINTN  Length  = Task->Registers.VR->Length;
@@ -503,27 +552,27 @@ BytecodeFunctionRun (
 
     case BORAX_OPCODE_MOVE:
     {
-      UINT8    CFlag = Opcode & 0x0F;
-      BOOLEAN  DoIt;
+      UINT8     CFlag = Opcode & 0x0F;
+      BOOLEAN   DoIt;
+      LOCATION  Dst, Src;
 
       Condition = ProcessCondition (&State, CFlag, &DoIt);
       if (BORAX_BOOL (Condition)) {
         return Condition;
       }
 
+      Condition = ReadLocation (&State, &Dst);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = ReadLocation (&State, &Src);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
       if (DoIt) {
-        LOCATION      Dst, Src;
         BORAX_OBJECT  Value;
-
-        Condition = ReadLocation (&State, &Dst);
-        if (BORAX_BOOL (Condition)) {
-          return Condition;
-        }
-
-        Condition = ReadLocation (&State, &Src);
-        if (BORAX_BOOL (Condition)) {
-          return Condition;
-        }
 
         Condition = LoadLocation (&State, &Src, &Value);
         if (BORAX_BOOL (Condition)) {
