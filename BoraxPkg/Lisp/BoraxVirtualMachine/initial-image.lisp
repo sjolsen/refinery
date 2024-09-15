@@ -206,6 +206,7 @@
 
 (defun make-initial-image ()
   (setf (root *image*) (make-instance 'global-environment))
+  (ensure-find-class 'borax-vm/cl:cons)
   (ensure-find-class 'borax-vm/cl:fixnum)
   (ensure-find-class 'borax-vm/cl:function)
   (ensure-find-class 'borax-vm/cl:package)

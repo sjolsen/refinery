@@ -710,6 +710,11 @@ STATIC CONST GLOBAL_DESC  gGlobalDesc[BORAX_GLOBAL_COUNT] = {
     .Name    = L"LOCATION-ERROR",
   },
   // Standard classes
+  [BORAX_GLOBAL_CLASS_CONS] =                                                           {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
+    .Name    = L"CONS",
+  },
   [BORAX_GLOBAL_CLASS_FIXNUM] =                                                         {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,

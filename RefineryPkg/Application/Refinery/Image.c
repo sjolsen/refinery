@@ -1076,6 +1076,104 @@ STATIC CONST FUNCTION_DESCRIPTOR  gErrorHandler = {
   },
 };
 
+STATIC BORAX_OBJECT
+EFIAPI
+CarCdr (
+  IN BORAX_TASK  *Task
+  )
+{
+  BORAX_OBJECT  Condition;
+  BORAX_OBJECT  Object;
+  BORAX_CONS    *Cons;
+
+  {
+    BORAX_OBJECT  *Args[] = { &Object };
+    Condition = BoraxTaskBind (Task, ARRAY_SIZE (Args), Args);
+    if (BORAX_BOOL (Condition)) {
+      return Condition;
+    }
+  }
+
+  if (BORAX_DISCRIMINATE (Object) != BORAX_DISCRIM_CONS) {
+    return BoraxPrimitiveTypeError (
+             Task->Interp,
+             Object,
+             Task->Interp->Globals[BORAX_GLOBAL_CLASS_CONS]
+             );
+  }
+
+  Cons = (BORAX_CONS *)BORAX_GET_POINTER (Object);
+
+  {
+    BORAX_OBJECT  Args[] = { Cons->Car, Cons->Cdr };
+    Condition = BoraxTaskCoBind (Task, ARRAY_SIZE (Args), Args);
+    if (BORAX_BOOL (Condition)) {
+      return Condition;
+    }
+  }
+
+  return BoraxTaskExitFunction (Task);
+}
+
+STATIC CONST FUNCTION_DESCRIPTOR  gCarCdr = {
+  .Name = L"CarCdr",
+  .Code = &CarCdr,
+};
+
+STATIC BORAX_OBJECT
+EFIAPI
+Plus (
+  IN BORAX_TASK  *Task
+  )
+{
+  BORAX_OBJECT  Condition;
+  BORAX_OBJECT  A, B;
+
+  {
+    BORAX_OBJECT  *Args[] = { &A, &B };
+    Condition = BoraxTaskBind (Task, ARRAY_SIZE (Args), Args);
+    if (BORAX_BOOL (Condition)) {
+      return Condition;
+    }
+  }
+
+  if (!BORAX_IS_FIXNUM (A)) {
+    return BoraxPrimitiveTypeError (
+             Task->Interp,
+             A,
+             Task->Interp->Globals[BORAX_GLOBAL_CLASS_FIXNUM]
+             );
+  }
+
+  if (!BORAX_IS_FIXNUM (B)) {
+    return BoraxPrimitiveTypeError (
+             Task->Interp,
+             B,
+             Task->Interp->Globals[BORAX_GLOBAL_CLASS_FIXNUM]
+             );
+  }
+
+  {
+    // TODO: arbitrary-precision integers
+    BORAX_OBJECT  Args[] = {
+      BORAX_MAKE_FIXNUM (
+        BORAX_GET_FIXNUM (A) + BORAX_GET_FIXNUM (B)
+        )
+    };
+    Condition = BoraxTaskCoBind (Task, ARRAY_SIZE (Args), Args);
+    if (BORAX_BOOL (Condition)) {
+      return Condition;
+    }
+  }
+
+  return BoraxTaskExitFunction (Task);
+}
+
+STATIC CONST FUNCTION_DESCRIPTOR  gPlus = {
+  .Name = L"+",
+  .Code = &Plus,
+};
+
 STATIC EFI_STATUS
 EFIAPI
 PrintLabelled (
@@ -1283,6 +1381,7 @@ InitializeEnvironment (
 
   PACKAGE  *CommonLisp, *InitialImage, *Keyword;
   SYMBOL   *Package, *SimpleVector, *StandardClass, *String, *Symbol;
+  SYMBOL   *CarCdr, *Plus;
 
   LISP_CONTEXT   *Ctx;
   BUFFER_HANDLE  *Buffer;
@@ -1408,6 +1507,36 @@ InitializeEnvironment (
              Ctx,
              Buffer,
              &Ctx->ErrorHandler
+             );
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = EarlyFindSymbol (InitialImage, L"CAR-CDR", &CarCdr);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = MakeFunction (
+             &gCarCdr,
+             Ctx,
+             Buffer,
+             &CarCdr->Function
+             );
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = EarlyFindSymbol (CommonLisp, L"+", &Plus);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = MakeFunction (
+             &gPlus,
+             Ctx,
+             Buffer,
+             &Plus->Function
              );
   if (EFI_ERROR (Status)) {
     return Status;
