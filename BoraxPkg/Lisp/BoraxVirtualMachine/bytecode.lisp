@@ -233,7 +233,9 @@
             (vector-push-extend value constants))))))
 
 (define-nonterminal constant ()
+  character
   number
+  string
   (let ((quote-form (nested (sequence 'quote symbol))))
     (cadr quote-form)))
 

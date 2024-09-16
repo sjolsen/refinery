@@ -3,7 +3,7 @@
   (:use :uiop/common-lisp)
   (:shadow #:most-positive-fixnum #:most-negative-fixnum
            #:cons #:car #:cdr #:push
-           #:null #:nil
+           #:null #:nil #:list
            #:class #:standard-class #:class-name #:find-class
            #:package #:package-name #:find-package
            #:symbol #:symbol-package #:symbol-name #:symbol-value
@@ -17,7 +17,7 @@
            #:string #:string=)
   (:export #:most-positive-fixnum #:most-negative-fixnum
            #:cons #:car #:cdr #:push
-           #:null #:nil
+           #:null #:nil #:list
            #:class #:standard-class #:class-name #:find-class
            #:package #:package-name #:find-package
            #:symbol #:symbol-package #:symbol-name #:symbol-value

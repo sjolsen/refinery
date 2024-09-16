@@ -223,6 +223,7 @@ typedef enum {
   BORAX_GLOBAL_CLASS_CONS,
   BORAX_GLOBAL_CLASS_FIXNUM,
   BORAX_GLOBAL_CLASS_FUNCTION,
+  BORAX_GLOBAL_CLASS_LIST,
   BORAX_GLOBAL_CLASS_PACKAGE,
   BORAX_GLOBAL_CLASS_SIMPLE_VECTOR,
   BORAX_GLOBAL_CLASS_STRING,
@@ -231,10 +232,6 @@ typedef enum {
   BORAX_GLOBAL_CLASS_BYTECODE_FUNCTION,
   BORAX_GLOBAL_CLASS_MULTIPLE_VALUES,
   BORAX_GLOBAL_CLASS_SIMPLE_VECTOR_UNSIGNED_BYTE_8,
-  // Keyword symbols
-  BORAX_GLOBAL_KEYWORD_CONSTANT,
-  BORAX_GLOBAL_KEYWORD_LOCAL,
-  BORAX_GLOBAL_KEYWORD_SHARED,
 
   BORAX_GLOBAL_COUNT
 } BORAX_GLOBAL;
@@ -515,24 +512,12 @@ BORAX_OBJECT
   IN BORAX_OBJECT  Function
   );
 
-typedef struct {
-  enum {
-    BORAX_FUNCTION_NAME_NONE = 0,
-    BORAX_FUNCTION_NAME_C_STRING,
-    BORAX_FUNCTION_NAME_OBJECT,
-  } Tag;
-  union {
-    CONST CHAR16    *CString;
-    BORAX_OBJECT    Object;
-  };
-} BORAX_FUNCTION_NAME;
-
 typedef
 BORAX_OBJECT
 (EFIAPI *BORAX_FUNCTION_OP_NAME)(
   IN BORAX_INTERPRETER     *Interp,
   IN BORAX_OBJECT          Function,
-  OUT BORAX_FUNCTION_NAME  *Name
+  OUT BORAX_OBJECT  *Name
   );
 
 typedef struct {
@@ -596,7 +581,7 @@ typedef union {
   BORAX_OBJECT_HEADER    Header;
   struct {
     UINTN                  Word0;
-    CONST CHAR16           *Name;
+    BORAX_OBJECT           Name;
     BORAX_OBJECT           Arglist;
     UINTN                  Entry;
     BORAX_BUILT_IN_CODE    Code;
@@ -612,7 +597,7 @@ EFI_STATUS
 EFIAPI
 BoraxMakeBuiltInFunction (
   IN BORAX_ALLOCATOR           *Alloc,
-  IN CONST CHAR16              *Name,
+  IN BORAX_OBJECT              Name,
   IN BORAX_OBJECT              Arglist,
   IN UINTN                     Entry,
   IN BORAX_BUILT_IN_CODE       Code,

@@ -1153,92 +1153,84 @@ BoraxTaskDebugStackTrace (
       if (Printed < STACK_TRACE_LIMIT) {
         BORAX_OBJECT              Condition;
         CONST BORAX_FUNCTION_OPS  *Ops;
-        BORAX_FUNCTION_NAME       Name = { BORAX_FUNCTION_NAME_NONE };
+        BORAX_OBJECT              Name;
+        BORAX_OBJECT              Package, PackageName, SymbolName;
+        UINTN                     PackageLength, SymbolLength;
+        CHAR16                    *PackageData, *SymbolData;
+        BOOLEAN                   HaveName = FALSE;
 
         Condition = BoraxResolveFunction (Task->Interp, &Frame.Code, &Ops);
         if (BORAX_BOOL (Condition)) {
-          goto name_unknown;
+          goto print_name;
         }
 
         Condition = Ops->Name (Task->Interp, Frame.Code, &Name);
         if (BORAX_BOOL (Condition)) {
-          goto name_unknown;
+          goto print_name;
         }
 
-        switch (Name.Tag) {
-          case BORAX_FUNCTION_NAME_C_STRING:
-            DebugPrint (ErrorLevel, "  %s:%u\n", Name.CString, Frame.PC);
-            break;
+        Condition = BoraxPrimitiveSymbolPackage (
+                      Task->Interp,
+                      Name,
+                      &Package
+                      );
+        if (BORAX_BOOL (Condition)) {
+          goto print_name;
+        }
 
-          case BORAX_FUNCTION_NAME_OBJECT:
-          {
-            BORAX_OBJECT  Package, PackageName, SymbolName;
-            UINTN         PackageLength, SymbolLength;
-            CHAR16        *PackageData, *SymbolData;
+        Condition = BoraxPrimitivePackageName (
+                      Task->Interp,
+                      Package,
+                      &PackageName
+                      );
+        if (BORAX_BOOL (Condition)) {
+          goto print_name;
+        }
 
-            Condition = BoraxPrimitiveSymbolPackage (
-                          Task->Interp,
-                          Name.Object,
-                          &Package
-                          );
-            if (BORAX_BOOL (Condition)) {
-              goto name_unknown;
-            }
+        Condition = BoraxPrimitiveStringData (
+                      Task->Interp,
+                      PackageName,
+                      &PackageLength,
+                      &PackageData
+                      );
+        if (BORAX_BOOL (Condition)) {
+          goto print_name;
+        }
 
-            Condition = BoraxPrimitivePackageName (
-                          Task->Interp,
-                          Package,
-                          &PackageName
-                          );
-            if (BORAX_BOOL (Condition)) {
-              goto name_unknown;
-            }
+        Condition = BoraxPrimitiveSymbolName (
+                      Task->Interp,
+                      Name,
+                      &SymbolName
+                      );
+        if (BORAX_BOOL (Condition)) {
+          goto print_name;
+        }
 
-            Condition = BoraxPrimitiveStringData (
-                          Task->Interp,
-                          PackageName,
-                          &PackageLength,
-                          &PackageData
-                          );
-            if (BORAX_BOOL (Condition)) {
-              goto name_unknown;
-            }
+        Condition = BoraxPrimitiveStringData (
+                      Task->Interp,
+                      SymbolName,
+                      &SymbolLength,
+                      &SymbolData
+                      );
+        if (BORAX_BOOL (Condition)) {
+          goto print_name;
+        }
 
-            Condition = BoraxPrimitiveSymbolName (
-                          Task->Interp,
-                          Name.Object,
-                          &SymbolName
-                          );
-            if (BORAX_BOOL (Condition)) {
-              goto name_unknown;
-            }
+        HaveName = TRUE;
 
-            Condition = BoraxPrimitiveStringData (
-                          Task->Interp,
-                          SymbolName,
-                          &SymbolLength,
-                          &SymbolData
-                          );
-            if (BORAX_BOOL (Condition)) {
-              goto name_unknown;
-            }
-
-            DebugPrint (
-              ErrorLevel,
-              "  %.*s:%.*s:%u\n",
-              PackageLength,
-              PackageData,
-              SymbolLength,
-              SymbolData,
-              Frame.PC
-              );
-            break;
-          }
-
-          default:
-name_unknown:
-            DebugPrint (ErrorLevel, "  <unknown>:%u\n", Frame.PC);
-            break;
+print_name:
+        if (HaveName) {
+          DebugPrint (
+            ErrorLevel,
+            "  %.*s:%.*s:%u\n",
+            PackageLength,
+            PackageData,
+            SymbolLength,
+            SymbolData,
+            Frame.PC
+            );
+        } else {
+          DebugPrint (ErrorLevel, "  <unknown>:%u\n", Frame.PC);
         }
 
         ++Printed;
@@ -1419,7 +1411,7 @@ EFI_STATUS
 EFIAPI
 BoraxMakeBuiltInFunction (
   IN BORAX_ALLOCATOR           *Alloc,
-  IN CONST CHAR16              *Name,
+  IN BORAX_OBJECT              Name,
   IN BORAX_OBJECT              Arglist,
   IN UINTN                     Entry,
   IN BORAX_BUILT_IN_CODE       Code,
@@ -1488,6 +1480,11 @@ BuiltInFunctionSubObjects (
   BORAX_BUILT_IN_FUNCTION  *Function = (BORAX_BUILT_IN_FUNCTION *)Object;
   UINTN                    I;
 
+  Status = Callback (Ctx, &Function->Name);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
   Status = Callback (Ctx, &Function->Arglist);
   if (EFI_ERROR (Status)) {
     return Status;
@@ -1523,15 +1520,14 @@ BuiltInFunctionRun (
 STATIC BORAX_OBJECT
 EFIAPI
 BuiltInFunctionName (
-  IN BORAX_INTERPRETER     *Interp,
-  IN BORAX_OBJECT          Function,
-  OUT BORAX_FUNCTION_NAME  *Name
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Function,
+  OUT BORAX_OBJECT      *Name
   )
 {
   BORAX_BUILT_IN_FUNCTION  *F = (BORAX_BUILT_IN_FUNCTION  *)BORAX_GET_POINTER (Function);
 
-  Name->Tag     = BORAX_FUNCTION_NAME_C_STRING;
-  Name->CString = F->Name;
+  *Name = F->Name;
   return BORAX_NIL;
 }
 

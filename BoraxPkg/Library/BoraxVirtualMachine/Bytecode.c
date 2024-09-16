@@ -1,6 +1,5 @@
 #include <Library/BoraxBytecode.h>
 
-#include <Library/DebugLib.h>
 #include <Library/BoraxPrimitive.h>
 
 STATIC BORAX_OBJECT
@@ -76,7 +75,6 @@ ReadByte (
   }
 
   *Byte = State->CodeData[State->Pos++];
-  DEBUG ((DEBUG_ERROR, "Read byte %02x\n", *Byte));
   return BORAX_NIL;
 }
 
@@ -581,6 +579,9 @@ BytecodeFunctionRun (
 
       if (DoIt) {
         // Update the PC before entering the new stack frame
+        //
+        // TODO: Maybe we should delay updating the PC until after function
+        // resolution
         Task->Registers.PC = State.Pos;
 
         // TODO: Handle the fast flag
@@ -806,9 +807,9 @@ BytecodeFunctionRun (
 STATIC BORAX_OBJECT
 EFIAPI
 BytecodeFunctionName (
-  IN BORAX_INTERPRETER     *Interp,
-  IN BORAX_OBJECT          Function,
-  OUT BORAX_FUNCTION_NAME  *Name
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Function,
+  OUT BORAX_OBJECT      *Name
   )
 {
   BORAX_OBJECT             Condition;
@@ -819,8 +820,7 @@ BytecodeFunctionName (
     return Condition;
   }
 
-  Name->Tag    = BORAX_FUNCTION_NAME_OBJECT;
-  Name->Object = F->Name;
+  *Name = F->Name;
   return BORAX_NIL;
 }
 

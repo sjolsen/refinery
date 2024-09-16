@@ -319,8 +319,10 @@
   (setf (slot-value parser 'action) action)
   parser)
 
-(%define-nonterminal 'symbol (satisfies #'symbolp))
+(%define-nonterminal 'character (satisfies #'characterp))
 (%define-nonterminal 'number (satisfies #'numberp))
+(%define-nonterminal 'string (satisfies #'stringp))
+(%define-nonterminal 'symbol (satisfies #'symbolp))
 
 (%define-nonterminal
  'nonterminal-clause

@@ -131,6 +131,15 @@ BoraxPrimitivePackageName (
   OUT BORAX_OBJECT      *Name
   );
 
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveFindPackage (
+  IN BORAX_INTERPRETER  *Interp,
+  IN CONST CHAR16       *Name,
+  OUT BOOLEAN           *Found,
+  OUT BORAX_PACKAGE     **Package
+  );
+
 typedef struct {
   BORAX_RECORD    Record;
   BORAX_OBJECT    Package;
@@ -156,10 +165,46 @@ BoraxPrimitiveSymbolName (
   OUT BORAX_OBJECT      *Name
   );
 
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveFindSymbol (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_PACKAGE      *Package,
+  IN CONST CHAR16       *Name,
+  OUT BOOLEAN           *Found,
+  OUT BORAX_SYMBOL      **Symbol
+  );
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveIntern (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_PACKAGE      *Package,
+  IN CONST CHAR16       *Name,
+  OUT BORAX_SYMBOL      **Symbol
+  );
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveKeyword (
+  IN BORAX_INTERPRETER  *Interp,
+  IN CONST CHAR16       *Name,
+  OUT BORAX_SYMBOL      **Symbol
+  );
+
 typedef struct {
   BORAX_RECORD    Record;
   BORAX_OBJECT    Name;
 } BORAX_STANDARD_CLASS;
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveMakeList (
+  IN BORAX_INTERPRETER   *Interp,
+  IN UINTN               Length,
+  IN CONST BORAX_OBJECT  *Items,
+  OUT BORAX_OBJECT       *List
+  );
 
 BORAX_OBJECT
 EFIAPI
@@ -181,11 +226,28 @@ BoraxPrimitiveSimpleVectorU8Data (
 
 BORAX_OBJECT
 EFIAPI
+BoraxPrimitiveMakeString (
+  IN BORAX_INTERPRETER  *Interp,
+  IN CONST CHAR16       *CString,
+  OUT BORAX_OBJECT      *String
+  );
+
+BORAX_OBJECT
+EFIAPI
 BoraxPrimitiveStringData (
   IN BORAX_INTERPRETER  *Interp,
   IN BORAX_OBJECT       String,
   OUT UINTN             *Length,
   OUT CHAR16            **Data
+  );
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveStringEqual (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       String1,
+  IN CONST CHAR16       *String2,
+  OUT BOOLEAN           *Match
   );
 
 #endif // BORAX_PRIMITIVE_H
