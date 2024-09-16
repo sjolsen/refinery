@@ -611,26 +611,26 @@ BoraxPrimitiveHeapExhausted (
 
 BORAX_OBJECT
 EFIAPI
-BoraxPrimitivePackageName (
+BoraxPrimitiveThePackage (
   IN BORAX_INTERPRETER  *Interp,
-  IN BORAX_OBJECT       Package,
-  OUT BORAX_OBJECT      *Name
+  IN BORAX_OBJECT       Object,
+  OUT BORAX_PACKAGE     **Package
   )
 {
   BORAX_OBJECT   ClassPackage = Interp->Globals[BORAX_GLOBAL_CLASS_PACKAGE];
   BORAX_PACKAGE  *ThePackage;
 
-  if (BORAX_DISCRIMINATE (Package) != BORAX_DISCRIM_OBJECT_RECORD) {
-    return BoraxPrimitiveTypeError (Interp, Package, ClassPackage);
+  if (BORAX_DISCRIMINATE (Object) != BORAX_DISCRIM_OBJECT_RECORD) {
+    return BoraxPrimitiveTypeError (Interp, Object, ClassPackage);
   }
 
-  ThePackage = (BORAX_PACKAGE *)BORAX_GET_POINTER (Package);
+  ThePackage = (BORAX_PACKAGE *)BORAX_GET_POINTER (Object);
 
   if (!BORAX_EQ (ThePackage->Record.Class, ClassPackage)) {
-    return BoraxPrimitiveTypeError (Interp, Package, ClassPackage);
+    return BoraxPrimitiveTypeError (Interp, Object, ClassPackage);
   }
 
-  *Name = ThePackage->Name;
+  *Package = ThePackage;
   return BORAX_NIL;
 }
 
@@ -710,51 +710,26 @@ BoraxPrimitiveFindPackage (
 
 BORAX_OBJECT
 EFIAPI
-BoraxPrimitiveSymbolPackage (
+BoraxPrimitiveTheSymbol (
   IN BORAX_INTERPRETER  *Interp,
-  IN BORAX_OBJECT       Symbol,
-  OUT BORAX_OBJECT      *Package
+  IN BORAX_OBJECT       Object,
+  OUT BORAX_SYMBOL      **Symbol
   )
 {
   BORAX_OBJECT  ClassSymbol = Interp->Globals[BORAX_GLOBAL_CLASS_SYMBOL];
   BORAX_SYMBOL  *TheSymbol;
 
-  if (BORAX_DISCRIMINATE (Symbol) != BORAX_DISCRIM_OBJECT_RECORD) {
-    return BoraxPrimitiveTypeError (Interp, Symbol, ClassSymbol);
+  if (BORAX_DISCRIMINATE (Object) != BORAX_DISCRIM_OBJECT_RECORD) {
+    return BoraxPrimitiveTypeError (Interp, Object, ClassSymbol);
   }
 
-  TheSymbol = (BORAX_SYMBOL *)BORAX_GET_POINTER (Symbol);
+  TheSymbol = (BORAX_SYMBOL *)BORAX_GET_POINTER (Object);
 
   if (!BORAX_EQ (TheSymbol->Record.Class, ClassSymbol)) {
-    return BoraxPrimitiveTypeError (Interp, Symbol, ClassSymbol);
+    return BoraxPrimitiveTypeError (Interp, Object, ClassSymbol);
   }
 
-  *Package = TheSymbol->Package;
-  return BORAX_NIL;
-}
-
-BORAX_OBJECT
-EFIAPI
-BoraxPrimitiveSymbolName (
-  IN BORAX_INTERPRETER  *Interp,
-  IN BORAX_OBJECT       Symbol,
-  OUT BORAX_OBJECT      *Name
-  )
-{
-  BORAX_OBJECT  ClassSymbol = Interp->Globals[BORAX_GLOBAL_CLASS_SYMBOL];
-  BORAX_SYMBOL  *TheSymbol;
-
-  if (BORAX_DISCRIMINATE (Symbol) != BORAX_DISCRIM_OBJECT_RECORD) {
-    return BoraxPrimitiveTypeError (Interp, Symbol, ClassSymbol);
-  }
-
-  TheSymbol = (BORAX_SYMBOL *)BORAX_GET_POINTER (Symbol);
-
-  if (!BORAX_EQ (TheSymbol->Record.Class, ClassSymbol)) {
-    return BoraxPrimitiveTypeError (Interp, Symbol, ClassSymbol);
-  }
-
-  *Name = TheSymbol->Name;
+  *Symbol = TheSymbol;
   return BORAX_NIL;
 }
 

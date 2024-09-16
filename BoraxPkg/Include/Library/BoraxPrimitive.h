@@ -125,10 +125,10 @@ typedef struct {
 
 BORAX_OBJECT
 EFIAPI
-BoraxPrimitivePackageName (
+BoraxPrimitiveThePackage (
   IN BORAX_INTERPRETER  *Interp,
-  IN BORAX_OBJECT       Package,
-  OUT BORAX_OBJECT      *Name
+  IN BORAX_OBJECT       Object,
+  OUT BORAX_PACKAGE     **Package
   );
 
 BORAX_OBJECT
@@ -151,18 +151,10 @@ typedef struct {
 
 BORAX_OBJECT
 EFIAPI
-BoraxPrimitiveSymbolPackage (
+BoraxPrimitiveTheSymbol (
   IN BORAX_INTERPRETER  *Interp,
-  IN BORAX_OBJECT       Symbol,
-  OUT BORAX_OBJECT      *Package
-  );
-
-BORAX_OBJECT
-EFIAPI
-BoraxPrimitiveSymbolName (
-  IN BORAX_INTERPRETER  *Interp,
-  IN BORAX_OBJECT       Symbol,
-  OUT BORAX_OBJECT      *Name
+  IN BORAX_OBJECT       Object,
+  OUT BORAX_SYMBOL      **Symbol
   );
 
 BORAX_OBJECT

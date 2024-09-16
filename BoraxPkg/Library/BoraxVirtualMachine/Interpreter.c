@@ -1154,7 +1154,8 @@ BoraxTaskDebugStackTrace (
         BORAX_OBJECT              Condition;
         CONST BORAX_FUNCTION_OPS  *Ops;
         BORAX_OBJECT              Name;
-        BORAX_OBJECT              Package, PackageName, SymbolName;
+        BORAX_PACKAGE             *Package;
+        BORAX_SYMBOL              *Symbol;
         UINTN                     PackageLength, SymbolLength;
         CHAR16                    *PackageData, *SymbolData;
         BOOLEAN                   HaveName = FALSE;
@@ -1169,19 +1170,19 @@ BoraxTaskDebugStackTrace (
           goto print_name;
         }
 
-        Condition = BoraxPrimitiveSymbolPackage (
+        Condition = BoraxPrimitiveTheSymbol (
                       Task->Interp,
                       Name,
-                      &Package
+                      &Symbol
                       );
         if (BORAX_BOOL (Condition)) {
           goto print_name;
         }
 
-        Condition = BoraxPrimitivePackageName (
+        Condition = BoraxPrimitiveThePackage (
                       Task->Interp,
-                      Package,
-                      &PackageName
+                      Symbol->Package,
+                      &Package
                       );
         if (BORAX_BOOL (Condition)) {
           goto print_name;
@@ -1189,7 +1190,7 @@ BoraxTaskDebugStackTrace (
 
         Condition = BoraxPrimitiveStringData (
                       Task->Interp,
-                      PackageName,
+                      Package->Name,
                       &PackageLength,
                       &PackageData
                       );
@@ -1197,18 +1198,9 @@ BoraxTaskDebugStackTrace (
           goto print_name;
         }
 
-        Condition = BoraxPrimitiveSymbolName (
-                      Task->Interp,
-                      Name,
-                      &SymbolName
-                      );
-        if (BORAX_BOOL (Condition)) {
-          goto print_name;
-        }
-
         Condition = BoraxPrimitiveStringData (
                       Task->Interp,
-                      SymbolName,
+                      Symbol->Name,
                       &SymbolLength,
                       &SymbolData
                       );
