@@ -184,10 +184,28 @@ BoraxPrimitiveKeyword (
   OUT BORAX_SYMBOL      **Symbol
   );
 
+// TODO: Distinguish between standard-class and built-in-class
 typedef struct {
   BORAX_RECORD    Record;
   BORAX_OBJECT    Name;
+  BORAX_OBJECT    PrecedenceList;
 } BORAX_STANDARD_CLASS;
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveTheStandardClass (
+  IN BORAX_INTERPRETER      *Interp,
+  IN BORAX_OBJECT           Object,
+  OUT BORAX_STANDARD_CLASS  **Class
+  );
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveClassOf (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Object,
+  OUT BORAX_OBJECT      *Class
+  );
 
 BORAX_OBJECT
 EFIAPI

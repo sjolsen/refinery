@@ -175,112 +175,172 @@ typedef struct {
 
 STATIC CONST GLOBAL_DESC  gGlobalDesc[BORAX_GLOBAL_COUNT] = {
   // Standard packages
-  [BORAX_GLOBAL_PACKAGE_COMMON_LISP] =                                                  {
+  [BORAX_GLOBAL_PACKAGE_COMMON_LISP] =                 {
     .Tag  = GLOBAL_DESC_PACKAGE,
     .Name = L"COMMON-LISP",
   },
-  [BORAX_GLOBAL_PACKAGE_KEYWORD] =                                                      {
+  [BORAX_GLOBAL_PACKAGE_KEYWORD] =                     {
     .Tag  = GLOBAL_DESC_PACKAGE,
     .Name = L"KEYWORD",
   },
   // Built-in packages
-  [BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME] =                                                {
+  [BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME] =               {
     .Tag  = GLOBAL_DESC_PACKAGE,
     .Name = L"BORAX-RUNTIME",
   },
   // Standard conditions
-  [BORAX_GLOBAL_CLASS_SIMPLE_ERROR] =                                                   {
+  [BORAX_GLOBAL_CLASS_SIMPLE_ERROR] =                  {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
     .Name    = L"SIMPLE-ERROR",
   },
-  [BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR] =                                           {
+  [BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR] =          {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
     .Name    = L"SIMPLE-PROGRAM-ERROR",
   },
-  [BORAX_GLOBAL_CLASS_TYPE_ERROR] =                                                     {
+  [BORAX_GLOBAL_CLASS_TYPE_ERROR] =                    {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
     .Name    = L"TYPE-ERROR",
   },
-  [BORAX_GLOBAL_CLASS_UNDEFINED_FUNCTION] =                                             {
+  [BORAX_GLOBAL_CLASS_UNDEFINED_FUNCTION] =            {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
     .Name    = L"UNDEFINED-FUNCTION",
   },
   // Built-in conditions
-  [BORAX_GLOBAL_CLASS_HEAP_EXHAUSTED] =                                                 {
+  [BORAX_GLOBAL_CLASS_HEAP_EXHAUSTED] =                {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
     .Name    = L"HEAP-EXHAUSTED",
   },
-  [BORAX_GLOBAL_CLASS_STACK_EXHAUSTED] =                                                {
+  [BORAX_GLOBAL_CLASS_STACK_EXHAUSTED] =               {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
     .Name    = L"STACK-EXHAUSTED",
   },
-  [BORAX_GLOBAL_CLASS_LOCATION_ERROR] =                                                 {
+  [BORAX_GLOBAL_CLASS_LOCATION_ERROR] =                {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
     .Name    = L"LOCATION-ERROR",
   },
   // Standard classes
-  [BORAX_GLOBAL_CLASS_CONS] =                                                           {
+  [BORAX_GLOBAL_CLASS_CHARACTER] =                     {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
+    .Name    = L"CHARACTER",
+  },
+  [BORAX_GLOBAL_CLASS_CONS] =                          {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
     .Name    = L"CONS",
   },
-  [BORAX_GLOBAL_CLASS_FIXNUM] =                                                         {
+  [BORAX_GLOBAL_CLASS_FIXNUM] =                        {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
     .Name    = L"FIXNUM",
   },
-  [BORAX_GLOBAL_CLASS_FUNCTION] =                                                       {
+  [BORAX_GLOBAL_CLASS_FUNCTION] =                      {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
     .Name    = L"FUNCTION",
   },
-  [BORAX_GLOBAL_CLASS_LIST] =                                                           {
+  [BORAX_GLOBAL_CLASS_LIST] =                          {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
     .Name    = L"LIST",
   },
-  [BORAX_GLOBAL_CLASS_PACKAGE] =                                                        {
+  [BORAX_GLOBAL_CLASS_NULL] =                          {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
+    .Name    = L"NULL",
+  },
+  [BORAX_GLOBAL_CLASS_PACKAGE] =                       {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
     .Name    = L"PACKAGE",
   },
-  [BORAX_GLOBAL_CLASS_SIMPLE_VECTOR] =                                                  {
+  [BORAX_GLOBAL_CLASS_SIMPLE_VECTOR] =                 {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
     .Name    = L"SIMPLE-VECTOR",
   },
-  [BORAX_GLOBAL_CLASS_STRING] =                                                         {
+  [BORAX_GLOBAL_CLASS_STANDARD_CLASS] =                {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
+    .Name    = L"STANDARD-CLASS",
+  },
+  [BORAX_GLOBAL_CLASS_STRING] =                        {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
     .Name    = L"STRING",
   },
-  [BORAX_GLOBAL_CLASS_SYMBOL] =                                                         {
+  [BORAX_GLOBAL_CLASS_SYMBOL] =                        {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
     .Name    = L"SYMBOL",
   },
+  [BORAX_GLOBAL_CLASS_T] =                             {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_COMMON_LISP,
+    .Name    = L"T",
+  },
   // Built-in classes
-  [BORAX_GLOBAL_CLASS_BYTECODE_FUNCTION] =                                              {
+  [BORAX_GLOBAL_CLASS_BUILT_IN_FUNCTION] =             {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
+    .Name    = L"BUILT-IN-FUNCTION",
+  },
+  [BORAX_GLOBAL_CLASS_BYTECODE_FUNCTION] =             {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
     .Name    = L"BYTECODE-FUNCTION",
   },
-  [BORAX_GLOBAL_CLASS_MULTIPLE_VALUES] =                                                {
+  [BORAX_GLOBAL_CLASS_CONSTANT] =                      {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
+    .Name    = L"CONSTANT",
+  },
+  [BORAX_GLOBAL_CLASS_EXIT] =                          {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
+    .Name    = L"EXIT",
+  },
+  [BORAX_GLOBAL_CLASS_INTERPRETER] =                   {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
+    .Name    = L"INTERPRETER",
+  },
+  [BORAX_GLOBAL_CLASS_MULTIPLE_VALUES] =               {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
     .Name    = L"MULTIPLE-VALUES",
   },
-  [BORAX_GLOBAL_CLASS_SIMPLE_VECTOR_UNSIGNED_BYTE_8] =                                  {
+  [BORAX_GLOBAL_CLASS_PIN] =                           {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
+    .Name    = L"PIN",
+  },
+  [BORAX_GLOBAL_CLASS_SIMPLE_VECTOR_UNSIGNED_BYTE_8] = {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
     .Name    = L"SIMPLE-VECTOR-UNSIGNED-BYTE-8",
+  },
+  [BORAX_GLOBAL_CLASS_TASK] =                          {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
+    .Name    = L"TASK",
+  },
+  [BORAX_GLOBAL_CLASS_UNBOUND] =                       {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
+    .Name    = L"UNBOUND",
+  },
+  [BORAX_GLOBAL_CLASS_WEAK_POINTER] =                  {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
+    .Name    = L"WEAK-POINTER",
   },
 };
 
@@ -353,6 +413,15 @@ BoraxGlobalInit (
           Status = EarlyFindSymbol (Package, Desc->Name, &Symbol);
           if (EFI_ERROR (Status)) {
             return Status;
+          }
+
+          if (BORAX_EQ (Symbol->Class, BORAX_UNBOUND)) {
+            PRIMITIVE_ERROR (
+              "Class not defined: %s:%s",
+              gGlobalDesc[Desc->Package].Name,
+              Desc->Name
+              );
+            return EFI_INVALID_PARAMETER;
           }
 
           Status = BORAX_GET_OBJECT_RECORD (Symbol->Class, &Class);
@@ -884,6 +953,116 @@ BoraxPrimitiveKeyword (
     BORAX_GET_POINTER (Interp->Globals[BORAX_GLOBAL_PACKAGE_KEYWORD]);
 
   return BoraxPrimitiveIntern (Interp, Package, Name, Symbol);
+}
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveTheStandardClass (
+  IN BORAX_INTERPRETER      *Interp,
+  IN BORAX_OBJECT           Object,
+  OUT BORAX_STANDARD_CLASS  **Class
+  )
+{
+  BORAX_OBJECT          ClassStandardClass = Interp->Globals[BORAX_GLOBAL_CLASS_STANDARD_CLASS];
+  BORAX_STANDARD_CLASS  *TheClass;
+
+  if (BORAX_DISCRIMINATE (Object) != BORAX_DISCRIM_OBJECT_RECORD) {
+    return BoraxPrimitiveTypeError (Interp, Object, ClassStandardClass);
+  }
+
+  TheClass = (BORAX_STANDARD_CLASS *)BORAX_GET_POINTER (Object);
+
+  if (!BORAX_EQ (TheClass->Record.Class, ClassStandardClass)) {
+    return BoraxPrimitiveTypeError (Interp, Object, ClassStandardClass);
+  }
+
+  *Class = TheClass;
+  return BORAX_NIL;
+}
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveClassOf (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Object,
+  OUT BORAX_OBJECT      *Class
+  )
+{
+  // TODO: Maybe it would be better to look up and cache classes here, rather
+  // than forcing them all to load on start-up
+  switch (BORAX_DISCRIMINATE (Object)) {
+    case BORAX_DISCRIM_FIXNUM:
+      *Class = Interp->Globals[BORAX_GLOBAL_CLASS_FIXNUM];
+      return BORAX_NIL;
+
+    case BORAX_DISCRIM_UNBOUND:
+      *Class = Interp->Globals[BORAX_GLOBAL_CLASS_UNBOUND];
+      return BORAX_NIL;
+
+    case BORAX_DISCRIM_NIL:
+      *Class = Interp->Globals[BORAX_GLOBAL_CLASS_NULL];
+      return BORAX_NIL;
+
+    // TODO: Make NIL and T work as symbols
+    case BORAX_DISCRIM_T:
+      *Class = Interp->Globals[BORAX_GLOBAL_CLASS_SYMBOL];
+      return BORAX_NIL;
+
+    case BORAX_DISCRIM_CHARACTER:
+      *Class = Interp->Globals[BORAX_GLOBAL_CLASS_CHARACTER];
+      return BORAX_NIL;
+
+    case BORAX_DISCRIM_CONS:
+      *Class = Interp->Globals[BORAX_GLOBAL_CLASS_CONS];
+      return BORAX_NIL;
+
+    case BORAX_DISCRIM_WORD_RECORD:
+    case BORAX_DISCRIM_OBJECT_RECORD:
+    {
+      BORAX_RECORD  *Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
+      *Class = Record->Class;
+      return BORAX_NIL;
+    }
+
+    case BORAX_DISCRIM_BUILT_IN_FUNCTION:
+      *Class = Interp->Globals[BORAX_GLOBAL_CLASS_BUILT_IN_FUNCTION];
+      return BORAX_NIL;
+
+    case BORAX_DISCRIM_CONSTANT:
+      *Class = Interp->Globals[BORAX_GLOBAL_CLASS_CONSTANT];
+      return BORAX_NIL;
+
+    case BORAX_DISCRIM_MULTIPLE_VALUES:
+      *Class = Interp->Globals[BORAX_GLOBAL_CLASS_MULTIPLE_VALUES];
+      return BORAX_NIL;
+
+    case BORAX_DISCRIM_EXIT:
+      *Class = Interp->Globals[BORAX_GLOBAL_CLASS_EXIT];
+      return BORAX_NIL;
+
+    case BORAX_DISCRIM_INTERPRETER:
+      *Class = Interp->Globals[BORAX_GLOBAL_CLASS_INTERPRETER];
+      return BORAX_NIL;
+
+    case BORAX_DISCRIM_TASK:
+      *Class = Interp->Globals[BORAX_GLOBAL_CLASS_TASK];
+      return BORAX_NIL;
+
+    case BORAX_DISCRIM_WEAK_POINTER:
+      *Class = Interp->Globals[BORAX_GLOBAL_CLASS_WEAK_POINTER];
+      return BORAX_NIL;
+
+    case BORAX_DISCRIM_PIN:
+      *Class = Interp->Globals[BORAX_GLOBAL_CLASS_PIN];
+      return BORAX_NIL;
+
+    default:
+      return BoraxPrimitiveTypeError (
+               Interp,
+               Object,
+               Interp->Globals[BORAX_GLOBAL_CLASS_T]
+               );
+  }
 }
 
 BORAX_OBJECT

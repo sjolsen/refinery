@@ -5,6 +5,7 @@
            #:parse-error
            #:parser #:description
            #:parse #:parse-all #:try-parse
+           #:nonterminal-source
            #:anything-parser #:*anything*
            #:end-of-input-parser #:*end-of-input*
            #:satisfies-parser #:satisfies
@@ -75,14 +76,24 @@
 (defmethod print-object ((object parser) stream)
   (format stream "~S" (description object)))
 
+(defvar *nonterminal-source* nil)
+(defvar *nonterminal-start* nil)
+(defvar *nonterminal-end* nil)
+
 (defgeneric parse (parser input))
 
 (defmethod parse :around ((parser parser) input)
   (declare (ignore input))
   (if (slot-boundp parser 'action)
-      (funcall (slot-value parser 'action)
-               (call-next-method))
+      (let* ((*nonterminal-source* (input-source input))
+             (*nonterminal-start* (input-position input))
+             (result (call-next-method))
+             (*nonterminal-end* (input-position input)))
+        (funcall (slot-value parser 'action) result))
       (call-next-method)))
+
+(defun nonterminal-source ()
+  (subseq *nonterminal-source* *nonterminal-start* *nonterminal-end*))
 
 (define-condition parse-error (error)
   ((expected :initarg :expected)
@@ -319,7 +330,12 @@
   (setf (slot-value parser 'action) action)
   parser)
 
+(defun booleanp (object)
+  (or (eq object t) (eq object nil)))
+
+(%define-nonterminal 'boolean (satisfies #'booleanp))
 (%define-nonterminal 'character (satisfies #'characterp))
+(%define-nonterminal 'keyword (satisfies #'keywordp))
 (%define-nonterminal 'number (satisfies #'numberp))
 (%define-nonterminal 'string (satisfies #'stringp))
 (%define-nonterminal 'symbol (satisfies #'symbolp))

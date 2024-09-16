@@ -2,7 +2,7 @@
   (:mix :borax-parsing :uiop/common-lisp :borax-virtual-machine/common-lisp)
   (:use :borax-virtual-machine/image)
   (:export #:bytecode-function
-           #:define-bytecode-function
+           #:define-bytecode-function #:bytecode-disassemble
            #:bytecode #:bytecode-constants #:bytecode-locals #:bytecode-shared
            #:bytecode-closure #:bytecode-name #:bytecode-arglist #:bytecode-entry
            #:local #:shared #:closure
@@ -30,6 +30,8 @@
 (defstruct storage-block
   (count 0))
 
+;; TODO: This should be called bytecode-function, and what is currently called
+;; bytecode-function should be called borax-runtime:bytecode-function.
 (defclass bytecode-parser ()
   ((name :initarg :name)
    (lambda-list :initarg :lambda-list)
@@ -42,7 +44,8 @@
    (code :initform (make-array 0 :element-type '(unsigned-byte 8)
                                  :adjustable t :fill-pointer 0))
    (label-table :initform (make-hash-table))
-   (relocations :initform (make-array 0 :adjustable t :fill-pointer 0))))
+   (relocations :initform (make-array 0 :adjustable t :fill-pointer 0))
+   (source :initform (make-array 0 :adjustable t :fill-pointer 0))))
 
 (defvar *parser-state* nil)
 
@@ -180,6 +183,10 @@
         do (setf (aref a i) (storage-block-count sb))
         finally (return a)))
 
+(defun record-instruction (offset instruction)
+  (with-slots (source) *parser-state*
+    (vector-push-extend (cons offset instruction) source)))
+
 (define-nonterminal bytecode-function ()
   (sequence (* (nested declaration))
             (+ labelled-instruction)))
@@ -200,6 +207,7 @@
 (define-nonterminal labelled-instruction ()
   (let ((labels (* symbol))
         (offset (nested instruction)))
+    (record-instruction offset (car (last (nonterminal-source))))
     (dolist (label labels)
       (declare-label label offset))))
 
@@ -221,19 +229,23 @@
 
 ;; TODO: Numeric locations
 (define-nonterminal location ()
-  (let ((var symbol))
-    (with-slots (symbol-table) *parser-state*
-      (or (gethash var symbol-table)
-          (error "Variable ~S not defined" var))))
+  ;; The CONSTANT production takes precedence so we can correctly categorize
+  ;; booleans and keywords
   (let ((value constant))
     (with-slots (constant-table constants) *parser-state*
       (or (gethash value constant-table)
           (prog1 (setf (gethash value constant-table)
                        (list 'constant nil (length constants)))
-            (vector-push-extend value constants))))))
+            (vector-push-extend value constants)))))
+  (let ((var symbol))
+    (with-slots (symbol-table) *parser-state*
+      (or (gethash var symbol-table)
+          (error "Variable ~S not defined" var)))))
 
 (define-nonterminal constant ()
+  boolean
   character
+  keyword
   number
   string
   (let ((quote-form (nested (sequence 'quote symbol))))
@@ -294,9 +306,10 @@
 
 (defvar *bytecode-functions* (make-hash-table))
 
-(defun bytecode-function (name)
-  (assert (symbolp name))
-  (gethash name *bytecode-functions*))
+(defun bytecode-function (designator)
+  (etypecase designator
+    (bytecode-parser designator)
+    (symbol (gethash designator *bytecode-functions*))))
 
 (defun (setf bytecode-function) (value name)
   (assert (symbolp name))
@@ -323,3 +336,9 @@
                    :shared (flatten-storage-blocks shared)
                    :name name
                    :arglist lambda-list)))
+
+(defun bytecode-disassemble (designator &optional (stream *standard-output*))
+  (with-slots (name source) (bytecode-function designator)
+    (format stream "Disassembly for bytecode function ~S:~%" name)
+    (loop for (offset . instruction) across source
+          do (format stream "  ~3<~S~>  ~{~S~^ ~}~%" offset instruction))))
