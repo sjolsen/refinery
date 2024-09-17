@@ -337,8 +337,32 @@
                    :name name
                    :arglist lambda-list)))
 
+(defun print-table (lines stream)
+  (let ((col0 0)
+        (col1 0))
+    (loop for (start bytes instruction) in lines
+          do (setf col0 (max col0 (length start))
+                   col1 (max col1 (length bytes))))
+    (loop for (start bytes instruction) in lines
+          do (format stream "  ~V<~A~>   ~V@<~A~>   ~A~%"
+                     col0 start
+                     col1 bytes
+                     instruction))))
+
 (defun bytecode-disassemble (designator &optional (stream *standard-output*))
-  (with-slots (name source) (bytecode-function designator)
+  (with-slots (name source code)
+      (bytecode-function designator)
     (format stream "Disassembly for bytecode function ~S:~%" name)
-    (loop for (offset . instruction) across source
-          do (format stream "  ~3<~S~>  ~{~S~^ ~}~%" offset instruction))))
+    (loop with length = (length source)
+          for (start . instruction) across source
+          for i from 1 upto length
+          for end = (if (< i length)
+                        (car (aref source i))
+                        (length code))
+          ;; TODO: Make this more efficient
+          for bytes = (coerce (subseq code start end) 'list)
+          collecting (list (format nil "~S" start)
+                           (format nil "~{~2,'0X~^ ~}" bytes)
+                           (format nil "~{~S~^ ~}" instruction))
+            into lines
+          finally (print-table lines stream))))
