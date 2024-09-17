@@ -447,6 +447,91 @@ STATIC CONST FUNCTION_DESCRIPTOR  gSymbolValue = {
   .Code      = &SymbolValue,
 };
 
+// TODO: Generalize
+STATIC BORAX_OBJECT
+EFIAPI
+ByteVectorLength (
+  IN BORAX_TASK  *Task
+  )
+{
+  BORAX_OBJECT  Object;
+  BORAX_OBJECT  *Args[] = { &Object };
+  UINTN         Length;
+  UINT8         *Data;
+
+  TRY (BoraxTaskBind (Task, ARRAY_SIZE (Args), Args));
+  TRY (BoraxPrimitiveSimpleVectorU8Data (Task->Interp, Object, &Length, &Data));
+
+  {
+    BORAX_OBJECT  Args[] = { BORAX_MAKE_FIXNUM (Length) };
+    TRY (BoraxTaskCoBind (Task, ARRAY_SIZE (Args), Args));
+    return BoraxTaskExitFunction (Task);
+  }
+}
+
+STATIC CONST FUNCTION_DESCRIPTOR  gByteVectorLength = {
+  .Name      = {
+    .Package = L"BORAX-RUNTIME",
+    .Name    = L"BYTE-VECTOR-LENGTH",
+  },
+  .Code      = &ByteVectorLength,
+};
+
+enum {
+  BVR_CONST_SYMBOL_INDEX_ERROR,
+  BVR_CONSTS
+};
+
+// TODO: Generalize
+STATIC BORAX_OBJECT
+EFIAPI
+ByteVectorRef (
+  IN BORAX_TASK  *Task
+  )
+{
+  BORAX_OBJECT  Object, IndexObject;
+  BORAX_OBJECT  *Args[] = { &Object, &IndexObject };
+  UINTN         Length;
+  UINT8         *Data;
+  INTN          Index;
+
+  TRY (BoraxTaskBind (Task, ARRAY_SIZE (Args), Args));
+  TRY (BoraxPrimitiveSimpleVectorU8Data (Task->Interp, Object, &Length, &Data));
+  TRY (BoraxPrimitiveTheFixnum (Task->Interp, IndexObject, &Index));
+
+  if ((Index < 0) || (Index >= Length)) {
+    BORAX_OBJECT  SymbolIndexError;
+    BORAX_OBJECT  Args[] = { IndexObject, BORAX_MAKE_FIXNUM (Length) };
+    TRY (BoraxTaskReadConstant (Task, BVR_CONST_SYMBOL_INDEX_ERROR, &SymbolIndexError));
+    TRY (BoraxTaskCoBind (Task, ARRAY_SIZE (Args), Args));
+    // TODO: Implement this error function
+    return BoraxTaskEnterFunction (Task, SymbolIndexError, 0);
+  }
+
+  {
+    BORAX_OBJECT  Args[] = { BORAX_MAKE_FIXNUM (Data[Index]) };
+    TRY (BoraxTaskCoBind (Task, ARRAY_SIZE (Args), Args));
+    return BoraxTaskExitFunction (Task);
+  }
+}
+
+STATIC CONST FUNCTION_DESCRIPTOR  gByteVectorRef = {
+  .Name         = {
+    .Package = L"BORAX-RUNTIME",
+    .Name    = L"BYTE-VECTOR-REF",
+  },
+  .Code      = &ByteVectorRef,
+  .Constants = {
+    BVR_CONSTS,
+    (CONST CONSTANT_DESCRIPTOR[]) {
+      [BVR_CONST_SYMBOL_INDEX_ERROR] = {
+        .Tag    = CONST_SYMBOL,
+        .Symbol = { L"BORAX-RUNTIME",L"INDEX-ERROR"    },
+      },
+    },
+  },
+};
+
 enum {
   WS_CONST_BUFFER,
   WS_CONSTS
@@ -1211,6 +1296,8 @@ STATIC CONST FUNCTION_DESCRIPTOR  gPlus = {
 };
 
 STATIC CONST FUNCTION_DESCRIPTOR  *gFunctions[] = {
+  &gByteVectorLength,
+  &gByteVectorRef,
   &gCarCdr,
   &gClassName,
   &gClassOf,
