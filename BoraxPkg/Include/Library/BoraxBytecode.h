@@ -285,12 +285,10 @@
  * The stack and registers
  * -----------------------
  *
- * Each task has a stack and a handful of registers, namely the base pointer
- * (BP), stack pointer (SP), values register (VR), and program counter (PC). The
- * stack is a simple vector of object references that are dynamically
- * partitioned into activation records. Each activation record corresponds to a
- * function call. An activation record is laid out as follows (with addresses
- * increasing upward):
+ * Each task has a stack. The stack is a simple vector of object references that
+ * are dynamically partitioned into activation records. Each activation record
+ * corresponds to a function call. An activation record is laid out as follows
+ * (with addresses increasing upward):
  *
  *   SP -> +--------------------+
  *         |                    |
@@ -318,6 +316,18 @@
  *         |      Saved BP      |
  *   BP -> +--------------------+ <- Previous frame's SP
  *         | ////////////////// |
+ *
+ * The layout of the activation record is described by four registers:
+ *
+ *   - BP: The base pointer, which marks the beginning of the frame
+ *   - SP: The stack pointer, which marks the end of the frame
+ *   - LC: The local binding count
+ *   - SC: The shared binding block count
+ *
+ * The other registers are:
+ *
+ *   - VR: The values register, used for call, return, and exit data
+ *   - PC: The program counter
  *
  * On function entry, the caller's BP and PC are saved and the callee's code
  * pointer is pushed onto the stack. The interpreter populates the closure
