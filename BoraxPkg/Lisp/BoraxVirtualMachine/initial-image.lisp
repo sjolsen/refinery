@@ -301,6 +301,26 @@
     (call 'write-character (#\)))
     (return (object)))
 
+(define-bytecode-function print-byte-vector (object)
+  (declare (local object length i item match))
+    (bind (object))
+    (call 'word-record-length)
+    (bind (length))
+    (call 'write-string ("<BYTE-VECTOR"))
+    (move i 0)
+    (jump loop-test)
+  loop
+    (call 'write-character (#\Space))
+    (call 'word-record-ref (object i))
+    (call 'print-byte)
+    (call '+ (i 1))
+    (bind (i))
+  loop-test
+    (call 'borax-vm/cl:eq (i length))
+    (bind (match))
+    (jump :if (not match) loop)
+    (return (object)))
+
 (define-bytecode-function print-symbol (object)
   (declare (local object package other-package match))
     (bind (object))
@@ -474,12 +494,14 @@
   (ensure-find-class 'unbound)
   (ensure-find-class 'weak-pointer)
   (ensure-find-class 'word-record-object)
-  ;; Built-in functions
+  ;; Standard functions
   (ensure-bytecode-function 'borax-vm/cl:find)
   (ensure-bytecode-function 'borax-vm/cl:typep)
-  (ensure-bytecode-function 'print-recursive)
+  ;; Built-in functions
+  (ensure-bytecode-function 'print-byte-vector)
   (ensure-bytecode-function 'print-labelled)
   (ensure-bytecode-function 'print-list)
+  (ensure-bytecode-function 'print-recursive)
   (ensure-bytecode-function 'print-sum-list)
   (ensure-bytecode-function 'print-symbol)
   (ensure-bytecode-function 'sum-list)

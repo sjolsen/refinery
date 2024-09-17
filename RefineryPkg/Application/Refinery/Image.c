@@ -581,6 +581,50 @@ STATIC CONST FUNCTION_DESCRIPTOR  gPrintFixnum = {
 };
 
 enum {
+  PB_CONST_BUFFER,
+  PB_CONSTS
+};
+
+STATIC BORAX_OBJECT
+EFIAPI
+PrintByte (
+  IN BORAX_TASK  *Task
+  )
+{
+  EFI_STATUS     Status;
+  BUFFER_HANDLE  *BufferHandle = UnsafeConstant (Task, PB_CONST_BUFFER);
+  BUFFER         *Buffer       = BufferHandle->Buffer;
+  BORAX_OBJECT   Fixnum;
+  BORAX_OBJECT   *Args[] = { &Fixnum };
+  INTN           Value;
+
+  TRY (BoraxTaskBind (Task, ARRAY_SIZE (Args), Args));
+  TRY (BoraxPrimitiveTheFixnum (Task->Interp, Fixnum, &Value));
+
+  // TODO: Non-printable characters
+  Status = BufferWriteHex (Buffer, Value, 2);
+  if (EFI_ERROR (Status)) {
+    return SomeErrorTodo (Task->Interp);
+  }
+
+  return BoraxTaskExitFunction (Task);
+}
+
+STATIC CONST FUNCTION_DESCRIPTOR  gPrintByte = {
+  .Name      = {
+    .Package = L"BORAX-RUNTIME",
+    .Name    = L"PRINT-BYTE",
+  },
+  .Code      = &PrintByte,
+  .Constants = {
+    PF_CONSTS,
+    (CONST CONSTANT_DESCRIPTOR[]) {
+      [PB_CONST_BUFFER] = { CONST_BUFFER },
+    },
+  },
+};
+
+enum {
   FSV_CONST_BUFFER,
   FSV_CONST_SYMBOL_PRINT_RECURSIVE,
   FSV_CONSTS
@@ -1177,6 +1221,7 @@ STATIC CONST FUNCTION_DESCRIPTOR  *gFunctions[] = {
   &gFindPackage,
   &gPackageName,
   &gPlus,
+  &gPrintByte,
   &gPrintFixnum,
   &gPrintObjectRecord,
   &gPrintSimpleVector,
