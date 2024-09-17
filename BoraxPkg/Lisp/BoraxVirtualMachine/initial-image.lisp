@@ -266,14 +266,13 @@
     (return (nil)))
 
 (define-bytecode-function borax-vm/cl:typep (object type)
-  (declare (local object type class prec))
+  (declare (local object type prec))
     (bind (object type))
     ;; TODO: Type specifiers and subclassing
     (call 'borax-vm/cl:find-class (type))
     (bind (type))
     (call 'borax-vm/cl:class-of (object))
-    (bind (class))
-    (call 'class-precedence-list (class))
+    (call 'class-precedence-list)
     (bind (prec))
     (call :tail 'borax-vm/cl:find (type prec)))
 
