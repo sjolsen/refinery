@@ -795,6 +795,7 @@ UnwindFrame (
   Task->Registers.SP = BP;
 
   // TODO: Shrink the stack if appropriate
+  *Intercepted = FALSE;
   return BORAX_NIL;
 }
 
