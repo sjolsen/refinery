@@ -133,6 +133,15 @@ BoraxPrimitiveTheCharacter (
   OUT CHAR16            *Character
   );
 
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveFind (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Object,
+  IN BORAX_OBJECT       List,
+  OUT BOOLEAN           *Found
+  );
+
 typedef struct {
   BORAX_RECORD    Record;
   BORAX_OBJECT    Name;
@@ -232,6 +241,15 @@ BoraxPrimitiveClassOf (
   IN BORAX_INTERPRETER  *Interp,
   IN BORAX_OBJECT       Object,
   OUT BORAX_OBJECT      *Class
+  );
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveClassTypep (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Object,
+  IN BORAX_OBJECT       Type,
+  OUT BOOLEAN           *Match
   );
 
 BORAX_OBJECT

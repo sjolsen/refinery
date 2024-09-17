@@ -210,6 +210,11 @@ STATIC CONST GLOBAL_DESC  gGlobalDesc[BORAX_GLOBAL_COUNT] = {
     .Name    = L"UNDEFINED-FUNCTION",
   },
   // Built-in conditions
+  [BORAX_GLOBAL_CLASS_CLASS_NOT_FOUND_ERROR] =         {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
+    .Name    = L"CLASS-NOT-FOUND-ERROR",
+  },
   [BORAX_GLOBAL_CLASS_HEAP_EXHAUSTED] =                {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
@@ -716,6 +721,45 @@ BoraxPrimitiveTheCharacter (
 
 BORAX_OBJECT
 EFIAPI
+BoraxPrimitiveFind (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Object,
+  IN BORAX_OBJECT       List,
+  OUT BOOLEAN           *Found
+  )
+{
+  // TODO: Some limit on infinite iteration?
+  while (TRUE) {
+    switch (BORAX_DISCRIMINATE (List)) {
+      case BORAX_DISCRIM_NIL:
+        *Found = FALSE;
+        return BORAX_NIL;
+
+      case BORAX_DISCRIM_CONS:
+      {
+        BORAX_CONS  *Cons = (BORAX_CONS *)BORAX_GET_POINTER (List);
+
+        if (BORAX_EQ (Cons->Car, Object)) {
+          *Found = TRUE;
+          return BORAX_NIL;
+        }
+
+        List = Cons->Cdr;
+        break;
+      }
+
+      default:
+        return BoraxPrimitiveTypeError (
+                 Interp,
+                 List,
+                 Interp->Globals[BORAX_GLOBAL_CLASS_LIST]
+                 );
+    }
+  }
+}
+
+BORAX_OBJECT
+EFIAPI
 BoraxPrimitiveThePackage (
   IN BORAX_INTERPRETER  *Interp,
   IN BORAX_OBJECT       Object,
@@ -1112,6 +1156,123 @@ BoraxPrimitiveClassOf (
                Object,
                Interp->Globals[BORAX_GLOBAL_CLASS_T]
                );
+  }
+}
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveClassTypep (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Object,
+  IN BORAX_OBJECT       Type,
+  OUT BOOLEAN           *Match
+  )
+{
+  BORAX_OBJECT  Condition;
+  BORAX_OBJECT  ClassStandardClass =
+    Interp->Globals[BORAX_GLOBAL_CLASS_STANDARD_CLASS];
+  BORAX_OBJECT  ClassSymbol =
+    Interp->Globals[BORAX_GLOBAL_CLASS_SYMBOL];
+  BORAX_RECORD          *Record;
+  BORAX_OBJECT          TypeClass;
+  BORAX_OBJECT          ActualClass;
+  BORAX_STANDARD_CLASS  *TheActualClass;
+
+  // Supported designators are symbols and class objects
+  if (BORAX_DISCRIMINATE (Type) != BORAX_DISCRIM_OBJECT_RECORD) {
+    goto type_error;
+  }
+
+  Record = (BORAX_RECORD *)BORAX_GET_POINTER (Type);
+  if (BORAX_EQ (Record->Class, ClassStandardClass)) {
+    TypeClass = Type;
+  } else if (BORAX_EQ (Record->Class, ClassSymbol)) {
+    EFI_STATUS    Status;
+    BORAX_SYMBOL  *Symbol;
+
+    Status = BORAX_GET_OBJECT_RECORD (Type, &Symbol);
+    if (EFI_ERROR (Status)) {
+      goto type_error;
+    }
+
+    // TODO: Apply boundp where appropriate
+    if (!BORAX_BOUNDP (Symbol->Class)) {
+      return BoraxPrimitiveCellError (
+               Interp,
+               Interp->Globals[BORAX_GLOBAL_CLASS_CLASS_NOT_FOUND_ERROR],
+               Type
+               );
+    }
+
+    TypeClass = Symbol->Class;
+  } else {
+    goto type_error;
+  }
+
+  Condition = BoraxPrimitiveClassOf (Interp, Object, &ActualClass);
+  if (BORAX_BOOL (Condition)) {
+    return Condition;
+  }
+
+  Condition = BoraxPrimitiveTheStandardClass (
+                Interp,
+                ActualClass,
+                &TheActualClass
+                );
+  if (BORAX_BOOL (Condition)) {
+    return Condition;
+  }
+
+  return BoraxPrimitiveFind (
+           Interp,
+           TypeClass,
+           TheActualClass->PrecedenceList,
+           Match
+           );
+
+type_error:
+  {
+    BORAX_PACKAGE  *CommonLisp;
+    BORAX_SYMBOL   *Symbol;
+    BORAX_OBJECT   Args[3];
+    BORAX_OBJECT   List;
+
+    Condition = BoraxPrimitiveThePackage (
+                  Interp,
+                  Interp->Globals[BORAX_GLOBAL_PACKAGE_COMMON_LISP],
+                  &CommonLisp
+                  );
+    if (BORAX_BOOL (Condition)) {
+      return Condition;
+    }
+
+    Condition = BoraxPrimitiveIntern (Interp, CommonLisp, L"OR", &Symbol);
+    if (BORAX_BOOL (Condition)) {
+      return Condition;
+    }
+
+    Args[0] = BORAX_MAKE_POINTER (Symbol);
+
+    Condition = BoraxPrimitiveIntern (Interp, CommonLisp, L"CLASS", &Symbol);
+    if (BORAX_BOOL (Condition)) {
+      return Condition;
+    }
+
+    Args[1] = BORAX_MAKE_POINTER (Symbol);
+
+    Condition = BoraxPrimitiveIntern (Interp, CommonLisp, L"SYMBOL", &Symbol);
+    if (BORAX_BOOL (Condition)) {
+      return Condition;
+    }
+
+    Args[2] = BORAX_MAKE_POINTER (Symbol);
+
+    Condition = BoraxPrimitiveMakeList (Interp, ARRAY_SIZE (Args), Args, &List);
+    if (BORAX_BOOL (Condition)) {
+      return Condition;
+    }
+
+    return BoraxPrimitiveTypeError (Interp, Object, List);
   }
 }
 

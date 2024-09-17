@@ -341,12 +341,8 @@
 (%define-nonterminal 'symbol (satisfies #'symbolp))
 
 (%define-nonterminal
- 'nonterminal-clause
- (alternative 'let-expr 'production-expr))
-
-(%define-nonterminal
  'nonterminal-clauses
- (repeat 'nonterminal-clause))
+ (repeat 'production-expr))
 
 (%define-nonterminal
  'let-expr
@@ -388,6 +384,7 @@
      (if (keywordp stuff)
          `(literal ',stuff)
          `(quote ,stuff))))
+  'let-expr
   (%set-action
    (nested (sequence 'symbol (repeat 'production-expr)))
    (lambda (stuff)

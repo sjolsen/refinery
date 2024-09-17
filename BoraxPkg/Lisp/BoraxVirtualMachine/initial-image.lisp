@@ -239,7 +239,7 @@
   (declare (local l acc val))
     (bind (l))
     (move acc 0)
-    (jump :if (not l) end)
+    (return :if (not l) (acc))
   loop
     (call 'car-cdr (l))
     (bind (val l))
@@ -250,34 +250,24 @@
     (return (acc)))
 
 (define-bytecode-function borax-vm/cl:find (item list)
-  (declare (local item list first match))
+  (declare (local item list first))
     (bind (item list))
   loop
-    (jump :if (not list) empty)
+    (return :if (not list) (nil))
     (call 'car-cdr (list))
     (bind (first list))
-    (call 'borax-vm/cl:eq (item first))
-    (bind (match))
-    (return :if match (first))
-    (jump loop)
-  empty
-    ;; TODO: Should we allocate another bit to condition codes for RETURN so we
-    ;; can do (return :if (not list) (nil)) ?
-    (return (nil)))
+    (jump :if (not (eq item first)) loop)
+    (return (first)))
 
 (define-bytecode-function borax-vm/cl:typep (object type)
   (declare (local object type prec))
     (bind (object type))
+    (return :if (class-typep object type) (t))
     ;; TODO: Type specifiers and subclassing
-    (call 'borax-vm/cl:find-class (type))
-    (bind (type))
-    (call 'borax-vm/cl:class-of (object))
-    (call 'class-precedence-list)
-    (bind (prec))
-    (call :tail 'borax-vm/cl:find (type prec)))
+    (return (nil)))
 
 (define-bytecode-function print-list (object)
-  (declare (local object match item rest))
+  (declare (local object item rest))
     (bind (object))
     (call 'write-character (#\())
     (call 'car-cdr (object))
@@ -285,9 +275,7 @@
     (call 'print-recursive (item))
   loop
     (jump :if (not rest) loop-end)
-    (call 'borax-vm/cl:typep (rest 'cons))
-    (bind (match))
-    (jump :if (not match) loop-rest)
+    (jump :if (not (class-typep rest 'cons)) loop-rest)
     (call 'write-character (#\Space))
     (call 'car-cdr (rest))
     (bind (item rest))
@@ -301,7 +289,7 @@
     (return (object)))
 
 (define-bytecode-function print-byte-vector (object)
-  (declare (local object length i item match))
+  (declare (local object length i item))
     (bind (object))
     (call 'byte-vector-length)
     (bind (length))
@@ -315,28 +303,21 @@
     (call '+ (i 1))
     (bind (i))
   loop-test
-    (call 'borax-vm/cl:eq (i length))
-    (bind (match))
-    (jump :if (not match) loop)
+    (jump :if (not (eq i length)) loop)
     (call 'write-character (#\>))
     (return (object)))
 
 (define-bytecode-function print-symbol (object)
-  (declare (local object package other-package match))
+  (declare (local object package other-package))
     (bind (object))
     (call 'symbol-package)
     (bind (package))
     (call 'borax-vm/cl:find-package ("COMMON-LISP"))
     (bind (other-package))
-    (call 'borax-vm/cl:eq (package other-package))
-    (bind (match))
-    ;; TODO: Condition flags for EQ and TYPEP
-    (jump :if match name)
+    (jump :if (eq package other-package) name)
     (call 'borax-vm/cl:find-package ("KEYWORD"))
     (bind (other-package))
-    (call 'borax-vm/cl:eq (package other-package))
-    (bind (match))
-    (jump :if match colon)
+    (jump :if (eq package other-package) colon)
     (call 'borax-vm/cl:package-name (package))
     (call 'write-string)
   colon
@@ -347,7 +328,7 @@
     (return (object)))
 
 (define-bytecode-function print-recursive (object)
-  (declare (local object match rest))
+  (declare (local object rest))
     (bind (object))
     ; nil
     (jump :if object not-nil)
@@ -355,68 +336,52 @@
     (return (object))
   not-nil
     ; fixnum
-    (call 'borax-vm/cl:typep (object 'borax-vm/cl:fixnum))
-    (bind (match))
-    (call :tail :if match 'print-fixnum (object))
+    (call :tail :if (class-typep object 'borax-vm/cl:fixnum)
+          'print-fixnum (object))
     ; character
-    (call 'borax-vm/cl:typep (object 'borax-vm/cl:character))
-    (bind (match))
-    (jump :if (not match) not-char)
+    (jump :if (not (class-typep object 'borax-vm/cl:character)) not-char)
     (call 'write-string ("#\\"))
     ;; TODO: non-printable characters
-    (call :tail 'write-character (object))
+    (call 'write-character (object))
+    (return (object))
   not-char
     ; cons
-    (call 'borax-vm/cl:typep (object 'borax-vm/cl:cons))
-    (bind (match))
-    (call :tail :if match 'print-list (object))
+    (call :tail :if (class-typep object 'borax-vm/cl:cons)
+          'print-list (object))
     ; string
-    (call 'borax-vm/cl:typep (object 'borax-vm/cl:string))
-    (bind (match))
-    (jump :if (not match) not-string)
+    (jump :if (not (class-typep object 'borax-vm/cl:string)) not-string)
     (call 'write-character (#\"))
     (call 'write-string (object))
     (call 'write-character (#\"))
     (return (object))
   not-string
     ; simple-vector-unsigned-byte-8
-    (call 'borax-vm/cl:typep (object 'simple-vector-unsigned-byte-8))
-    (bind (match))
-    (call :tail :if match 'print-byte-vector (object))
+    (call :tail :if (class-typep object 'simple-vector-unsigned-byte-8)
+          'print-byte-vector (object))
     ; other word-record
-    (call 'borax-vm/cl:typep (object 'word-record-object))
-    (bind (match))
-    (jump :if (not match) not-word-record)
+    (jump :if (not (class-typep object 'word-record-object)) not-word-record)
     (call 'write-string ("<WORD-RECORD>"))
     (return (object))
   not-word-record
     ; symbol
-    (call 'borax-vm/cl:typep (object 'borax-vm/cl:symbol))
-    (bind (match))
-    (call :tail :if match 'print-symbol (object))
+    (call :tail :if (class-typep object 'borax-vm/cl:symbol)
+          'print-symbol (object))
     ; simple-vector
-    (call 'borax-vm/cl:typep (object 'borax-vm/cl:simple-vector))
-    (bind (match))
-    (call :tail :if match 'print-simple-vector (object))
+    (call :tail :if (class-typep object 'borax-vm/cl:simple-vector)
+          'print-simple-vector (object))
     ; standard-class
-    (call 'borax-vm/cl:typep (object 'borax-vm/cl:standard-class))
-    (bind (match))
-    (call :tail :if match 'print-standard-class (object))
+    (call :tail :if (class-typep object 'borax-vm/cl:standard-class)
+          'print-standard-class (object))
     ; other object-record
-    (call 'borax-vm/cl:typep (object 'record-object))
-    (bind (match))
-    (call :tail :if match 'print-object-record (object))
+    (call :tail :if (class-typep object 'record-object)
+          'print-object-record (object))
     ; weak-pointer
-    (call 'borax-vm/cl:typep (object 'weak-pointer))
-    (bind (match))
-    (jump :if (not match) not-weak-pointer)
+    (jump :if (not (class-typep object 'weak-pointer)) not-weak-pointer)
     (call 'write-string ("<WEAK-POINTER>"))
     (return (object))
   not-weak-pointer
     ; pin
-    (call 'borax-vm/cl:typep (object 'pin))
-    (bind (match))
-    (jump :if (not match) not-pin)
+    (jump :if (not (class-typep object 'pin)) not-pin)
     (call 'write-string ("<PIN>"))
     (return (object))
   not-pin

@@ -6,7 +6,8 @@
            #:bytecode #:bytecode-constants #:bytecode-locals #:bytecode-shared
            #:bytecode-closure #:bytecode-name #:bytecode-arglist #:bytecode-entry
            #:local #:shared #:closure
-           #:call #:jump #:bind #:move))
+           #:call #:jump #:bind #:move
+           #:class-typep))
 
 (in-package :borax-virtual-machine/bytecode)
 
@@ -145,25 +146,27 @@
     (:values          (+ 2 (length (cdr values))))))
 
 (defun condition-code (condition)
-  (case (car condition)
-    ((nil)    (values 0 nil))
-    (identity (values 1 (cdr condition)))
-    (not      (values 2 (cdr condition)))))
+  (if condition
+      (destructuring-bind (test negatedp . operands) condition
+        (values (ecase test
+                  (identity    (if negatedp 2 1))
+                  (eq          (if negatedp 4 3))
+                  (class-typep (if negatedp 6 5)))
+                operands))
+      (values 0 nil)))
 
 (defun emit-condition (offset bytespec condition)
   (with-slots (code) *parser-state*
     (multiple-value-bind (flag operands)
         (condition-code condition)
-      (when (> (integer-length flag) (byte-size bytespec))
-        (error "Condition ~S cannot be encoded" condition))
-      (setf (ldb bytespec (aref code offset)) flag)
+      (emit-field offset bytespec flag)
       (dolist (operand operands)
         (emit-location operand)))))
 
 (defun emit-c-opcode (code condition values)
   (let ((offset (emit-byte (ash code 4))))
-    (emit-field offset (byte 3 0) (operand-count values))
     (emit-condition offset (byte 1 3) condition)
+    (emit-field offset (byte 3 0) (operand-count values))
     offset))
 
 (defun emit-j-opcode (code condition)
@@ -213,13 +216,23 @@
 
 (define-nonterminal condition ()
   (let ((nil :if)
-        (result condition-expr))
+        (result negatable-condition))
     result))
 
+(define-nonterminal negatable-condition ()
+  (nested (let ((nil  'not)
+                (expr condition-expr))
+            (destructuring-bind (test negatedp . locations) expr
+              (list* test (not negatedp) locations))))
+  condition-expr)
+
 (define-nonterminal condition-expr ()
+  (nested (let ((test (or 'eq 'class-typep))
+                (l1   location)
+                (l2   location))
+            (list test nil l1 l2)))
   (let ((location location))
-    (list 'identity location))
-  (nested (sequence 'not location)))
+    (list 'identity nil location)))
 
 (define-nonterminal values ()
   (let ((location location))
@@ -316,13 +329,30 @@
   (assert (typep value 'bytecode-parser))
   (setf (gethash name *bytecode-functions*) value))
 
+(define-condition bytecode-compile-error (error)
+  ((name :initarg :name
+         :reader bytecode-compiler-error-name)
+   (original-error :initarg :original-error
+                   :reader bytecode-compiler-error-original-error))
+  (:report (lambda (c s)
+             (format s "While byte-compiling ~A:~%~%~A"
+                     (bytecode-compiler-error-name c)
+                     (bytecode-compiler-error-original-error c)))))
+
+(defun compile-bytecode-function (name lambda-list body)
+  (let ((*parser-state* (make-instance 'bytecode-parser
+                                       :name name
+                                       :lambda-list lambda-list)))
+    (handler-case
+        (progn
+          (parse-all 'bytecode-function (make-input body))
+          (resolve-relocations))
+       (error (c)
+         (error 'bytecode-compile-error :name name :original-error c)))
+     (setf (bytecode-function name) *parser-state*)))
+
 (defmacro define-bytecode-function (name lambda-list &body body)
-  `(let ((*parser-state* (make-instance 'bytecode-parser
-                                        :name ',name
-                                        :lambda-list ',lambda-list)))
-     (parse-all 'bytecode-function (make-input ',body))
-     (resolve-relocations)
-     (setf (bytecode-function ',name) *parser-state*)))
+  `(compile-bytecode-function ',name ',lambda-list ',body))
 
 (defmethod reify ((object bytecode-parser))
   (with-slots (name lambda-list code constants locals shared)

@@ -328,6 +328,7 @@ ProcessCondition (
   )
 {
   BORAX_OBJECT  Condition;
+  BOOLEAN       Negated = !(CFlag & 1);
 
   switch (CFlag) {
     case BORAX_CFLAG_UNCONDITIONAL:
@@ -335,24 +336,6 @@ ProcessCondition (
       return BORAX_NIL;
 
     case BORAX_CFLAG_BOOLEAN:
-    {
-      LOCATION      Location;
-      BORAX_OBJECT  Value;
-
-      Condition = ReadLocation (State, &Location);
-      if (BORAX_BOOL (Condition)) {
-        return Condition;
-      }
-
-      Condition = LoadLocation (State, &Location, &Value);
-      if (BORAX_BOOL (Condition)) {
-        return Condition;
-      }
-
-      *DoIt = BORAX_BOOL (Value);
-      return BORAX_NIL;
-    }
-
     case BORAX_CFLAG_NEGATED_BOOLEAN:
     {
       LOCATION      Location;
@@ -368,7 +351,78 @@ ProcessCondition (
         return Condition;
       }
 
-      *DoIt = !BORAX_BOOL (Value);
+      *DoIt = Negated ^ BORAX_BOOL (Value);
+      return BORAX_NIL;
+    }
+
+    case BORAX_CFLAG_EQ:
+    case BORAX_CFLAG_NEGATED_EQ:
+    {
+      LOCATION      LocationA, LocationB;
+      BORAX_OBJECT  A, B;
+
+      Condition = ReadLocation (State, &LocationA);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = ReadLocation (State, &LocationB);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = LoadLocation (State, &LocationA, &A);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = LoadLocation (State, &LocationB, &B);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      *DoIt = Negated ^ BORAX_EQ (A, B);
+      return BORAX_NIL;
+    }
+
+    case BORAX_CFLAG_TYPEP:
+    case BORAX_CFLAG_NEGATED_TYPEP:
+    {
+      LOCATION      LocationValue, LocationType;
+      BORAX_OBJECT  Value, Type;
+      BOOLEAN       Match;
+
+      Condition = ReadLocation (State, &LocationValue);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = ReadLocation (State, &LocationType);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = LoadLocation (State, &LocationValue, &Value);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = LoadLocation (State, &LocationType, &Type);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = BoraxPrimitiveClassTypep (
+                    State->Task->Interp,
+                    Value,
+                    Type,
+                    &Match
+                    );
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      *DoIt = Negated ^ Match;
       return BORAX_NIL;
     }
 
@@ -552,6 +606,11 @@ BytecodeFunctionRun (
       LOCATION      Location;
       BORAX_OBJECT  Function;
 
+      Condition = DecodeField (&State, &CFlag, 1);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
       Condition = ProcessCondition (&State, CFlag, &DoIt);
       if (BORAX_BOOL (Condition)) {
         return Condition;
@@ -596,6 +655,11 @@ BytecodeFunctionRun (
       BOOLEAN  DoIt;
       UINT16   JumpTarget;
 
+      Condition = DecodeField (&State, &CFlag, 4);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
       Condition = ProcessCondition (&State, CFlag, &DoIt);
       if (BORAX_BOOL (Condition)) {
         return Condition;
@@ -620,6 +684,11 @@ BytecodeFunctionRun (
       UINT8    CFlag   = (Opcode >> 3) & 0x01;
       UINT8    Opcount = (Opcode >> 0) & 0x07;
       BOOLEAN  DoIt;
+
+      Condition = DecodeField (&State, &CFlag, 1);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
 
       Condition = ProcessCondition (&State, CFlag, &DoIt);
       if (BORAX_BOOL (Condition)) {
@@ -748,6 +817,11 @@ BytecodeFunctionRun (
       UINT8     CFlag = Opcode & 0x0F;
       BOOLEAN   DoIt;
       LOCATION  Dst, Src;
+
+      Condition = DecodeField (&State, &CFlag, 4);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
 
       Condition = ProcessCondition (&State, CFlag, &DoIt);
       if (BORAX_BOOL (Condition)) {
