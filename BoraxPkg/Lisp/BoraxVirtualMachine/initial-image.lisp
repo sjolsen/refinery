@@ -279,17 +279,18 @@
 
 (define-bytecode-function print-list (object)
   (declare (local object match item rest))
+    (bind (object))
     (call 'write-character (#\())
     (call 'car-cdr (object))
     (bind (item rest))
     (call 'print-recursive (item))
   loop
     (jump :if (not rest) loop-end)
-    (call 'borax-vm/cl:typep (object 'cons))
+    (call 'borax-vm/cl:typep (rest 'cons))
     (bind (match))
     (jump :if (not match) loop-rest)
     (call 'write-character (#\Space))
-    (call 'car-cdr (object))
+    (call 'car-cdr (rest))
     (bind (item rest))
     (call 'print-recursive (item))
     (jump loop)
@@ -451,6 +452,7 @@
   (ensure-bytecode-function 'borax-vm/cl:typep)
   (ensure-bytecode-function 'print-recursive)
   (ensure-bytecode-function 'print-labelled)
+  (ensure-bytecode-function 'print-list)
   (ensure-bytecode-function 'print-sum-list)
   (ensure-bytecode-function 'sum-list)
   ;; Demo content
