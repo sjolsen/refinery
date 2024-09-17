@@ -408,8 +408,96 @@ STATIC CONST FUNCTION_DESCRIPTOR  gWriteString = {
 };
 
 enum {
+  WC_CONST_BUFFER,
+  WC_CONSTS
+};
+
+STATIC BORAX_OBJECT
+EFIAPI
+WriteCharacter (
+  IN BORAX_TASK  *Task
+  )
+{
+  EFI_STATUS     Status;
+  BUFFER_HANDLE  *BufferHandle = UnsafeConstant (Task, WC_CONST_BUFFER);
+  BUFFER         *Buffer       = BufferHandle->Buffer;
+  BORAX_OBJECT   Character;
+  BORAX_OBJECT   *Args[] = { &Character };
+  CHAR16         Char;
+
+  TRY (BoraxTaskBind (Task, ARRAY_SIZE (Args), Args));
+  TRY (BoraxPrimitiveTheCharacter (Task->Interp, Character, &Char));
+
+  // TODO: Non-printable characters
+  Status = BufferWriteChar (Buffer, Char);
+  if (EFI_ERROR (Status)) {
+    return SomeErrorTodo (Task->Interp);
+  }
+
+  return BoraxTaskExitFunction (Task);
+}
+
+STATIC CONST FUNCTION_DESCRIPTOR  gWriteCharacter = {
+  .Name      = {
+    .Package = L"BORAX-RUNTIME",
+    .Name    = L"WRITE-CHARACTER",
+  },
+  .Code      = &WriteCharacter,
+  .Constants = {
+    WS_CONSTS,
+    (CONST CONSTANT_DESCRIPTOR[]) {
+      [WS_CONST_BUFFER] = { CONST_BUFFER },
+    },
+  },
+};
+
+enum {
+  PF_CONST_BUFFER,
+  PF_CONSTS
+};
+
+STATIC BORAX_OBJECT
+EFIAPI
+PrintFixnum (
+  IN BORAX_TASK  *Task
+  )
+{
+  EFI_STATUS     Status;
+  BUFFER_HANDLE  *BufferHandle = UnsafeConstant (Task, PF_CONST_BUFFER);
+  BUFFER         *Buffer       = BufferHandle->Buffer;
+  BORAX_OBJECT   Fixnum;
+  BORAX_OBJECT   *Args[] = { &Fixnum };
+  INTN           Value;
+
+  TRY (BoraxTaskBind (Task, ARRAY_SIZE (Args), Args));
+  TRY (BoraxPrimitiveTheFixnum (Task->Interp, Fixnum, &Value));
+
+  // TODO: Non-printable characters
+  Status = BufferWriteInt (Buffer, Value);
+  if (EFI_ERROR (Status)) {
+    return SomeErrorTodo (Task->Interp);
+  }
+
+  return BoraxTaskExitFunction (Task);
+}
+
+STATIC CONST FUNCTION_DESCRIPTOR  gPrintFixnum = {
+  .Name      = {
+    .Package = L"BORAX-RUNTIME",
+    .Name    = L"PRINT-FIXNUM",
+  },
+  .Code      = &PrintFixnum,
+  .Constants = {
+    PF_CONSTS,
+    (CONST CONSTANT_DESCRIPTOR[]) {
+      [PF_CONST_BUFFER] = { CONST_BUFFER },
+    },
+  },
+};
+
+enum {
   FSV_CONST_BUFFER,
-  FSV_CONST_SYMBOL_FORMAT_RECURSIVE,
+  FSV_CONST_SYMBOL_PRINT_RECURSIVE,
   FSV_CONSTS
 };
 
@@ -426,7 +514,7 @@ enum {
 
 STATIC BORAX_OBJECT
 EFIAPI
-FormatSimpleVector (
+PrintSimpleVector (
   IN BORAX_TASK  *Task
   )
 {
@@ -468,10 +556,10 @@ FormatSimpleVector (
     case FSV_PC_SLOTS:
     {
       BORAX_RECORD  *Record = (BORAX_RECORD *)BORAX_GET_POINTER (*Object);
-      BORAX_OBJECT  SymbolFormatRecursive;
+      BORAX_OBJECT  SymbolPrintRecursive;
       UINTN         I = BORAX_GET_FIXNUM (*Index);
 
-      TRY (BoraxTaskReadConstant (Task, FSV_CONST_SYMBOL_FORMAT_RECURSIVE, &SymbolFormatRecursive));
+      TRY (BoraxTaskReadConstant (Task, FSV_CONST_SYMBOL_PRINT_RECURSIVE, &SymbolPrintRecursive));
 
       Status = BoraxResizeMultipleValues (Task->Interp, 1, &Task->Registers.VR);
       if (EFI_ERROR (Status)) {
@@ -490,7 +578,7 @@ FormatSimpleVector (
 
         *Index                        = BORAX_MAKE_FIXNUM (I + 1);
         Task->Registers.VR->Values[0] = Value;
-        return BoraxTaskEnterFunction (Task, SymbolFormatRecursive);
+        return BoraxTaskEnterFunction (Task, SymbolPrintRecursive);
       } else {
         Status = BufferWriteChar (Buffer, L')');
         if (EFI_ERROR (Status)) {
@@ -507,20 +595,20 @@ FormatSimpleVector (
   }
 }
 
-STATIC CONST FUNCTION_DESCRIPTOR  gFormatSimpleVector = {
+STATIC CONST FUNCTION_DESCRIPTOR  gPrintSimpleVector = {
   .Name         = {
     .Package = L"BORAX-RUNTIME",
-    .Name    = L"FORMAT-SIMPLE-VECTOR",
+    .Name    = L"PRINT-SIMPLE-VECTOR",
   },
   .Entry     = FSV_PC_START,
-  .Code      = &FormatSimpleVector,
+  .Code      = &PrintSimpleVector,
   .Constants = {
     FSV_CONSTS,
     (CONST CONSTANT_DESCRIPTOR[]) {
-      [FSV_CONST_BUFFER]                  = { CONST_BUFFER },
-      [FSV_CONST_SYMBOL_FORMAT_RECURSIVE] = {
+      [FSV_CONST_BUFFER]                 = { CONST_BUFFER },
+      [FSV_CONST_SYMBOL_PRINT_RECURSIVE] = {
         .Tag    = CONST_SYMBOL,
-        .Symbol = { L"BORAX-RUNTIME",L"FORMAT-RECURSIVE"    },
+        .Symbol = { L"BORAX-RUNTIME",L"PRINT-RECURSIVE"    },
       },
     },
   },
@@ -530,7 +618,7 @@ STATIC CONST FUNCTION_DESCRIPTOR  gFormatSimpleVector = {
 enum {
   FSC_CONST_BUFFER,
   FSC_CONST_CLASS_STANDARD_CLASS,
-  FSC_CONST_SYMBOL_FORMAT_RECURSIVE,
+  FSC_CONST_SYMBOL_PRINT_RECURSIVE,
   FSC_CONSTS
 };
 
@@ -545,7 +633,7 @@ enum {
 
 STATIC BORAX_OBJECT
 EFIAPI
-FormatStandardClass (
+PrintStandardClass (
   IN BORAX_TASK  *Task
   )
 {
@@ -556,7 +644,7 @@ FormatStandardClass (
   switch (Task->Registers.PC) {
     case FSC_PC_START:
     {
-      BORAX_OBJECT          ClassStandardClass, SymbolFormatRecursive;
+      BORAX_OBJECT          ClassStandardClass, SymbolPrintRecursive;
       BORAX_OBJECT          Object;
       BORAX_STANDARD_CLASS  *Class;
 
@@ -568,7 +656,7 @@ FormatStandardClass (
       Object = Task->Registers.VR->Values[0];
 
       TRY (BoraxTaskReadConstant (Task, FSC_CONST_CLASS_STANDARD_CLASS, &ClassStandardClass));
-      TRY (BoraxTaskReadConstant (Task, FSC_CONST_SYMBOL_FORMAT_RECURSIVE, &SymbolFormatRecursive));
+      TRY (BoraxTaskReadConstant (Task, FSC_CONST_SYMBOL_PRINT_RECURSIVE, &SymbolPrintRecursive));
 
       Status = BORAX_GET_OBJECT_RECORD (Object, &Class);
       if (EFI_ERROR (Status)) {
@@ -588,7 +676,7 @@ FormatStandardClass (
 
       Task->Registers.VR->Values[0] = Class->Name;
       Task->Registers.PC            = FSC_PC_END;
-      return BoraxTaskEnterFunction (Task, SymbolFormatRecursive);
+      return BoraxTaskEnterFunction (Task, SymbolPrintRecursive);
     }
     case FSC_PC_END:
       Status = BufferWriteChar (Buffer, L'>');
@@ -599,17 +687,18 @@ FormatStandardClass (
       return BoraxTaskExitFunction (Task);
 
     default:
+
       return SomeErrorTodo (Task->Interp);
   }
 }
 
-STATIC CONST FUNCTION_DESCRIPTOR  gFormatStandardClass = {
+STATIC CONST FUNCTION_DESCRIPTOR  gPrintStandardClass = {
   .Name         = {
     .Package = L"BORAX-RUNTIME",
-    .Name    = L"FORMAT-STANDARD-CLASS",
+    .Name    = L"PRINT-STANDARD-CLASS",
   },
   .Entry     = FSC_PC_START,
-  .Code      = &FormatStandardClass,
+  .Code      = &PrintStandardClass,
   .Locals    = FSC_LOCALS,
   .Constants = {
     FSC_CONSTS,
@@ -617,11 +706,11 @@ STATIC CONST FUNCTION_DESCRIPTOR  gFormatStandardClass = {
       [FSC_CONST_BUFFER]               = { CONST_BUFFER },
       [FSC_CONST_CLASS_STANDARD_CLASS] =  {
         .Tag    = CONST_CLASS,
-        .Symbol = { L"COMMON-LISP",L"STANDARD-CLASS"        },
+        .Symbol = { L"COMMON-LISP",L"STANDARD-CLASS"       },
       },
-      [FSC_CONST_SYMBOL_FORMAT_RECURSIVE] = {
+      [FSC_CONST_SYMBOL_PRINT_RECURSIVE] = {
         .Tag    = CONST_SYMBOL,
-        .Symbol = { L"BORAX-RUNTIME",L"FORMAT-RECURSIVE"    },
+        .Symbol = { L"BORAX-RUNTIME",L"PRINT-RECURSIVE"    },
       },
     },
   },
@@ -630,7 +719,7 @@ STATIC CONST FUNCTION_DESCRIPTOR  gFormatStandardClass = {
 enum {
   FOR_CONST_BUFFER,
   FOR_CONST_SYMBOL_CLASS_NAME,
-  FOR_CONST_SYMBOL_FORMAT_RECURSIVE,
+  FOR_CONST_SYMBOL_PRINT_RECURSIVE,
   FOR_CONSTS
 };
 
@@ -649,7 +738,7 @@ enum {
 
 STATIC BORAX_OBJECT
 EFIAPI
-FormatObjectRecord (
+PrintObjectRecord (
   IN BORAX_TASK  *Task
   )
 {
@@ -692,7 +781,7 @@ FormatObjectRecord (
     case FOR_PC_HAVE_CLASS_NAME:
     {
       BORAX_RECORD  *Record = (BORAX_RECORD *)BORAX_GET_POINTER (*Object);
-      BORAX_OBJECT  SymbolFormatRecursive;
+      BORAX_OBJECT  SymbolPrintRecursive;
 
       {
         BORAX_OBJECT  *Args[] = { ClassName };
@@ -715,18 +804,18 @@ FormatObjectRecord (
         Task->Registers.VR->Values[0] = *ClassName;
       }
 
-      TRY (BoraxTaskReadConstant (Task, FOR_CONST_SYMBOL_FORMAT_RECURSIVE, &SymbolFormatRecursive));
+      TRY (BoraxTaskReadConstant (Task, FOR_CONST_SYMBOL_PRINT_RECURSIVE, &SymbolPrintRecursive));
 
       *Index             = BORAX_MAKE_FIXNUM (0);
       Task->Registers.PC = FOR_PC_SLOTS;
-      return BoraxTaskEnterFunction (Task, SymbolFormatRecursive);
+      return BoraxTaskEnterFunction (Task, SymbolPrintRecursive);
     }
 
     case FOR_PC_SLOTS:
     {
       BORAX_RECORD  *Record = (BORAX_RECORD *)BORAX_GET_POINTER (*Object);
       UINTN         I       = BORAX_GET_FIXNUM (*Index);
-      BORAX_OBJECT  SymbolFormatRecursive;
+      BORAX_OBJECT  SymbolPrintRecursive;
 
       Status = BoraxResizeMultipleValues (Task->Interp, 1, &Task->Registers.VR);
       if (EFI_ERROR (Status)) {
@@ -751,11 +840,11 @@ FormatObjectRecord (
           return SomeErrorTodo (Task->Interp);
         }
 
-        TRY (BoraxTaskReadConstant (Task, FOR_CONST_SYMBOL_FORMAT_RECURSIVE, &SymbolFormatRecursive));
+        TRY (BoraxTaskReadConstant (Task, FOR_CONST_SYMBOL_PRINT_RECURSIVE, &SymbolPrintRecursive));
 
         *Index                        = BORAX_MAKE_FIXNUM (I + 1);
         Task->Registers.VR->Values[0] = Value;
-        return BoraxTaskEnterFunction (Task, SymbolFormatRecursive);
+        return BoraxTaskEnterFunction (Task, SymbolPrintRecursive);
       } else {
         Status = BufferWriteChar (Buffer, L'>');
         if (EFI_ERROR (Status)) {
@@ -772,13 +861,13 @@ FormatObjectRecord (
   }
 }
 
-STATIC CONST FUNCTION_DESCRIPTOR  gFormatObjectRecord = {
+STATIC CONST FUNCTION_DESCRIPTOR  gPrintObjectRecord = {
   .Name         = {
     .Package = L"BORAX-RUNTIME",
-    .Name    = L"FORMAT-OBJECT-RECORD",
+    .Name    = L"PRINT-OBJECT-RECORD",
   },
   .Entry     = FOR_PC_START,
-  .Code      = &FormatObjectRecord,
+  .Code      = &PrintObjectRecord,
   .Locals    = FOR_LOCALS,
   .Constants = {
     FOR_CONSTS,
@@ -786,11 +875,11 @@ STATIC CONST FUNCTION_DESCRIPTOR  gFormatObjectRecord = {
       [FOR_CONST_BUFFER]            = { CONST_BUFFER },
       [FOR_CONST_SYMBOL_CLASS_NAME] = {
         .Tag    = CONST_SYMBOL,
-        .Symbol = { L"COMMON-LISP",L"CLASS-NAME"            },
+        .Symbol = { L"COMMON-LISP",L"CLASS-NAME"           },
       },
-      [FOR_CONST_SYMBOL_FORMAT_RECURSIVE] = {
+      [FOR_CONST_SYMBOL_PRINT_RECURSIVE] = {
         .Tag    = CONST_SYMBOL,
-        .Symbol = { L"BORAX-RUNTIME",L"FORMAT-RECURSIVE"    },
+        .Symbol = { L"BORAX-RUNTIME",L"PRINT-RECURSIVE"    },
       },
     },
   },
@@ -798,7 +887,7 @@ STATIC CONST FUNCTION_DESCRIPTOR  gFormatObjectRecord = {
 
 enum {
   EH_CONST_BUFFER,
-  EH_CONST_SYMBOL_FORMAT_RECURSIVE,
+  EH_CONST_SYMBOL_PRINT_RECURSIVE,
   EH_CONSTS
 };
 
@@ -828,7 +917,7 @@ ErrorHandler (
   switch (Task->Registers.PC) {
     case EH_PC_START:
     {
-      BORAX_OBJECT  SymbolFormatRecursive;
+      BORAX_OBJECT  SymbolPrintRecursive;
       BORAX_OBJECT  *Args[] = { SavedCondition };
 
       Condition = BoraxTaskBind (Task, ARRAY_SIZE (Args), Args);
@@ -847,13 +936,13 @@ ErrorHandler (
         return SomeErrorTodo (Task->Interp);
       }
 
-      TRY (BoraxTaskReadConstant (Task, EH_CONST_SYMBOL_FORMAT_RECURSIVE, &SymbolFormatRecursive));
+      TRY (BoraxTaskReadConstant (Task, EH_CONST_SYMBOL_PRINT_RECURSIVE, &SymbolPrintRecursive));
 
-      // Just let FormatRecursive consume the VR
+      // Just let PrintRecursive consume the VR
       //
       // TODO: Prevent infinite recursion
       Task->Registers.PC = EH_PC_EXIT;
-      return BoraxTaskEnterFunction (Task, SymbolFormatRecursive);
+      return BoraxTaskEnterFunction (Task, SymbolPrintRecursive);
     }
 
     case EH_PC_EXIT:
@@ -883,10 +972,10 @@ STATIC CONST FUNCTION_DESCRIPTOR  gErrorHandler = {
   .Constants = {
     EH_CONSTS,
     (CONST CONSTANT_DESCRIPTOR[]) {
-      [EH_CONST_BUFFER]                  = { CONST_BUFFER },
-      [EH_CONST_SYMBOL_FORMAT_RECURSIVE] = {
+      [EH_CONST_BUFFER]                 = { CONST_BUFFER },
+      [EH_CONST_SYMBOL_PRINT_RECURSIVE] = {
         .Tag    = CONST_SYMBOL,
-        .Symbol = { L"BORAX-RUNTIME",L"FORMAT-RECURSIVE"    },
+        .Symbol = { L"BORAX-RUNTIME",L"PRINT-RECURSIVE"    },
       },
     },
   },
@@ -1004,12 +1093,14 @@ STATIC CONST FUNCTION_DESCRIPTOR  *gFunctions[] = {
   &gEq,
   &gErrorHandler,
   &gFindClass,
-  &gFormatObjectRecord,
-  &gFormatSimpleVector,
-  &gFormatStandardClass,
   &gPlus,
+  &gPrintFixnum,
+  &gPrintObjectRecord,
+  &gPrintSimpleVector,
+  &gPrintStandardClass,
   &gSymbolName,
   &gSymbolValue,
+  &gWriteCharacter,
   &gWriteString,
 };
 

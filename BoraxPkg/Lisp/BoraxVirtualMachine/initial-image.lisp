@@ -3,7 +3,7 @@
   (:use :cl-locatives
         :borax-virtual-machine/bytecode
         :borax-virtual-machine/image)
-  (:shadow #:class-precedence-list)
+  (:shadow #:class-precedence-list #:write-character #:write-string)
   (:export #:make-initial-image))
 
 (in-package :borax-virtual-machine/initial-image)
@@ -277,48 +277,48 @@
     (bind (prec))
     (call :tail 'borax-vm/cl:find (type prec)))
 
-(define-bytecode-function format-list (object)
+(define-bytecode-function print-list (object)
   (declare (local object match item rest))
-    (call 'print-character (#\())
+    (call 'write-character (#\())
     (call 'car-cdr (object))
     (bind (item rest))
-    (call 'format-recursive (item))
+    (call 'print-recursive (item))
   loop
     (jump :if (not rest) loop-end)
     (call 'borax-vm/cl:typep (object 'cons))
     (bind (match))
     (jump :if (not match) loop-rest)
-    (call 'print-character (#\Space))
+    (call 'write-character (#\Space))
     (call 'car-cdr (object))
     (bind (item rest))
-    (call 'format-recursive (item))
+    (call 'print-recursive (item))
     (jump loop)
   loop-rest
-    (call 'print-string (" . "))
-    (call 'format-recursive (rest))
+    (call 'write-string (" . "))
+    (call 'print-recursive (rest))
   loop-end
-    (call 'format-character (#\)))
+    (call 'write-character (#\)))
     (return (object)))
 
-(define-bytecode-function format-recursive (object)
+(define-bytecode-function print-recursive (object)
   (declare (local object match rest))
     (bind (object))
     ; nil
     (jump :if object not-nil)
-    (call 'print-string ("NIL"))
+    (call 'write-string ("NIL"))
     (return (object))
   not-nil
     ; fixnum
     (call 'borax-vm/cl:typep (object 'borax-vm/cl:fixnum))
     (bind (match))
-    (call :tail :if match 'print-integer (object))
+    (call :tail :if match 'print-fixnum (object))
     ; character
     (call 'borax-vm/cl:typep (object 'borax-vm/cl:character))
     (bind (match))
     (jump :if (not match) not-char)
-    (call 'print-string ("#\\"))
+    (call 'write-string ("#\\"))
     ;; TODO: non-printable characters
-    (call :tail 'print-character (object))
+    (call :tail 'write-character (object))
   not-char
     ; cons
     (call 'borax-vm/cl:typep (object 'borax-vm/cl:cons))
@@ -328,9 +328,9 @@
     (call 'borax-vm/cl:typep (object 'borax-vm/cl:string))
     (bind (match))
     (jump :if (not match) not-string)
-    (call 'print-character (#\"))
-    (call 'print-string (object))
-    (call 'print-character (#\"))
+    (call 'write-character (#\"))
+    (call 'write-string (object))
+    (call 'write-character (#\"))
   not-string
     ; simple-vector-unsigned-byte-8
     (call 'borax-vm/cl:typep (object 'simple-vector-unsigned-byte-8))
@@ -340,7 +340,7 @@
     (call 'borax-vm/cl:typep (object 'word-record-object))
     (bind (match))
     (jump :if (not match) not-word-record)
-    (call 'print-string ("<WORD-RECORD>"))
+    (call 'write-string ("<WORD-RECORD>"))
     (return (object))
   not-word-record
     ; symbol
@@ -363,17 +363,17 @@
     (call 'borax-vm/cl:typep (object 'weak-pointer))
     (bind (match))
     (jump :if (not match) not-weak-pointer)
-    (call 'print-string ("<WEAK-POINTER>"))
+    (call 'write-string ("<WEAK-POINTER>"))
     (return (object))
   not-weak-pointer
     ; pin
     (call 'borax-vm/cl:typep (object 'pin))
     (bind (match))
     (jump :if (not match) not-pin)
-    (call 'print-string ("<PIN>"))
+    (call 'write-string ("<PIN>"))
     (return (object))
   not-pin
-    (call 'error ('type-error ':datum object ':expected-type 't)))
+    (call 'error ('type-error :datum object :expected-type 't)))
 
 (define-bytecode-function print-labelled (symbol)
   (declare (local symbol value))
@@ -382,8 +382,9 @@
     (call 'write-string)
     (call 'write-string (" = "))
     (call 'symbol-value (symbol))
-    (call 'write-string)
-    (call 'write-character (#\Newline)))
+    (call 'print-recursive)
+    (call 'write-character (#\Newline))
+    (return))
 
 (define-bytecode-function print-sum-list (symbol)
   (declare (local symbol value))
@@ -395,7 +396,8 @@
     (call 'symbol-value (symbol))
     (call 'sum-list)
     (call 'print-recursive)
-    (call 'write-character (#\Newline)))
+    (call 'write-character (#\Newline))
+    (return))
 
 (define-bytecode-function demo ()
   (call 'print-labelled ('numbers))
@@ -403,7 +405,8 @@
   (call 'print-labelled ('letters))
   (call 'print-labelled ('hello))
   (call 'print-labelled ('sum-list))
-  (call 'print-sum-list ('sum-list)))
+  (call 'print-sum-list ('numbers))
+  (return))
 
 (defun ensure-bytecode-function (name)
   (setf (borax-vm/cl:symbol-function (reify name))
@@ -444,10 +447,12 @@
   (ensure-find-class 'weak-pointer)
   (ensure-find-class 'word-record-object)
   ;; Built-in functions
-  (ensure-bytecode-function 'print-labelled)
-  (ensure-bytecode-function 'format-recursive)
   (ensure-bytecode-function 'borax-vm/cl:find)
   (ensure-bytecode-function 'borax-vm/cl:typep)
+  (ensure-bytecode-function 'print-recursive)
+  (ensure-bytecode-function 'print-labelled)
+  (ensure-bytecode-function 'print-sum-list)
+  (ensure-bytecode-function 'sum-list)
   ;; Demo content
   (borax-vm/cl:setq
    borax-vm/cl:nil borax-vm/cl:nil

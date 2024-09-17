@@ -680,6 +680,42 @@ BoraxPrimitiveHeapExhausted (
 
 BORAX_OBJECT
 EFIAPI
+BoraxPrimitiveTheFixnum (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Object,
+  OUT INTN              *Fixnum
+  )
+{
+  BORAX_OBJECT  ClassFixnum = Interp->Globals[BORAX_GLOBAL_CLASS_FIXNUM];
+
+  if (!BORAX_IS_FIXNUM (Object)) {
+    return BoraxPrimitiveTypeError (Interp, Object, ClassFixnum);
+  }
+
+  *Fixnum = BORAX_GET_FIXNUM (Object);
+  return BORAX_NIL;
+}
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveTheCharacter (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Object,
+  OUT CHAR16            *Character
+  )
+{
+  BORAX_OBJECT  ClassCharacter = Interp->Globals[BORAX_GLOBAL_CLASS_CHARACTER];
+
+  if (!BORAX_IS_CHARACTER (Object)) {
+    return BoraxPrimitiveTypeError (Interp, Object, ClassCharacter);
+  }
+
+  *Character = BORAX_GET_CHARACTER (Object);
+  return BORAX_NIL;
+}
+
+BORAX_OBJECT
+EFIAPI
 BoraxPrimitiveThePackage (
   IN BORAX_INTERPRETER  *Interp,
   IN BORAX_OBJECT       Object,

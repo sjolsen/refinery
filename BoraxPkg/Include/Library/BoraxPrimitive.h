@@ -117,6 +117,22 @@ BoraxPrimitiveHeapExhausted (
   IN BORAX_INTERPRETER  *Interp
   );
 
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveTheFixnum (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Object,
+  OUT INTN              *Fixnum
+  );
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveTheCharacter (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Object,
+  OUT CHAR16            *Character
+  );
+
 typedef struct {
   BORAX_RECORD    Record;
   BORAX_OBJECT    Name;
