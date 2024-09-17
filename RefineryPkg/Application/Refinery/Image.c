@@ -316,6 +316,91 @@ STATIC CONST FUNCTION_DESCRIPTOR  gClassPrecedenceList = {
 
 STATIC BORAX_OBJECT
 EFIAPI
+FindPackage (
+  IN BORAX_TASK  *Task
+  )
+{
+  BORAX_OBJECT   Object;
+  UINTN          Length;
+  CHAR16         *Data;
+  BOOLEAN        Found;
+  BORAX_PACKAGE  *Package;
+  BORAX_OBJECT   Result;
+  BORAX_OBJECT   *Args[] = { &Object };
+
+  // TODO: Accept package objects and string designators
+  TRY (BoraxTaskBind (Task, ARRAY_SIZE (Args), Args));
+  TRY (BoraxPrimitiveStringData (Task->Interp, Object, &Length, &Data));
+  TRY (BoraxPrimitiveFindPackage2 (Task->Interp, Length, Data, &Found, &Package));
+
+  if (Found) {
+    Result = BORAX_MAKE_POINTER (Package);
+  } else {
+    Result = BORAX_NIL;
+  }
+
+  TRY (BoraxTaskCoBind (Task, 1, &Result));
+  return BoraxTaskExitFunction (Task);
+}
+
+STATIC CONST FUNCTION_DESCRIPTOR  gFindPackage = {
+  .Name      = {
+    .Package = L"COMMON-LISP",
+    .Name    = L"FIND-PACKAGE",
+  },
+  .Code      = &FindPackage,
+};
+
+STATIC BORAX_OBJECT
+EFIAPI
+PackageName (
+  IN BORAX_TASK  *Task
+  )
+{
+  BORAX_OBJECT   Object;
+  BORAX_PACKAGE  *Package;
+  BORAX_OBJECT   *Args[] = { &Object };
+
+  TRY (BoraxTaskBind (Task, ARRAY_SIZE (Args), Args));
+  TRY (BoraxPrimitiveThePackage (Task->Interp, Object, &Package));
+  TRY (BoraxTaskCoBind (Task, 1, &Package->Name));
+  return BoraxTaskExitFunction (Task);
+}
+
+STATIC CONST FUNCTION_DESCRIPTOR  gPackageName = {
+  .Name      = {
+    .Package = L"COMMON-LISP",
+    .Name    = L"PACKAGE-NAME",
+  },
+  .Code      = &PackageName,
+};
+
+STATIC BORAX_OBJECT
+EFIAPI
+SymbolPackage (
+  IN BORAX_TASK  *Task
+  )
+{
+  BORAX_OBJECT  Object;
+  BORAX_SYMBOL  *Symbol;
+  BORAX_OBJECT  *Args[] = { &Object };
+
+  TRY (BoraxTaskBind (Task, ARRAY_SIZE (Args), Args));
+  TRY (BoraxPrimitiveTheSymbol (Task->Interp, Object, &Symbol));
+  TRY (BoraxTaskCoBind (Task, 1, &Symbol->Package));
+  return BoraxTaskExitFunction (Task);
+}
+
+STATIC CONST FUNCTION_DESCRIPTOR  gSymbolPackage = {
+  .Name      = {
+    .Package = L"COMMON-LISP",
+    .Name    = L"SYMBOL-PACKAGE",
+  },
+  .Code      = &SymbolPackage,
+};
+
+STATIC BORAX_OBJECT
+EFIAPI
 SymbolName (
   IN BORAX_TASK  *Task
   )
@@ -1089,12 +1174,15 @@ STATIC CONST FUNCTION_DESCRIPTOR  *gFunctions[] = {
   &gEq,
   &gErrorHandler,
   &gFindClass,
+  &gFindPackage,
+  &gPackageName,
   &gPlus,
   &gPrintFixnum,
   &gPrintObjectRecord,
   &gPrintSimpleVector,
   &gPrintStandardClass,
   &gSymbolName,
+  &gSymbolPackage,
   &gSymbolValue,
   &gWriteCharacter,
   &gWriteString,

@@ -301,6 +301,31 @@
     (call 'write-character (#\)))
     (return (object)))
 
+(define-bytecode-function print-symbol (object)
+  (declare (local object package other-package match))
+    (bind (object))
+    (call 'symbol-package)
+    (bind (package))
+    (call 'borax-vm/cl:find-package ("COMMON-LISP"))
+    (bind (other-package))
+    (call 'borax-vm/cl:eq (package other-package))
+    (bind (match))
+    ;; TODO: Condition flags for EQ and TYPEP
+    (jump :if match name)
+    (call 'borax-vm/cl:find-package ("KEYWORD"))
+    (bind (other-package))
+    (call 'borax-vm/cl:eq (package other-package))
+    (bind (match))
+    (jump :if match colon)
+    (call 'borax-vm/cl:package-name (package))
+    (call 'write-string)
+  colon
+    (call 'write-character (#\Colon))
+  name
+    (call 'symbol-name (object))
+    (call 'write-string)
+    (return (object)))
+
 (define-bytecode-function print-recursive (object)
   (declare (local object match rest))
     (bind (object))
@@ -332,6 +357,7 @@
     (call 'write-character (#\"))
     (call 'write-string (object))
     (call 'write-character (#\"))
+    (return (object))
   not-string
     ; simple-vector-unsigned-byte-8
     (call 'borax-vm/cl:typep (object 'simple-vector-unsigned-byte-8))
@@ -351,7 +377,7 @@
     ; simple-vector
     (call 'borax-vm/cl:typep (object 'borax-vm/cl:simple-vector))
     (bind (match))
-    (call :tail :if match 'print-vector (object))
+    (call :tail :if match 'print-simple-vector (object))
     ; standard-class
     (call 'borax-vm/cl:typep (object 'borax-vm/cl:standard-class))
     (bind (match))
@@ -415,6 +441,7 @@
 
 (defun make-initial-image ()
   (setf (root *image*) (make-instance 'global-environment))
+  ;; TODO: Gather all this up automatically
   ;; Standard classes
   (ensure-find-class 'borax-vm/cl:character)
   (ensure-find-class 'borax-vm/cl:cons)
@@ -454,6 +481,7 @@
   (ensure-bytecode-function 'print-labelled)
   (ensure-bytecode-function 'print-list)
   (ensure-bytecode-function 'print-sum-list)
+  (ensure-bytecode-function 'print-symbol)
   (ensure-bytecode-function 'sum-list)
   ;; Demo content
   (borax-vm/cl:setq

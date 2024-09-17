@@ -156,6 +156,17 @@ BoraxPrimitiveFindPackage (
   OUT BORAX_PACKAGE     **Package
   );
 
+// TODO: Principled string APIs
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveFindPackage2 (
+  IN BORAX_INTERPRETER  *Interp,
+  IN UINTN              NameLength,
+  IN CONST CHAR16       *NameData,
+  OUT BOOLEAN           *Found,
+  OUT BORAX_PACKAGE     **Package
+  );
+
 typedef struct {
   BORAX_RECORD    Record;
   BORAX_OBJECT    Package;
@@ -273,6 +284,16 @@ BoraxPrimitiveStringEqual (
   IN BORAX_INTERPRETER  *Interp,
   IN BORAX_OBJECT       String1,
   IN CONST CHAR16       *String2,
+  OUT BOOLEAN           *Match
+  );
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveStringEqual2 (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       String1,
+  IN UINTN              String2Length,
+  IN CONST CHAR16       *String2Data,
   OUT BOOLEAN           *Match
   );
 

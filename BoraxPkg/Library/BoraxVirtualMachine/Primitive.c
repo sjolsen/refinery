@@ -748,6 +748,19 @@ BoraxPrimitiveFindPackage (
   OUT BORAX_PACKAGE     **Package
   )
 {
+  return BoraxPrimitiveFindPackage2 (Interp, StrLen (Name), Name, Found, Package);
+}
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveFindPackage2 (
+  IN BORAX_INTERPRETER  *Interp,
+  IN UINTN              NameLength,
+  IN CONST CHAR16       *NameData,
+  OUT BOOLEAN           *Found,
+  OUT BORAX_PACKAGE     **Package
+  )
+{
   EFI_STATUS    Status;
   BORAX_OBJECT  Condition;
   BORAX_OBJECT  ClassPackage = Interp->Globals[BORAX_GLOBAL_CLASS_PACKAGE];
@@ -783,10 +796,11 @@ BoraxPrimitiveFindPackage (
                    );
         }
 
-        Condition = BoraxPrimitiveStringEqual (
+        Condition = BoraxPrimitiveStringEqual2 (
                       Interp,
                       SomePackage->Name,
-                      Name,
+                      NameLength,
+                      NameData,
                       &Match
                       );
         if (BORAX_BOOL (Condition)) {
@@ -1304,23 +1318,50 @@ BoraxPrimitiveStringEqual (
   OUT BOOLEAN           *Match
   )
 {
+  return BoraxPrimitiveStringEqual2 (
+           Interp,
+           String1,
+           StrLen (String2),
+           String2,
+           Match
+           );
+}
+
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveStringEqual2 (
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       String1,
+  IN UINTN              String2Length,
+  IN CONST CHAR16       *String2Data,
+  OUT BOOLEAN           *Match
+  )
+{
   BORAX_OBJECT  Condition;
-  UINTN         Chars1, Chars2;
-  CHAR16        *String1p;
+  UINTN         String1Length;
+  CHAR16        *String1Data;
   INTN          Compare;
 
-  Condition = BoraxPrimitiveStringData (Interp, String1, &Chars1, &String1p);
+  Condition = BoraxPrimitiveStringData (
+                Interp,
+                String1,
+                &String1Length,
+                &String1Data
+                );
   if (BORAX_BOOL (Condition)) {
     return Condition;
   }
 
-  Chars2 = StrLen (String2);
-  if (Chars1 != Chars2) {
+  if (String1Length != String2Length) {
     *Match = FALSE;
     return BORAX_NIL;
   }
 
-  Compare = CompareMem (String1p, String2, Chars1 * sizeof (CHAR16));
-  *Match  = (Compare == 0);
+  Compare = CompareMem (
+              String1Data,
+              String2Data,
+              String1Length * sizeof (CHAR16)
+              );
+  *Match = (Compare == 0);
   return BORAX_NIL;
 }
