@@ -578,18 +578,11 @@ BytecodeFunctionRun (
       }
 
       if (DoIt) {
-        // Update the PC before entering the new stack frame
-        //
-        // TODO: We should delay updating the PC and tail calling until after
-        // function resolution, because the current setup is a nightmare to
-        // debug.
-        Task->Registers.PC = State.Pos;
-
         // TODO: Handle the fast flag
         if (Tail) {
           return BoraxTaskEnterFunctionTail (Task, Function);
         } else {
-          return BoraxTaskEnterFunction (Task, Function);
+          return BoraxTaskEnterFunction (Task, Function, State.Pos);
         }
       } else {
         Task->Registers.PC = State.Pos;

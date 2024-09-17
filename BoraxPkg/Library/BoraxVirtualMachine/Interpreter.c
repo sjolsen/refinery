@@ -195,7 +195,7 @@ TaskRun (
 
   if (Task->State == BORAX_TASK_STARTING) {
     Task->State = BORAX_TASK_RUNNING;
-    Condition   = BoraxTaskEnterFunction (Task, Task->EntryPoint);
+    Condition   = BoraxTaskEnterFunction (Task, Task->EntryPoint, 0);
     if (BORAX_BOOL (Condition)) {
       goto signal;
     }
@@ -674,11 +674,13 @@ BoraxTaskCoBind (
   return BORAX_NIL;
 }
 
-BORAX_OBJECT
+STATIC BORAX_OBJECT
 EFIAPI
-BoraxTaskEnterFunction (
+EnterFunctionCommon (
   IN BORAX_TASK    *Task,
-  IN BORAX_OBJECT  Function
+  IN BORAX_OBJECT  Function,
+  IN UINTN         LinkPC,
+  IN BOOLEAN       Tail
   )
 {
   BORAX_OBJECT              Condition;
@@ -712,38 +714,64 @@ BoraxTaskEnterFunction (
              );
   }
 
-  OldBP = Task->Registers.BP;
-  NewBP = Task->Registers.SP;
-  NewSP = NewBP + BORAX_STACK_SLOTS + Info.Locals + Info.Shared;
+  if (Tail) {
+    BOOLEAN  Intercepted;
 
-  Condition = TaskStackEnsureCapacity (Task->Interp, &Task->Stack, NewSP);
-  if (BORAX_BOOL (Condition)) {
-    return Condition;
+    // Pop any dynamic extents before overwriting the old stack frame
+    Condition = BoraxTaskPopDynamic (Task, 0, BORAX_NIL, &Intercepted);
+    if (BORAX_BOOL (Condition) || Intercepted) {
+      return Condition;
+    }
+
+    // Saved BP and PC are already set up
+    OldBP = NewBP = Task->Registers.BP;
+    NewSP = NewBP + BORAX_STACK_SLOTS + Info.Locals + Info.Shared;
+
+    Condition = TaskStackEnsureCapacity (Task->Interp, &Task->Stack, NewSP);
+    if (BORAX_BOOL (Condition)) {
+      return Condition;
+    }
+
+    Task->Registers.SP = NewSP;
+  } else {
+    OldBP = Task->Registers.BP;
+    NewBP = Task->Registers.SP;
+    NewSP = NewBP + BORAX_STACK_SLOTS + Info.Locals + Info.Shared;
+
+    Condition = TaskStackEnsureCapacity (Task->Interp, &Task->Stack, NewSP);
+    if (BORAX_BOOL (Condition)) {
+      return Condition;
+    }
+
+    Task->Registers.SP = NewSP;
+    Task->Registers.BP = NewBP;
+
+    // Update the PC at the last possible moment to make stack traces as helpful
+    // as possible
+    Task->Registers.PC = LinkPC;
+
+    UnsafeStackWrite (
+      Task,
+      NewBP + BORAX_STACK_SAVED_BP,
+      BORAX_MAKE_FIXNUM (OldBP)
+      );
+    UnsafeStackWrite (
+      Task,
+      NewBP + BORAX_STACK_SAVED_PC,
+      BORAX_MAKE_FIXNUM (Task->Registers.PC)
+      );
+    UnsafeStackWrite (
+      Task,
+      NewBP + BORAX_STACK_SAVED_LC,
+      BORAX_MAKE_FIXNUM (Task->Registers.LC)
+      );
+    UnsafeStackWrite (
+      Task,
+      NewBP + BORAX_STACK_SAVED_SC,
+      BORAX_MAKE_FIXNUM (Task->Registers.SC)
+      );
   }
 
-  Task->Registers.SP = NewSP;
-  Task->Registers.BP = NewBP;
-
-  UnsafeStackWrite (
-    Task,
-    NewBP + BORAX_STACK_SAVED_BP,
-    BORAX_MAKE_FIXNUM (OldBP)
-    );
-  UnsafeStackWrite (
-    Task,
-    NewBP + BORAX_STACK_SAVED_PC,
-    BORAX_MAKE_FIXNUM (Task->Registers.PC)
-    );
-  UnsafeStackWrite (
-    Task,
-    NewBP + BORAX_STACK_SAVED_LC,
-    BORAX_MAKE_FIXNUM (Task->Registers.LC)
-    );
-  UnsafeStackWrite (
-    Task,
-    NewBP + BORAX_STACK_SAVED_SC,
-    BORAX_MAKE_FIXNUM (Task->Registers.SC)
-    );
   UnsafeStackWrite (Task, NewBP + BORAX_STACK_CODE, Function);
   UnsafeStackWrite (Task, NewBP + BORAX_STACK_CLOSURE, BORAX_UNBOUND);
 
@@ -756,6 +784,28 @@ BoraxTaskEnterFunction (
   Task->Registers.SC = Info.Shared;
 
   return BORAX_NIL;
+}
+
+BORAX_OBJECT
+EFIAPI
+BoraxTaskEnterFunction (
+  IN BORAX_TASK    *Task,
+  IN BORAX_OBJECT  Function,
+  IN UINTN         LinkPC
+  )
+{
+  return EnterFunctionCommon (Task, Function, LinkPC, FALSE);
+}
+
+BORAX_OBJECT
+EFIAPI
+BoraxTaskEnterFunctionTail (
+  IN BORAX_TASK    *Task,
+  IN BORAX_OBJECT  Function
+  )
+{
+  // LinkPC is not used in tail calls
+  return EnterFunctionCommon (Task, Function, -1, TRUE);
 }
 
 STATIC BORAX_OBJECT
@@ -797,24 +847,6 @@ UnwindFrame (
   // TODO: Shrink the stack if appropriate
   *Intercepted = FALSE;
   return BORAX_NIL;
-}
-
-BORAX_OBJECT
-EFIAPI
-BoraxTaskEnterFunctionTail (
-  IN BORAX_TASK    *Task,
-  IN BORAX_OBJECT  Function
-  )
-{
-  BORAX_OBJECT  Condition;
-  BOOLEAN       Intercepted;
-
-  Condition = UnwindFrame (Task, BORAX_NIL, &Intercepted);
-  if (BORAX_BOOL (Condition) || Intercepted) {
-    return Condition;
-  }
-
-  return BoraxTaskEnterFunction (Task, Function);
 }
 
 BORAX_OBJECT
@@ -1052,7 +1084,7 @@ BoraxTaskError (
     }
 
     // TODO: Guard against infinite recursion
-    return BoraxTaskEnterFunction (Task, Task->ErrorHandler);
+    return BoraxTaskEnterFunction (Task, Task->ErrorHandler, Task->Registers.PC);
   } else {
     // Allow the task to double-fault
     return Condition;

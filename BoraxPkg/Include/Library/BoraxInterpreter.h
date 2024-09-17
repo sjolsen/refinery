@@ -418,7 +418,8 @@ BORAX_OBJECT
 EFIAPI
 BoraxTaskEnterFunction (
   IN BORAX_TASK    *Task,
-  IN BORAX_OBJECT  Function
+  IN BORAX_OBJECT  Function,
+  IN UINTN         LinkPC
   );
 
 BORAX_OBJECT

@@ -578,7 +578,7 @@ PrintSimpleVector (
 
         *Index                        = BORAX_MAKE_FIXNUM (I + 1);
         Task->Registers.VR->Values[0] = Value;
-        return BoraxTaskEnterFunction (Task, SymbolPrintRecursive);
+        return BoraxTaskEnterFunction (Task, SymbolPrintRecursive, FSV_PC_SLOTS);
       } else {
         Status = BufferWriteChar (Buffer, L')');
         if (EFI_ERROR (Status)) {
@@ -675,8 +675,7 @@ PrintStandardClass (
       }
 
       Task->Registers.VR->Values[0] = Class->Name;
-      Task->Registers.PC            = FSC_PC_END;
-      return BoraxTaskEnterFunction (Task, SymbolPrintRecursive);
+      return BoraxTaskEnterFunction (Task, SymbolPrintRecursive, FSC_PC_END);
     }
     case FSC_PC_END:
       Status = BufferWriteChar (Buffer, L'>');
@@ -773,8 +772,7 @@ PrintObjectRecord (
       {
         BORAX_OBJECT  Args[] = { Record->Class };
         TRY (BoraxTaskCoBind (Task, ARRAY_SIZE (Args), Args));
-        Task->Registers.PC = FOR_PC_HAVE_CLASS_NAME;
-        return BoraxTaskEnterFunction (Task, SymbolClassName);
+        return BoraxTaskEnterFunction (Task, SymbolClassName, FOR_PC_HAVE_CLASS_NAME);
       }
     }
 
@@ -806,9 +804,8 @@ PrintObjectRecord (
 
       TRY (BoraxTaskReadConstant (Task, FOR_CONST_SYMBOL_PRINT_RECURSIVE, &SymbolPrintRecursive));
 
-      *Index             = BORAX_MAKE_FIXNUM (0);
-      Task->Registers.PC = FOR_PC_SLOTS;
-      return BoraxTaskEnterFunction (Task, SymbolPrintRecursive);
+      *Index = BORAX_MAKE_FIXNUM (0);
+      return BoraxTaskEnterFunction (Task, SymbolPrintRecursive, FOR_PC_SLOTS);
     }
 
     case FOR_PC_SLOTS:
@@ -844,7 +841,7 @@ PrintObjectRecord (
 
         *Index                        = BORAX_MAKE_FIXNUM (I + 1);
         Task->Registers.VR->Values[0] = Value;
-        return BoraxTaskEnterFunction (Task, SymbolPrintRecursive);
+        return BoraxTaskEnterFunction (Task, SymbolPrintRecursive, FOR_PC_SLOTS);
       } else {
         Status = BufferWriteChar (Buffer, L'>');
         if (EFI_ERROR (Status)) {
@@ -941,8 +938,7 @@ ErrorHandler (
       // Just let PrintRecursive consume the VR
       //
       // TODO: Prevent infinite recursion
-      Task->Registers.PC = EH_PC_EXIT;
-      return BoraxTaskEnterFunction (Task, SymbolPrintRecursive);
+      return BoraxTaskEnterFunction (Task, SymbolPrintRecursive, EH_PC_EXIT);
     }
 
     case EH_PC_EXIT:
