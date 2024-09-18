@@ -72,7 +72,7 @@ SomeErrorTodo (
   return BoraxPrimitiveSimpleCondition (
            Interp,
            Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
-           L"This was an EFI status code. FIXME",
+           BoraxCString (L"This was an EFI status code. FIXME"),
            0,
            NULL
            );
@@ -263,8 +263,7 @@ FindPackage (
   )
 {
   BORAX_OBJECT   Object;
-  UINTN          Length;
-  CHAR16         *Data;
+  BORAX_STRING   String;
   BOOLEAN        Found;
   BORAX_PACKAGE  *Package;
   BORAX_OBJECT   Result;
@@ -272,8 +271,15 @@ FindPackage (
 
   // TODO: Accept package objects and string designators
   TRY (BoraxTaskBind (Task, ARRAY_SIZE (Args), Args));
-  TRY (BoraxPrimitiveStringData (Task->Interp, Object, &Length, &Data));
-  TRY (BoraxPrimitiveFindPackage2 (Task->Interp, Length, Data, &Found, &Package));
+  TRY (BoraxPrimitiveStringData (Task->Interp, Object, &String));
+  TRY (
+    BoraxPrimitiveFindPackage (
+      Task->Interp,
+      BoraxConstString (String),
+      &Found,
+      &Package
+      )
+    );
 
   if (Found) {
     Result = BORAX_MAKE_POINTER (Package);
@@ -394,14 +400,13 @@ WriteString (
   BUFFER         *Buffer       = BufferHandle->Buffer;
   BORAX_OBJECT   String;
   BORAX_OBJECT   *Args[] = { &String };
-  UINTN          Length;
-  CHAR16         *Data;
+  BORAX_STRING   TheString;
 
   TRY (BoraxTaskBind (Task, ARRAY_SIZE (Args), Args));
-  TRY (BoraxPrimitiveStringData (Task->Interp, String, &Length, &Data));
+  TRY (BoraxPrimitiveStringData (Task->Interp, String, &TheString));
 
   // TODO: Non-printable characters
-  Status = BufferWriteChars (Buffer, Data, Length);
+  Status = BufferWriteChars (Buffer, TheString.Data, TheString.Length);
   if (EFI_ERROR (Status)) {
     return SomeErrorTodo (Task->Interp);
   }
@@ -774,9 +779,9 @@ STATIC CONST FUNCTION_DESCRIPTOR  *gFunctions[] = {
 STATIC BORAX_OBJECT
 EFIAPI
 RequirePackage (
-  IN BORAX_INTERPRETER  *Interp,
-  IN CONST CHAR16       *Name,
-  OUT   BORAX_PACKAGE   **Package
+  IN BORAX_INTERPRETER   *Interp,
+  IN BORAX_CONST_STRING  Name,
+  OUT   BORAX_PACKAGE    **Package
   )
 {
   BOOLEAN       Found;
@@ -788,7 +793,7 @@ RequirePackage (
     return BoraxPrimitiveSimpleCondition (
              Interp,
              Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
-             L"Package not found: ~S",
+             BoraxCString (L"Package not found: ~S"),
              1,
              &PackageName
              );
@@ -807,12 +812,12 @@ Symbolize (
 {
   BORAX_PACKAGE  *Package;
 
-  TRY (RequirePackage (Interp, Desc->Name.Package, &Package));
+  TRY (RequirePackage (Interp, BoraxCString (Desc->Name.Package), &Package));
 
   return BoraxPrimitiveIntern (
            Interp,
            Package,
-           Desc->Name.Name,
+           BoraxCString (Desc->Name.Name),
            Symbol
            );
 }
@@ -837,8 +842,21 @@ DefineConstant (
       BORAX_PACKAGE  *Package;
       BORAX_SYMBOL   *Symbol;
 
-      TRY (RequirePackage (Interp, Const->Symbol.Package, &Package));
-      TRY (BoraxPrimitiveIntern (Interp, Package, Const->Symbol.Name, &Symbol));
+      TRY (
+        RequirePackage (
+          Interp,
+          BoraxCString (Const->Symbol.Package),
+          &Package
+          )
+        );
+      TRY (
+        BoraxPrimitiveIntern (
+          Interp,
+          Package,
+          BoraxCString (Const->Symbol.Name),
+          &Symbol
+          )
+        );
       *Object = BORAX_MAKE_POINTER (Symbol);
       return BORAX_NIL;
     }
@@ -848,8 +866,15 @@ DefineConstant (
       BORAX_PACKAGE  *Package;
       BORAX_SYMBOL   *Symbol;
 
-      TRY (RequirePackage (Interp, L"KEYWORD", &Package));
-      TRY (BoraxPrimitiveIntern (Interp, Package, Const->Symbol.Name, &Symbol));
+      TRY (RequirePackage (Interp, BoraxCString (L"KEYWORD"), &Package));
+      TRY (
+        BoraxPrimitiveIntern (
+          Interp,
+          Package,
+          BoraxCString (Const->Symbol.Name),
+          &Symbol
+          )
+        );
       *Object = BORAX_MAKE_POINTER (Symbol);
       return BORAX_NIL;
     }
@@ -859,8 +884,21 @@ DefineConstant (
       BORAX_PACKAGE  *Package;
       BORAX_SYMBOL   *Symbol;
 
-      TRY (RequirePackage (Interp, Const->Symbol.Package, &Package));
-      TRY (BoraxPrimitiveIntern (Interp, Package, Const->Symbol.Name, &Symbol));
+      TRY (
+        RequirePackage (
+          Interp,
+          BoraxCString (Const->Symbol.Package),
+          &Package
+          )
+        );
+      TRY (
+        BoraxPrimitiveIntern (
+          Interp,
+          Package,
+          BoraxCString (Const->Symbol.Name),
+          &Symbol
+          )
+        );
       *Object = Symbol->Class;
       return BORAX_NIL;
     }
@@ -906,7 +944,7 @@ DefineConstant (
       return BoraxPrimitiveSimpleCondition (
                Interp,
                Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
-               L"Invalid descriptor for ~S",
+               BoraxCString (L"Invalid descriptor for ~S"),
                1,
                &TopLevel
                );
@@ -1027,7 +1065,7 @@ CallLisp (
     return BoraxPrimitiveSimpleCondition (
              Interp,
              Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
-             L"Failed to spawn task",
+             BoraxCString (L"Failed to spawn task"),
              0,
              NULL
              );
@@ -1050,8 +1088,15 @@ ImageDemo (
   BORAX_SYMBOL   *Demo;
 
   TRY (InitializeEnvironment (Interp, Content));
-  TRY (RequirePackage (Interp, L"BORAX-RUNTIME", &BoraxRuntime));
-  TRY (BoraxPrimitiveIntern (Interp, BoraxRuntime, L"DEMO", &Demo));
+  TRY (RequirePackage (Interp, BoraxCString (L"BORAX-RUNTIME"), &BoraxRuntime));
+  TRY (
+    BoraxPrimitiveIntern (
+      Interp,
+      BoraxRuntime,
+      BoraxCString (L"DEMO"),
+      &Demo
+      )
+    );
 
   return CallLisp (Interp, BORAX_MAKE_POINTER (Demo), 0, NULL);
 }

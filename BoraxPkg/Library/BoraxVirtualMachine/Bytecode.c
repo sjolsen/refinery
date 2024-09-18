@@ -68,7 +68,7 @@ ReadByte (
     return BoraxPrimitiveSimpleCondition (
              State->Task->Interp,
              State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR],
-             L"Code index out of bounds: ~S",
+             BoraxCString (L"Code index out of bounds: ~S"),
              ARRAY_SIZE (Args),
              Args
              );
@@ -217,7 +217,7 @@ LoadLocation (
       return BoraxPrimitiveSimpleCondition (
                State->Task->Interp,
                State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
-               L"Not implemented: access to location (SHARED ~S ~S)",
+               BoraxCString (L"Not implemented: access to location (SHARED ~S ~S)"),
                ARRAY_SIZE (Args),
                Args
                );
@@ -233,7 +233,7 @@ LoadLocation (
       return BoraxPrimitiveSimpleCondition (
                State->Task->Interp,
                State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
-               L"Not implemented: access to location (CLOSURE ~S ~S)",
+               BoraxCString (L"Not implemented: access to location (CLOSURE ~S ~S)"),
                ARRAY_SIZE (Args),
                Args
                );
@@ -263,7 +263,7 @@ StoreLocation (
       return BoraxPrimitiveSimpleCondition (
                State->Task->Interp,
                State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR],
-               L"Tried to BIND location (CONSTANT ~S)",
+               BoraxCString (L"Tried to BIND location (CONSTANT ~S)"),
                ARRAY_SIZE (Args),
                Args
                );
@@ -292,7 +292,7 @@ StoreLocation (
       return BoraxPrimitiveSimpleCondition (
                State->Task->Interp,
                State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
-               L"Not implemented: access to location (SHARED ~S ~S)",
+               BoraxCString (L"Not implemented: access to location (SHARED ~S ~S)"),
                ARRAY_SIZE (Args),
                Args
                );
@@ -308,7 +308,7 @@ StoreLocation (
       return BoraxPrimitiveSimpleCondition (
                State->Task->Interp,
                State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
-               L"Not implemented: access to location (CLOSURE ~S ~S)",
+               BoraxCString (L"Not implemented: access to location (CLOSURE ~S ~S)"),
                ARRAY_SIZE (Args),
                Args
                );
@@ -432,7 +432,7 @@ ProcessCondition (
       return BoraxPrimitiveSimpleCondition (
                State->Task->Interp,
                State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR],
-               L"Illegal condition flag: ~S",
+               BoraxCString (L"Illegal condition flag: ~S"),
                ARRAY_SIZE (Args),
                Args
                );
@@ -864,7 +864,7 @@ BytecodeFunctionRun (
       return BoraxPrimitiveSimpleCondition (
                Task->Interp,
                Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
-               L"Not implemented: instruction ~2,'0X",
+               BoraxCString (L"Not implemented: instruction ~2,'0X"),
                ARRAY_SIZE (Args),
                Args
                );
@@ -948,7 +948,7 @@ BytecodeFunctionShared (
   return BoraxPrimitiveSimpleCondition (
            Interp,
            Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
-           L"Not implemented: BytecodeFunctionShared",
+           BoraxCString (L"Not implemented: BytecodeFunctionShared"),
            0,
            NULL
            );

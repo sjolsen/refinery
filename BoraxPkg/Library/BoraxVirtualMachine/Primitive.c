@@ -1,6 +1,5 @@
 #include <Library/BoraxPrimitive.h>
 
-#include <Library/BaseLib.h>
 #include <Library/BaseMemoryLib.h>
 #include <Library/DebugLib.h>
 #include <Library/SafeIntLib.h>
@@ -472,7 +471,7 @@ EFIAPI
 BoraxPrimitiveSimpleCondition (
   IN BORAX_INTERPRETER   *Interp,
   IN BORAX_OBJECT        Class,
-  IN CONST CHAR16        *Control,
+  IN BORAX_CONST_STRING  Control,
   IN UINTN               ArgsLength,
   IN CONST BORAX_OBJECT  *Args
   )
@@ -572,9 +571,9 @@ BoraxPrimitiveCellError (
 STATIC BORAX_OBJECT
 EFIAPI
 LocationError (
-  IN BORAX_INTERPRETER  *Interp,
-  IN CONST CHAR16       *Keyword,
-  IN UINTN              Index
+  IN BORAX_INTERPRETER   *Interp,
+  IN BORAX_CONST_STRING  Keyword,
+  IN UINTN               Index
   )
 {
   BORAX_OBJECT  Condition;
@@ -611,7 +610,7 @@ BoraxPrimitiveLocalLocationError (
   IN UINTN              Index
   )
 {
-  return LocationError (Interp, L"LOCAL", Index);
+  return LocationError (Interp, BoraxCString (L"LOCAL"), Index);
 }
 
 BORAX_OBJECT
@@ -621,7 +620,7 @@ BoraxPrimitiveSharedBlockLocationError (
   IN UINTN              Index
   )
 {
-  return LocationError (Interp, L"SHARED", Index);
+  return LocationError (Interp, BoraxCString (L"SHARED"), Index);
 }
 
 BORAX_OBJECT
@@ -631,7 +630,7 @@ BoraxPrimitiveConstantLocationError (
   IN UINTN              Index
   )
 {
-  return LocationError (Interp, L"CONSTANT", Index);
+  return LocationError (Interp, BoraxCString (L"CONSTANT"), Index);
 }
 
 BORAX_OBJECT
@@ -796,23 +795,10 @@ BoraxPrimitiveThePackage (
 BORAX_OBJECT
 EFIAPI
 BoraxPrimitiveFindPackage (
-  IN BORAX_INTERPRETER  *Interp,
-  IN CONST CHAR16       *Name,
-  OUT BOOLEAN           *Found,
-  OUT BORAX_PACKAGE     **Package
-  )
-{
-  return BoraxPrimitiveFindPackage2 (Interp, StrLen (Name), Name, Found, Package);
-}
-
-BORAX_OBJECT
-EFIAPI
-BoraxPrimitiveFindPackage2 (
-  IN BORAX_INTERPRETER  *Interp,
-  IN UINTN              NameLength,
-  IN CONST CHAR16       *NameData,
-  OUT BOOLEAN           *Found,
-  OUT BORAX_PACKAGE     **Package
+  IN BORAX_INTERPRETER   *Interp,
+  IN BORAX_CONST_STRING  Name,
+  OUT BOOLEAN            *Found,
+  OUT BORAX_PACKAGE      **Package
   )
 {
   EFI_STATUS    Status;
@@ -850,11 +836,10 @@ BoraxPrimitiveFindPackage2 (
                    );
         }
 
-        Condition = BoraxPrimitiveStringEqual2 (
+        Condition = BoraxPrimitiveStringEqual (
                       Interp,
                       SomePackage->Name,
-                      NameLength,
-                      NameData,
+                      Name,
                       &Match
                       );
         if (BORAX_BOOL (Condition)) {
@@ -909,11 +894,11 @@ BoraxPrimitiveTheSymbol (
 BORAX_OBJECT
 EFIAPI
 BoraxPrimitiveFindSymbol (
-  IN BORAX_INTERPRETER  *Interp,
-  IN BORAX_PACKAGE      *Package,
-  IN CONST CHAR16       *Name,
-  OUT BOOLEAN           *Found,
-  OUT BORAX_SYMBOL      **Symbol
+  IN BORAX_INTERPRETER   *Interp,
+  IN BORAX_PACKAGE       *Package,
+  IN BORAX_CONST_STRING  Name,
+  OUT BOOLEAN            *Found,
+  OUT BORAX_SYMBOL       **Symbol
   )
 {
   EFI_STATUS    Status;
@@ -984,10 +969,10 @@ BoraxPrimitiveFindSymbol (
 BORAX_OBJECT
 EFIAPI
 BoraxPrimitiveIntern (
-  IN BORAX_INTERPRETER  *Interp,
-  IN BORAX_PACKAGE      *Package,
-  IN CONST CHAR16       *Name,
-  OUT BORAX_SYMBOL      **Symbol
+  IN BORAX_INTERPRETER   *Interp,
+  IN BORAX_PACKAGE       *Package,
+  IN BORAX_CONST_STRING  Name,
+  OUT BORAX_SYMBOL       **Symbol
   )
 {
   EFI_STATUS    Status;
@@ -1047,9 +1032,9 @@ BoraxPrimitiveIntern (
 BORAX_OBJECT
 EFIAPI
 BoraxPrimitiveKeyword (
-  IN BORAX_INTERPRETER  *Interp,
-  IN CONST CHAR16       *Name,
-  OUT BORAX_SYMBOL      **Symbol
+  IN BORAX_INTERPRETER   *Interp,
+  IN BORAX_CONST_STRING  Name,
+  OUT BORAX_SYMBOL       **Symbol
   )
 {
   BORAX_PACKAGE  *Package =
@@ -1274,21 +1259,36 @@ type_error:
       return Condition;
     }
 
-    Condition = BoraxPrimitiveIntern (Interp, CommonLisp, L"OR", &Symbol);
+    Condition = BoraxPrimitiveIntern (
+                  Interp,
+                  CommonLisp,
+                  BoraxCString (L"OR"),
+                  &Symbol
+                  );
     if (BORAX_BOOL (Condition)) {
       return Condition;
     }
 
     Args[0] = BORAX_MAKE_POINTER (Symbol);
 
-    Condition = BoraxPrimitiveIntern (Interp, CommonLisp, L"CLASS", &Symbol);
+    Condition = BoraxPrimitiveIntern (
+                  Interp,
+                  CommonLisp,
+                  BoraxCString (L"CLASS"),
+                  &Symbol
+                  );
     if (BORAX_BOOL (Condition)) {
       return Condition;
     }
 
     Args[1] = BORAX_MAKE_POINTER (Symbol);
 
-    Condition = BoraxPrimitiveIntern (Interp, CommonLisp, L"SYMBOL", &Symbol);
+    Condition = BoraxPrimitiveIntern (
+                  Interp,
+                  CommonLisp,
+                  BoraxCString (L"SYMBOL"),
+                  &Symbol
+                  );
     if (BORAX_BOOL (Condition)) {
       return Condition;
     }
@@ -1382,7 +1382,7 @@ VectorLength (
     return BoraxPrimitiveSimpleCondition (
              Interp,
              Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
-             L"Malformed LengthAux in vector object",
+             BoraxCString (L"Malformed LengthAux in vector object"),
              0,
              NULL
              );
@@ -1448,15 +1448,15 @@ BoraxPrimitiveSimpleVectorU8Data (
 BORAX_OBJECT
 EFIAPI
 BoraxPrimitiveMakeString (
-  IN BORAX_INTERPRETER  *Interp,
-  IN CONST CHAR16       *CString,
-  OUT BORAX_OBJECT      *String
+  IN BORAX_INTERPRETER   *Interp,
+  IN BORAX_CONST_STRING  CString,
+  OUT BORAX_OBJECT       *String
   )
 {
   EFI_STATUS    Status;
   BORAX_OBJECT  ClassString  = Interp->Globals[BORAX_GLOBAL_CLASS_STRING];
   UINTN         CharsPerWord = sizeof (UINTN) / sizeof (CHAR16);
-  UINTN         CharLength   = StrLen (CString);
+  UINTN         CharLength   = CString.Length;
   UINTN         WordLength   = (CharLength + CharsPerWord - 1) / CharsPerWord;
   UINTN         LengthAux    = WordLength * CharsPerWord - CharLength;
   BORAX_RECORD  *Record;
@@ -1474,7 +1474,7 @@ BoraxPrimitiveMakeString (
     return BoraxPrimitiveHeapExhausted (Interp);
   }
 
-  CopyMem (Record->Data, CString, CharLength * sizeof (CHAR16));
+  CopyMem (Record->Data, CString.Data, CharLength * sizeof (CHAR16));
   *String = BORAX_MAKE_POINTER (Record);
   return BORAX_NIL;
 }
@@ -1483,73 +1483,51 @@ BORAX_OBJECT
 EFIAPI
 BoraxPrimitiveStringData (
   IN BORAX_INTERPRETER  *Interp,
-  IN BORAX_OBJECT       String,
-  OUT UINTN             *Length,
-  OUT CHAR16            **Data
+  IN BORAX_OBJECT       Object,
+  OUT BORAX_STRING      *String
   )
 {
   return SimpleVectorSubtypeData (
            Interp,
            Interp->Globals[BORAX_GLOBAL_CLASS_STRING],
            sizeof (CHAR16),
-           String,
-           Length,
-           (VOID **)Data
+           Object,
+           &String->Length,
+           (VOID **)&String->Data
            );
 }
 
 BORAX_OBJECT
 EFIAPI
 BoraxPrimitiveStringEqual (
-  IN BORAX_INTERPRETER  *Interp,
-  IN BORAX_OBJECT       String1,
-  IN CONST CHAR16       *String2,
-  OUT BOOLEAN           *Match
-  )
-{
-  return BoraxPrimitiveStringEqual2 (
-           Interp,
-           String1,
-           StrLen (String2),
-           String2,
-           Match
-           );
-}
-
-BORAX_OBJECT
-EFIAPI
-BoraxPrimitiveStringEqual2 (
-  IN BORAX_INTERPRETER  *Interp,
-  IN BORAX_OBJECT       String1,
-  IN UINTN              String2Length,
-  IN CONST CHAR16       *String2Data,
-  OUT BOOLEAN           *Match
+  IN BORAX_INTERPRETER   *Interp,
+  IN BORAX_OBJECT        String1,
+  IN BORAX_CONST_STRING  String2,
+  OUT BOOLEAN            *Match
   )
 {
   BORAX_OBJECT  Condition;
-  UINTN         String1Length;
-  CHAR16        *String1Data;
+  BORAX_STRING  TheString1;
   INTN          Compare;
 
   Condition = BoraxPrimitiveStringData (
                 Interp,
                 String1,
-                &String1Length,
-                &String1Data
+                &TheString1
                 );
   if (BORAX_BOOL (Condition)) {
     return Condition;
   }
 
-  if (String1Length != String2Length) {
+  if (TheString1.Length != String2.Length) {
     *Match = FALSE;
     return BORAX_NIL;
   }
 
   Compare = CompareMem (
-              String1Data,
-              String2Data,
-              String1Length * sizeof (CHAR16)
+              TheString1.Data,
+              String2.Data,
+              TheString1.Length * sizeof (CHAR16)
               );
   *Match = (Compare == 0);
   return BORAX_NIL;

@@ -634,7 +634,7 @@ BoraxTaskBind (
     return BoraxPrimitiveSimpleCondition (
              Task->Interp,
              Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR],
-             L"Invalid argument count: expected ~S, got ~S",
+             BoraxCString (L"Invalid argument count: expected ~S, got ~S"),
              ARRAY_SIZE (Args),
              Args
              );
@@ -708,7 +708,7 @@ EnterFunctionCommon (
     return BoraxPrimitiveSimpleCondition (
              Task->Interp,
              Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
-             L"Not implemented: shared bindings (when entering ~S)",
+             BoraxCString (L"Not implemented: shared bindings (when entering ~S)"),
              ARRAY_SIZE (Args),
              Args
              );
@@ -959,7 +959,7 @@ BoraxTaskTakeExit (
     return BoraxPrimitiveSimpleCondition (
              Task->Interp,
              Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR],
-             L"Not an exit object: ~S",
+             BoraxCString (L"Not an exit object: ~S"),
              ARRAY_SIZE (Args),
              Args
              );
@@ -973,7 +973,7 @@ BoraxTaskTakeExit (
     return BoraxPrimitiveSimpleCondition (
              Task->Interp,
              Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR],
-             L"Tried to take an expired exit: ~S",
+             BoraxCString (L"Tried to take an expired exit: ~S"),
              ARRAY_SIZE (Args),
              Args
              );
@@ -985,7 +985,7 @@ BoraxTaskTakeExit (
     return BoraxPrimitiveSimpleCondition (
              Task->Interp,
              Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR],
-             L"Tried to take an exit to another task: ~S",
+             BoraxCString (L"Tried to take an exit to another task: ~S"),
              ARRAY_SIZE (Args),
              Args
              );
@@ -1028,7 +1028,7 @@ BoraxTaskPopDynamic (
     return BoraxPrimitiveSimpleCondition (
              Task->Interp,
              Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR],
-             L"Tried to PopDynamic to depth ~S, but frame has depth ~S",
+             BoraxCString (L"Tried to PopDynamic to depth ~S, but frame has depth ~S"),
              ARRAY_SIZE (Args),
              Args
              );
@@ -1189,8 +1189,7 @@ BoraxTaskDebugStackTrace (
         BORAX_OBJECT              Name;
         BORAX_PACKAGE             *Package;
         BORAX_SYMBOL              *Symbol;
-        UINTN                     PackageLength, SymbolLength;
-        CHAR16                    *PackageData, *SymbolData;
+        BORAX_STRING              PackageName, SymbolName;
         BOOLEAN                   HaveName = FALSE;
 
         Condition = BoraxResolveFunction (Task->Interp, &Frame.Code, &Ops);
@@ -1224,8 +1223,7 @@ BoraxTaskDebugStackTrace (
         Condition = BoraxPrimitiveStringData (
                       Task->Interp,
                       Package->Name,
-                      &PackageLength,
-                      &PackageData
+                      &PackageName
                       );
         if (BORAX_BOOL (Condition)) {
           goto print_name;
@@ -1234,8 +1232,7 @@ BoraxTaskDebugStackTrace (
         Condition = BoraxPrimitiveStringData (
                       Task->Interp,
                       Symbol->Name,
-                      &SymbolLength,
-                      &SymbolData
+                      &SymbolName
                       );
         if (BORAX_BOOL (Condition)) {
           goto print_name;
@@ -1248,10 +1245,10 @@ print_name:
           DebugPrint (
             ErrorLevel,
             "  %.*s:%.*s:%u\n",
-            PackageLength,
-            PackageData,
-            SymbolLength,
-            SymbolData,
+            PackageName.Length,
+            PackageName.Data,
+            SymbolName.Length,
+            SymbolName.Data,
             Frame.PC
             );
         } else {

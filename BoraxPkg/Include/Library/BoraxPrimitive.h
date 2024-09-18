@@ -1,6 +1,7 @@
 #ifndef BORAX_PRIMITIVE_H
 #define BORAX_PRIMITIVE_H
 
+#include <Library/BaseLib.h>
 #include <Library/BoraxInterpreter.h>
 #include <Library/BoraxMemory.h>
 
@@ -42,6 +43,38 @@ BoraxGlobalInit (
   );
 
 typedef struct {
+  UINTN     Length;
+  CHAR16    *Data;
+} BORAX_STRING;
+
+typedef struct {
+  UINTN           Length;
+  CONST CHAR16    *Data;
+} BORAX_CONST_STRING;
+
+STATIC inline BORAX_CONST_STRING
+EFIAPI
+BoraxCString (
+  IN CONST CHAR16  *CString
+  )
+{
+  BORAX_CONST_STRING  Result = { StrLen (CString), CString };
+
+  return Result;
+}
+
+STATIC inline BORAX_CONST_STRING
+EFIAPI
+BoraxConstString (
+  IN BORAX_STRING  CString
+  )
+{
+  BORAX_CONST_STRING  Result = { CString.Length, CString.Data };
+
+  return Result;
+}
+
+typedef struct {
   BORAX_RECORD    Record;
   BORAX_OBJECT    FormatControl;
   BORAX_OBJECT    FormatArguments;
@@ -52,7 +85,7 @@ EFIAPI
 BoraxPrimitiveSimpleCondition (
   IN BORAX_INTERPRETER   *Interp,
   IN BORAX_OBJECT        Class,
-  IN CONST CHAR16        *Control,
+  IN BORAX_CONST_STRING  Control,
   IN UINTN               ArgsLength,
   IN CONST BORAX_OBJECT  *Args
   );
@@ -159,21 +192,10 @@ BoraxPrimitiveThePackage (
 BORAX_OBJECT
 EFIAPI
 BoraxPrimitiveFindPackage (
-  IN BORAX_INTERPRETER  *Interp,
-  IN CONST CHAR16       *Name,
-  OUT BOOLEAN           *Found,
-  OUT BORAX_PACKAGE     **Package
-  );
-
-// TODO: Principled string APIs
-BORAX_OBJECT
-EFIAPI
-BoraxPrimitiveFindPackage2 (
-  IN BORAX_INTERPRETER  *Interp,
-  IN UINTN              NameLength,
-  IN CONST CHAR16       *NameData,
-  OUT BOOLEAN           *Found,
-  OUT BORAX_PACKAGE     **Package
+  IN BORAX_INTERPRETER   *Interp,
+  IN BORAX_CONST_STRING  Name,
+  OUT BOOLEAN            *Found,
+  OUT BORAX_PACKAGE      **Package
   );
 
 typedef struct {
@@ -196,28 +218,28 @@ BoraxPrimitiveTheSymbol (
 BORAX_OBJECT
 EFIAPI
 BoraxPrimitiveFindSymbol (
-  IN BORAX_INTERPRETER  *Interp,
-  IN BORAX_PACKAGE      *Package,
-  IN CONST CHAR16       *Name,
-  OUT BOOLEAN           *Found,
-  OUT BORAX_SYMBOL      **Symbol
+  IN BORAX_INTERPRETER   *Interp,
+  IN BORAX_PACKAGE       *Package,
+  IN BORAX_CONST_STRING  Name,
+  OUT BOOLEAN            *Found,
+  OUT BORAX_SYMBOL       **Symbol
   );
 
 BORAX_OBJECT
 EFIAPI
 BoraxPrimitiveIntern (
-  IN BORAX_INTERPRETER  *Interp,
-  IN BORAX_PACKAGE      *Package,
-  IN CONST CHAR16       *Name,
-  OUT BORAX_SYMBOL      **Symbol
+  IN BORAX_INTERPRETER   *Interp,
+  IN BORAX_PACKAGE       *Package,
+  IN BORAX_CONST_STRING  Name,
+  OUT BORAX_SYMBOL       **Symbol
   );
 
 BORAX_OBJECT
 EFIAPI
 BoraxPrimitiveKeyword (
-  IN BORAX_INTERPRETER  *Interp,
-  IN CONST CHAR16       *Name,
-  OUT BORAX_SYMBOL      **Symbol
+  IN BORAX_INTERPRETER   *Interp,
+  IN BORAX_CONST_STRING  Name,
+  OUT BORAX_SYMBOL       **Symbol
   );
 
 // TODO: Distinguish between standard-class and built-in-class
@@ -282,37 +304,26 @@ BoraxPrimitiveSimpleVectorU8Data (
 BORAX_OBJECT
 EFIAPI
 BoraxPrimitiveMakeString (
-  IN BORAX_INTERPRETER  *Interp,
-  IN CONST CHAR16       *CString,
-  OUT BORAX_OBJECT      *String
+  IN BORAX_INTERPRETER   *Interp,
+  IN BORAX_CONST_STRING  CString,
+  OUT BORAX_OBJECT       *String
   );
 
 BORAX_OBJECT
 EFIAPI
 BoraxPrimitiveStringData (
   IN BORAX_INTERPRETER  *Interp,
-  IN BORAX_OBJECT       String,
-  OUT UINTN             *Length,
-  OUT CHAR16            **Data
+  IN BORAX_OBJECT       Object,
+  OUT BORAX_STRING      *String
   );
 
 BORAX_OBJECT
 EFIAPI
 BoraxPrimitiveStringEqual (
-  IN BORAX_INTERPRETER  *Interp,
-  IN BORAX_OBJECT       String1,
-  IN CONST CHAR16       *String2,
-  OUT BOOLEAN           *Match
-  );
-
-BORAX_OBJECT
-EFIAPI
-BoraxPrimitiveStringEqual2 (
-  IN BORAX_INTERPRETER  *Interp,
-  IN BORAX_OBJECT       String1,
-  IN UINTN              String2Length,
-  IN CONST CHAR16       *String2Data,
-  OUT BOOLEAN           *Match
+  IN BORAX_INTERPRETER   *Interp,
+  IN BORAX_OBJECT        String1,
+  IN BORAX_CONST_STRING  String2,
+  OUT BOOLEAN            *Match
   );
 
 #endif // BORAX_PRIMITIVE_H
