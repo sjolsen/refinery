@@ -272,17 +272,21 @@
     (call 'borax-vm/cl:error ('borax-vm/cl:type-error
                               :datum object :expected-type type)))
 
-(defmacro define-bytecode-accessor (name class slot)
-  (let* ((class (find-class class))
-         (slot (find slot (class-slots class) :key #'slot-definition-name))
-         (index (record-slot-location slot))
-         ;; TODO: Figure out how to support GENSYM
-         (var 'object))
-    `(define-bytecode-function ,name (,var)
-       (declare (local ,var))
-       (bind (,var))
-       (call 'borax-vm/cl:check-type (,var ,class))
-       (call :tail 'record-slot (,var ,index)))))
+(defun compile-bytecode-accessor (name class-name slot-name)
+  (let ((class (find-class class-name)))
+    (finalize-inheritance class)
+    (let* ((slot (find slot-name (class-slots class) :key #'slot-definition-name))
+           (index (record-slot-location slot))
+           ;; TODO: Figure out how to support GENSYM
+           (var 'object))
+      (compile-bytecode-function name `(,var)
+        `((declare (local ,var))
+          (bind (,var))
+          (call 'borax-vm/cl:check-type (,var ,class))
+          (call :tail 'record-slot (,var ,index)))))))
+
+(defmacro define-bytecode-accessor (name class-name slot-name)
+  `(compile-bytecode-accessor ',name ',class-name ',slot-name))
 
 ;; TODO: Generate these from the class definition
 (define-bytecode-accessor borax-vm/cl:class-name
