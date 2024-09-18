@@ -364,32 +364,55 @@
                    :name name
                    :arglist lambda-list)))
 
-(defun print-table (lines stream)
-  (let ((col0 0)
-        (col1 0))
-    (loop for (start bytes instruction) in lines
-          do (setf col0 (max col0 (length start))
-                   col1 (max col1 (length bytes))))
-    (loop for (start bytes instruction) in lines
-          do (format stream "  ~V<~A~>   ~V@<~A~>   ~A~%"
-                     col0 start
-                     col1 bytes
-                     instruction))))
+(defun split-lines (s)
+  (loop with length = (length s)
+        for start = 0 then (1+ end)
+        while (< start length)
+        for end = (or (position #\Newline s :start start) length)
+        collecting (subseq s start end)))
 
 (defun bytecode-disassemble (designator &optional (stream *standard-output*))
   (with-slots (name source code)
       (bytecode-function designator)
     (format stream "Disassembly for bytecode function ~S:~%" name)
-    (loop with length = (length source)
+    (loop with *package* = (symbol-package name)
+          with length = (length source)
           for (start . instruction) across source
           for i from 1 upto length
           for end = (if (< i length)
                         (car (aref source i))
                         (length code))
-          ;; TODO: Make this more efficient
-          for bytes = (coerce (subseq code start end) 'list)
-          collecting (list (format nil "~S" start)
-                           (format nil "~{~2,'0X~^ ~}" bytes)
-                           (format nil "~{~S~^ ~}" instruction))
-            into lines
-          finally (print-table lines stream))))
+          for byte-lines = (loop for m from start below end by 4
+                                 for n = (min (+ m 4) end)
+                                 collecting (format nil "~{~2,'0X~^ ~}"
+                                                    (coerce (subseq code m n) 'list)))
+          ;; First, allocate space based on where we expect the source column to
+          ;; start. Then, slurp the contents of the instruction list into a
+          ;; single logical block. Each element is printed according to the
+          ;; following logic:
+          ;;
+          ;;   1. A :fill conditional newline is inserted before the element,
+          ;;      allowing the pretty-printer to insert a line-break if there
+          ;;      isn't room on the current line
+          ;;
+          ;;   2. The element is printed and the indent is set to 2,
+          ;;      block-relative. This effectively indents every line except for
+          ;;      the first.
+          ;;
+          ;;   3. Each element is followed by a space, but only if there are
+          ;;      more elements following it. The pretty-printer will take care
+          ;;      of extraneous spaces when handling conditional newlines, but
+          ;;      not at the end of the list -- that's what this logic is for.
+          ;;
+          for source-lines = (split-lines
+                              (let ((*print-right-margin*
+                                      (- (or *print-right-margin* 80) 22)))
+                                (format nil "~@<~{~:_~S~2I~^ ~}~:>" instruction)))
+          do (loop for index = start then nil
+                   for byte-rest = byte-lines then (cdr byte-rest)
+                   for bytes = (car byte-rest)
+                   for source-rest = source-lines then (cdr source-rest)
+                   for source = (car source-rest)
+                   while (or index bytes source)
+                   do (format stream "~5<~A~>   ~11@<~A~>   ~A~&"
+                              (or index "") (or bytes "") (or source ""))))))
