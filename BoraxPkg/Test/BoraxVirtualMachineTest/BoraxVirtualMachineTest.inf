@@ -17,10 +17,14 @@
 
 [Sources]
   BoraxVirtualMachineTest.cpp
+  MemoryTest.cpp
+  MemoryTest.hpp
   MockError.hpp
   MockEvent.cpp
   MockEvent.hpp
   MockFile.cpp
   MockFile.hpp
+  ObjectFileTest.cpp
   ProtocolClass.hpp
   TracingAllocator.hpp
+  TracingAllocator.cpp
