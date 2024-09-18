@@ -3,6 +3,7 @@
   (:use :cl-locatives
         :borax-virtual-machine/bytecode
         :borax-virtual-machine/image)
+  (:shadow #:write-character #:write-string)
   (:export #:make-initial-image))
 
 (in-package :borax-virtual-machine/initial-image)
@@ -24,6 +25,10 @@
    (class :accessor borax-vm/cl:find-class))
   (:metaclass record-class))
 
+(defclass borax-vm/cl:character ()
+  ()
+  (:metaclass borax-vm/cl:class))
+
 (defclass borax-vm/cl:fixnum ()
   ()
   (:metaclass borax-vm/cl:class))
@@ -32,7 +37,43 @@
   ()
   (:metaclass borax-vm/cl:class))
 
+(defclass borax-vm/cl:null (borax-vm/cl:list)
+  ()
+  (:metaclass borax-vm/cl:class))
+
+(defclass built-in-function ()
+  ()
+  (:metaclass borax-vm/cl:class))
+
+(defclass constant ()
+  ()
+  (:metaclass borax-vm/cl:class))
+
+(defclass exit ()
+  ()
+  (:metaclass borax-vm/cl:class))
+
+(defclass interpreter ()
+  ()
+  (:metaclass borax-vm/cl:class))
+
 (defclass multiple-values ()
+  ()
+  (:metaclass borax-vm/cl:class))
+
+(defclass pin ()
+  ()
+  (:metaclass borax-vm/cl:class))
+
+(defclass task ()
+  ()
+  (:metaclass borax-vm/cl:class))
+
+(defclass unbound ()
+  ()
+  (:metaclass borax-vm/cl:class))
+
+(defclass weak-pointer ()
   ()
   (:metaclass borax-vm/cl:class))
 
@@ -93,6 +134,10 @@
   (:metaclass record-class))
 
 (defclass location-error (borax-vm/cl:cell-error)
+  ()
+  (:metaclass record-class))
+
+(defclass class-not-found-error (borax-vm/cl:cell-error)
   ()
   (:metaclass record-class))
 
@@ -181,9 +226,6 @@
   (borax-vm/cl:intern (symbol-name object)
                       (reify (symbol-package object))))
 
-(defmethod reify :after ((object borax-vm/cl:standard-class))
-  (ensure-find-class object))
-
 (defmacro borax-vm/cl:setq (&rest items)
   (loop for (symbol value) on items by #'cddr
         collecting `(setf (borax-vm/cl:symbol-value (reify ',symbol)) ,value)
@@ -194,7 +236,7 @@
   (declare (local l acc val))
     (bind (l))
     (move acc 0)
-    (jump :if (not l) end)
+    (return :if (not l) (acc))
   loop
     (call 'car-cdr (l))
     (bind (val l))
@@ -204,26 +246,291 @@
   end
     (return (acc)))
 
+(define-bytecode-function borax-vm/cl:find (item list)
+  (declare (local item list first))
+    (bind (item list))
+  loop
+    (return :if (not list) (nil))
+    (call 'car-cdr (list))
+    (bind (first list))
+    (jump :if (not (eq item first)) loop)
+    (return (first)))
+
+(define-bytecode-function borax-vm/cl:typep (object type)
+  (declare (local object type prec))
+    (bind (object type))
+    (return :if (class-typep object type) (t))
+    ;; TODO: Type specifiers and subclassing
+    (return (nil)))
+
+(define-bytecode-function borax-vm/cl:check-type (object type)
+  (declare (local object type match))
+    (bind (object type))
+    (call 'borax-vm/cl:typep (object type))
+    (bind (match))
+    (return :if match (nil))
+    (call 'borax-vm/cl:error ('borax-vm/cl:type-error
+                              :datum object :expected-type type)))
+
+(defun compile-bytecode-accessor (name class-name slot-name)
+  (let ((class (find-class class-name)))
+    (finalize-inheritance class)
+    (let* ((slot (find slot-name (class-slots class) :key #'slot-definition-name))
+           (index (record-slot-location slot))
+           ;; TODO: Figure out how to support GENSYM
+           (var 'object))
+      (compile-bytecode-function name `(,var)
+        `((declare (local ,var))
+          (bind (,var))
+          (call 'borax-vm/cl:check-type (,var ,class))
+          (call :tail 'record-slot (,var ,index)))))))
+
+(defmacro define-bytecode-accessor (name class-name slot-name)
+  `(compile-bytecode-accessor ',name ',class-name ',slot-name))
+
+;; TODO: Generate these from the class definition
+(define-bytecode-accessor borax-vm/cl:class-name
+  borax-vm/cl:standard-class borax-virtual-machine/image::name)
+
+(define-bytecode-accessor borax-vm/cl:package-name
+  borax-vm/cl:package name)
+
+(define-bytecode-accessor borax-vm/cl:symbol-package
+  borax-vm/cl:symbol package)
+
+(define-bytecode-accessor borax-vm/cl:symbol-name
+  borax-vm/cl:symbol name)
+
+(define-bytecode-accessor borax-vm/cl:symbol-value
+  borax-vm/cl:symbol value)
+
+(define-bytecode-accessor borax-vm/cl:symbol-function
+  borax-vm/cl:symbol function)
+
+(define-bytecode-accessor borax-vm/cl:find-class
+  borax-vm/cl:symbol class)
+
+(define-bytecode-function print-list (object)
+  (declare (local object item rest))
+    (bind (object))
+    (call 'write-character (#\())
+    (call 'car-cdr (object))
+    (bind (item rest))
+    (call 'print-recursive (item))
+  loop
+    (jump :if (not rest) loop-end)
+    (jump :if (not (class-typep rest 'cons)) loop-rest)
+    (call 'write-character (#\Space))
+    (call 'car-cdr (rest))
+    (bind (item rest))
+    (call 'print-recursive (item))
+    (jump loop)
+  loop-rest
+    (call 'write-string (" . "))
+    (call 'print-recursive (rest))
+  loop-end
+    (call 'write-character (#\)))
+    (return (object)))
+
+(define-bytecode-function print-byte-vector (object)
+  (declare (local object length i item))
+    (bind (object))
+    (call 'byte-vector-length)
+    (bind (length))
+    (call 'write-string ("<BYTE-VECTOR"))
+    (move i 0)
+    (jump loop-test)
+  loop
+    (call 'write-character (#\Space))
+    (call 'byte-vector-ref (object i))
+    (call 'print-byte)
+    (call '+ (i 1))
+    (bind (i))
+  loop-test
+    (jump :if (not (eq i length)) loop)
+    (call 'write-character (#\>))
+    (return (object)))
+
+(define-bytecode-function print-symbol (object)
+  (declare (local object package other-package))
+    (bind (object))
+    (call 'symbol-package)
+    (bind (package))
+    (call 'borax-vm/cl:find-package ("COMMON-LISP"))
+    (bind (other-package))
+    (jump :if (eq package other-package) name)
+    (call 'borax-vm/cl:find-package ("KEYWORD"))
+    (bind (other-package))
+    (jump :if (eq package other-package) colon)
+    (call 'borax-vm/cl:package-name (package))
+    (call 'write-string)
+  colon
+    (call 'write-character (#\Colon))
+  name
+    (call 'symbol-name (object))
+    (call 'write-string)
+    (return (object)))
+
+(define-bytecode-function print-object-record (object)
+  (declare (local object class-name length i))
+    (bind (object))
+    (call 'borax-vm/cl:class-of)
+    (call 'borax-vm/cl:class-name)
+    (bind (class-name))
+    (call 'write-character (#\<))
+    (call 'print-symbol (class-name))
+    (call 'record-length (object))
+    (bind (length))
+    (move i 0)
+    (jump loop-test)
+  loop
+    (call 'write-character (#\Space))
+    (call 'print-fixnum (i))
+    (call 'write-character (#\=))
+    (call 'record-slot (object i))
+    (call 'print-recursive)
+    (call '+ (i 1))
+    (bind (i))
+  loop-test
+    (jump :if (not (eq i length)) loop)
+    (call 'write-character (#\>))
+    (return (object)))
+
+(define-bytecode-function print-simple-vector (object)
+  (declare (local object length i))
+    (bind (object))
+    (call 'write-string ("#("))
+    (call 'record-length (object))
+    (bind (length))
+    (move i 0)
+    (jump :if (not (eq i length)) loop-entry)
+    (jump loop-end)
+  loop
+    (call 'write-character (#\Space))
+  loop-entry
+    (call 'record-slot (object i))
+    (call 'print-recursive)
+    (call '+ (i 1))
+    (bind (i))
+    (jump :if (not (eq i length)) loop)
+  loop-end
+    (call 'write-character (#\)))
+    (return (object)))
+
+(define-bytecode-function print-standard-class (object)
+  (declare (local object length i))
+    (bind (object))
+    (call 'write-string ("<STANDARD-CLASS "))
+    (call 'borax-vm/cl:class-name (object))
+    (call 'print-symbol)
+    (call 'write-character (#\>))
+    (return (object)))
+
+(define-bytecode-function print-recursive (object)
+  (declare (local object rest))
+    (bind (object))
+    ; nil
+    (jump :if object not-nil)
+    (call 'write-string ("NIL"))
+    (return (object))
+  not-nil
+    ; fixnum
+    (call :tail :if (class-typep object 'borax-vm/cl:fixnum)
+          'print-fixnum (object))
+    ; character
+    (jump :if (not (class-typep object 'borax-vm/cl:character)) not-char)
+    (call 'write-string ("#\\"))
+    ;; TODO: non-printable characters
+    (call 'write-character (object))
+    (return (object))
+  not-char
+    ; cons
+    (call :tail :if (class-typep object 'borax-vm/cl:cons)
+          'print-list (object))
+    ; string
+    (jump :if (not (class-typep object 'borax-vm/cl:string)) not-string)
+    (call 'write-character (#\"))
+    (call 'write-string (object))
+    (call 'write-character (#\"))
+    (return (object))
+  not-string
+    ; simple-vector-unsigned-byte-8
+    (call :tail :if (class-typep object 'simple-vector-unsigned-byte-8)
+          'print-byte-vector (object))
+    ; other word-record
+    (jump :if (not (class-typep object 'word-record-object)) not-word-record)
+    (call 'write-string ("<WORD-RECORD>"))
+    (return (object))
+  not-word-record
+    ; symbol
+    (call :tail :if (class-typep object 'borax-vm/cl:symbol)
+          'print-symbol (object))
+    ; simple-vector
+    (call :tail :if (class-typep object 'borax-vm/cl:simple-vector)
+          'print-simple-vector (object))
+    ; standard-class
+    (call :tail :if (class-typep object 'borax-vm/cl:standard-class)
+          'print-standard-class (object))
+    ; other object-record
+    (call :tail :if (class-typep object 'record-object)
+          'print-object-record (object))
+    ; weak-pointer
+    (jump :if (not (class-typep object 'weak-pointer)) not-weak-pointer)
+    (call 'write-string ("<WEAK-POINTER>"))
+    (return (object))
+  not-weak-pointer
+    ; pin
+    (jump :if (not (class-typep object 'pin)) not-pin)
+    (call 'write-string ("<PIN>"))
+    (return (object))
+  not-pin
+    (call 'error ('type-error :datum object :expected-type 't)))
+
+(define-bytecode-function print-labelled (symbol)
+  (declare (local symbol value))
+    (bind (symbol))
+    (call 'symbol-name (symbol))
+    (call 'write-string)
+    (call 'write-string (" = "))
+    (call 'symbol-value (symbol))
+    (call 'print-recursive)
+    (call 'write-character (#\Newline))
+    (return))
+
+(define-bytecode-function print-sum-list (symbol)
+  (declare (local symbol value))
+    (bind (symbol))
+    (call 'write-string ("(SUM-LIST "))
+    (call 'symbol-name (symbol))
+    (call 'write-string)
+    (call 'write-string (") = "))
+    (call 'symbol-value (symbol))
+    (call 'sum-list)
+    (call 'print-recursive)
+    (call 'write-character (#\Newline))
+    (return))
+
+(define-bytecode-function demo ()
+  (call 'print-labelled ('numbers))
+  (call 'print-labelled ('stuff))
+  (call 'print-labelled ('letters))
+  (call 'print-labelled ('hello))
+  (call 'print-labelled ('sum-list))
+  (call 'print-sum-list ('numbers))
+  (return))
+
+(defun ensure-bytecode-function (name)
+  (setf (borax-vm/cl:symbol-function (reify name))
+        (bytecode-function name)))
+
 (defun make-initial-image ()
   (setf (root *image*) (make-instance 'global-environment))
-  (ensure-find-class 'borax-vm/cl:cons)
-  (ensure-find-class 'borax-vm/cl:fixnum)
-  (ensure-find-class 'borax-vm/cl:function)
-  (ensure-find-class 'borax-vm/cl:package)
-  (ensure-find-class 'borax-vm/cl:simple-error)
-  (ensure-find-class 'borax-vm/cl:simple-vector)
-  (ensure-find-class 'borax-vm/cl:type-error)
-  (ensure-find-class 'borax-vm/cl:undefined-function)
-  (ensure-find-class 'heap-exhausted)
-  (ensure-find-class 'location-error)
-  (ensure-find-class 'multiple-values)
-  (ensure-find-class 'simple-program-error)
-  (ensure-find-class 'simple-vector-unsigned-byte-8)
-  (ensure-find-class 'stack-exhausted)
-  (let ((keyword (ensure-package "KEYWORD")))
-    (borax-vm/cl:intern "CONSTANT" keyword)
-    (borax-vm/cl:intern "LOCAL" keyword)
-    (borax-vm/cl:intern "SHARED" keyword))
+  ;; TODO: Principled namespace management
+  (loop for class across +classes+
+        do (ensure-find-class class))
+  (loop for name being each hash-key in *bytecode-functions*
+        do (ensure-bytecode-function name))
+  ;; Demo content
   (borax-vm/cl:setq
    borax-vm/cl:nil borax-vm/cl:nil
    numbers '(-100 -3 0 1 2 3 4 5 43 343 8675309)
@@ -231,6 +538,5 @@
    letters #(#\A #\B #\C #\D)
    hello "Hellorld!"
    sum-list (bytecode-function 'sum-list))
-  (setf (borax-vm/cl:symbol-function (reify 'sum-list))
-        (bytecode-function 'sum-list))
+  (ensure-bytecode-function 'demo)
   (reify-image))

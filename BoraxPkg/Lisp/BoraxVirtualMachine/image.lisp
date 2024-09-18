@@ -18,6 +18,7 @@
            #:+classes+ #:default-direct-superclass
            ;; record-object
            #:record-object #:record-class
+           #:record-slot-p #:record-slot-location
            #:record-slots #:do-record-slots
            ;; borax-vm/cl:simple-vector
            #:vector-data #:word-record-object #:word-record-class
@@ -178,7 +179,16 @@
           when (typep object 'object)
             count (= i (index object)) into dead
             and do (setf (aref objects i) 0)
-          finally (format t "INFO: collected ~A dead object~:P~%" dead))))
+          finally (format t "INFO: collected ~A dead object~:P~%" dead))
+    (format t "INFO: ~A object~:P remain:~%" (length objects))
+    (loop with table = (make-hash-table)
+          for object across objects
+          do (incf (gethash (class-of object) table 0))
+          finally (loop for class across +classes+
+                        for count = (gethash class table 0)
+                        when (> count 0)
+                          do (format t "  ~3:<~A~> ~7@<object~:P~> of type ~A~%"
+                                     count (class-name class))))))
 
 (defclass borax-vm/cl:class (standard-class)
   ((classes :type (vector *)
@@ -191,7 +201,7 @@
   (setf (index class) (vector-push-extend class +classes+)))
 
 (defgeneric default-direct-superclass (class)
-  (:method ((class borax-vm/cl:class)) (find-class 'object)))
+  (:method ((class borax-vm/cl:class)) (find-class 'borax-vm/cl:t)))
 
 (defun default-initialize-instance (call-next-method class initargs)
   (destructuring-bind (&rest initargs &key direct-superclasses &allow-other-keys)
@@ -208,7 +218,15 @@
   (default-initialize-instance #'call-next-method class initargs))
 
 (defmethod validate-superclass ((class borax-vm/cl:class) superclass)
-  (subclassp superclass (default-direct-superclass class)))
+  ;; TODO: Find a less hacky way to bootstrap this
+  (if (eq (class-name class) 'borax-vm/cl:t)
+      (subclassp superclass (find-class 'object))
+      (subclassp superclass (default-direct-superclass class))))
+
+;; TODO: Probably just rename object to T
+(defclass borax-vm/cl:t (object)
+  ()
+  (:metaclass borax-vm/cl:class))
 
 (defun ensure-image-class (class)
   (with-slots (index) class
@@ -218,7 +236,8 @@
       (when (null (aref classes index))
         (setf (aref classes index)
               (make-instance 'borax-vm/cl:standard-class
-                             :name (class-name class))))
+                             :name (class-name class)
+                             :precedence-list (compute-precedence-list class))))
       (values classes index))))
 
 (defun image-class (class)
@@ -241,7 +260,11 @@
 (defmethod reify ((object borax-vm/cl:class))
   (image-class object))
 
-(defclass borax-vm/cl:cons ()
+(defclass borax-vm/cl:list ()
+  ()
+  (:metaclass borax-vm/cl:class))
+
+(defclass borax-vm/cl:cons (borax-vm/cl:list)
   ((borax-vm/cl:car :accessor borax-vm/cl:car
                     :initarg :car)
    (borax-vm/cl:cdr :accessor borax-vm/cl:cdr
@@ -266,7 +289,9 @@
               (,store-var (borax-vm/cl:cons ,obj ,get)))
          ,set))))
 
-(defclass record-object (object) ())
+(defclass record-object ()
+  ()
+  (:metaclass borax-vm/cl:class))
 
 (defclass record-class (borax-vm/cl:class)
   ((record-slots :type list
@@ -342,8 +367,19 @@
 
 (defclass borax-vm/cl:standard-class ()
   ((name :initarg :name
-         :reader borax-vm/cl:class-name))
+         :reader borax-vm/cl:class-name)
+   (precedence-list :initarg :precedence-list))
   (:metaclass record-class))
+
+(defun compute-precedence-list (class)
+  (finalize-inheritance class)
+  (loop with class-t = (find-class 'borax-vm/cl:t)
+        for superclass in (class-precedence-list class)
+        when (subtypep superclass class-t)
+          collect superclass into classes
+        finally (if classes
+                    (return (reify classes))
+                    (error "No class precedence list for ~S" class))))
 
 (defclass borax-vm/cl:simple-vector ()
   ((vector-data :type vector

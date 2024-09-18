@@ -1,6 +1,5 @@
 #include <Library/BoraxBytecode.h>
 
-#include <Library/DebugLib.h>
 #include <Library/BoraxPrimitive.h>
 
 STATIC BORAX_OBJECT
@@ -69,14 +68,13 @@ ReadByte (
     return BoraxPrimitiveSimpleCondition (
              State->Task->Interp,
              State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR],
-             L"Code index out of bounds: ~S",
+             BoraxCString (L"Code index out of bounds: ~S"),
              ARRAY_SIZE (Args),
              Args
              );
   }
 
   *Byte = State->CodeData[State->Pos++];
-  DEBUG ((DEBUG_ERROR, "Read byte %02x\n", *Byte));
   return BORAX_NIL;
 }
 
@@ -219,7 +217,7 @@ LoadLocation (
       return BoraxPrimitiveSimpleCondition (
                State->Task->Interp,
                State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
-               L"Not implemented: access to location (SHARED ~S ~S)",
+               BoraxCString (L"Not implemented: access to location (SHARED ~S ~S)"),
                ARRAY_SIZE (Args),
                Args
                );
@@ -235,7 +233,7 @@ LoadLocation (
       return BoraxPrimitiveSimpleCondition (
                State->Task->Interp,
                State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
-               L"Not implemented: access to location (CLOSURE ~S ~S)",
+               BoraxCString (L"Not implemented: access to location (CLOSURE ~S ~S)"),
                ARRAY_SIZE (Args),
                Args
                );
@@ -265,7 +263,7 @@ StoreLocation (
       return BoraxPrimitiveSimpleCondition (
                State->Task->Interp,
                State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR],
-               L"Tried to BIND location (CONSTANT ~S)",
+               BoraxCString (L"Tried to BIND location (CONSTANT ~S)"),
                ARRAY_SIZE (Args),
                Args
                );
@@ -294,7 +292,7 @@ StoreLocation (
       return BoraxPrimitiveSimpleCondition (
                State->Task->Interp,
                State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
-               L"Not implemented: access to location (SHARED ~S ~S)",
+               BoraxCString (L"Not implemented: access to location (SHARED ~S ~S)"),
                ARRAY_SIZE (Args),
                Args
                );
@@ -310,7 +308,7 @@ StoreLocation (
       return BoraxPrimitiveSimpleCondition (
                State->Task->Interp,
                State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
-               L"Not implemented: access to location (CLOSURE ~S ~S)",
+               BoraxCString (L"Not implemented: access to location (CLOSURE ~S ~S)"),
                ARRAY_SIZE (Args),
                Args
                );
@@ -330,6 +328,7 @@ ProcessCondition (
   )
 {
   BORAX_OBJECT  Condition;
+  BOOLEAN       Negated = !(CFlag & 1);
 
   switch (CFlag) {
     case BORAX_CFLAG_UNCONDITIONAL:
@@ -337,24 +336,6 @@ ProcessCondition (
       return BORAX_NIL;
 
     case BORAX_CFLAG_BOOLEAN:
-    {
-      LOCATION      Location;
-      BORAX_OBJECT  Value;
-
-      Condition = ReadLocation (State, &Location);
-      if (BORAX_BOOL (Condition)) {
-        return Condition;
-      }
-
-      Condition = LoadLocation (State, &Location, &Value);
-      if (BORAX_BOOL (Condition)) {
-        return Condition;
-      }
-
-      *DoIt = BORAX_BOOL (Value);
-      return BORAX_NIL;
-    }
-
     case BORAX_CFLAG_NEGATED_BOOLEAN:
     {
       LOCATION      Location;
@@ -370,7 +351,78 @@ ProcessCondition (
         return Condition;
       }
 
-      *DoIt = !BORAX_BOOL (Value);
+      *DoIt = Negated ^ BORAX_BOOL (Value);
+      return BORAX_NIL;
+    }
+
+    case BORAX_CFLAG_EQ:
+    case BORAX_CFLAG_NEGATED_EQ:
+    {
+      LOCATION      LocationA, LocationB;
+      BORAX_OBJECT  A, B;
+
+      Condition = ReadLocation (State, &LocationA);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = ReadLocation (State, &LocationB);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = LoadLocation (State, &LocationA, &A);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = LoadLocation (State, &LocationB, &B);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      *DoIt = Negated ^ BORAX_EQ (A, B);
+      return BORAX_NIL;
+    }
+
+    case BORAX_CFLAG_TYPEP:
+    case BORAX_CFLAG_NEGATED_TYPEP:
+    {
+      LOCATION      LocationValue, LocationType;
+      BORAX_OBJECT  Value, Type;
+      BOOLEAN       Match;
+
+      Condition = ReadLocation (State, &LocationValue);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = ReadLocation (State, &LocationType);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = LoadLocation (State, &LocationValue, &Value);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = LoadLocation (State, &LocationType, &Type);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = BoraxPrimitiveClassTypep (
+                    State->Task->Interp,
+                    Value,
+                    Type,
+                    &Match
+                    );
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      *DoIt = Negated ^ Match;
       return BORAX_NIL;
     }
 
@@ -380,7 +432,7 @@ ProcessCondition (
       return BoraxPrimitiveSimpleCondition (
                State->Task->Interp,
                State->Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR],
-               L"Illegal condition flag: ~S",
+               BoraxCString (L"Illegal condition flag: ~S"),
                ARRAY_SIZE (Args),
                Args
                );
@@ -554,6 +606,11 @@ BytecodeFunctionRun (
       LOCATION      Location;
       BORAX_OBJECT  Function;
 
+      Condition = DecodeField (&State, &CFlag, 1);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
       Condition = ProcessCondition (&State, CFlag, &DoIt);
       if (BORAX_BOOL (Condition)) {
         return Condition;
@@ -580,14 +637,11 @@ BytecodeFunctionRun (
       }
 
       if (DoIt) {
-        // Update the PC before entering the new stack frame
-        Task->Registers.PC = State.Pos;
-
         // TODO: Handle the fast flag
         if (Tail) {
           return BoraxTaskEnterFunctionTail (Task, Function);
         } else {
-          return BoraxTaskEnterFunction (Task, Function);
+          return BoraxTaskEnterFunction (Task, Function, State.Pos);
         }
       } else {
         Task->Registers.PC = State.Pos;
@@ -600,6 +654,11 @@ BytecodeFunctionRun (
       UINT8    CFlag = Opcode & 0x0F;
       BOOLEAN  DoIt;
       UINT16   JumpTarget;
+
+      Condition = DecodeField (&State, &CFlag, 4);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
 
       Condition = ProcessCondition (&State, CFlag, &DoIt);
       if (BORAX_BOOL (Condition)) {
@@ -625,6 +684,11 @@ BytecodeFunctionRun (
       UINT8    CFlag   = (Opcode >> 3) & 0x01;
       UINT8    Opcount = (Opcode >> 0) & 0x07;
       BOOLEAN  DoIt;
+
+      Condition = DecodeField (&State, &CFlag, 1);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
 
       Condition = ProcessCondition (&State, CFlag, &DoIt);
       if (BORAX_BOOL (Condition)) {
@@ -754,6 +818,11 @@ BytecodeFunctionRun (
       BOOLEAN   DoIt;
       LOCATION  Dst, Src;
 
+      Condition = DecodeField (&State, &CFlag, 4);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
       Condition = ProcessCondition (&State, CFlag, &DoIt);
       if (BORAX_BOOL (Condition)) {
         return Condition;
@@ -795,7 +864,7 @@ BytecodeFunctionRun (
       return BoraxPrimitiveSimpleCondition (
                Task->Interp,
                Task->Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
-               L"Not implemented: instruction ~2,'0X",
+               BoraxCString (L"Not implemented: instruction ~2,'0X"),
                ARRAY_SIZE (Args),
                Args
                );
@@ -806,9 +875,9 @@ BytecodeFunctionRun (
 STATIC BORAX_OBJECT
 EFIAPI
 BytecodeFunctionName (
-  IN BORAX_INTERPRETER     *Interp,
-  IN BORAX_OBJECT          Function,
-  OUT BORAX_FUNCTION_NAME  *Name
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_OBJECT       Function,
+  OUT BORAX_OBJECT      *Name
   )
 {
   BORAX_OBJECT             Condition;
@@ -819,8 +888,7 @@ BytecodeFunctionName (
     return Condition;
   }
 
-  Name->Tag    = BORAX_FUNCTION_NAME_OBJECT;
-  Name->Object = F->Name;
+  *Name = F->Name;
   return BORAX_NIL;
 }
 
@@ -880,7 +948,7 @@ BytecodeFunctionShared (
   return BoraxPrimitiveSimpleCondition (
            Interp,
            Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
-           L"Not implemented: BytecodeFunctionShared",
+           BoraxCString (L"Not implemented: BytecodeFunctionShared"),
            0,
            NULL
            );

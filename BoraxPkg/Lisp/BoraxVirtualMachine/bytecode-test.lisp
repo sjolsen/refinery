@@ -36,7 +36,7 @@
 (deftest mapcar-1-test (bytecode-example-suite)
   (with-image nil
     (let ((bf (reify (bytecode-function 'sum-list))))
-      (assert-equalp +sum-list-bytecode+ (bytecode bf))
+      (assert-equalp +sum-list-bytecode+ (vector-data (bytecode bf)))
       (assert-equalp #(0 car-cdr +)      (bytecode-constants bf))
       (assert-equalp 3                   (bytecode-locals bf))
       (assert-equalp #()                 (bytecode-shared bf))

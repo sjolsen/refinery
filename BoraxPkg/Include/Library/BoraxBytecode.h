@@ -285,12 +285,10 @@
  * The stack and registers
  * -----------------------
  *
- * Each task has a stack and a handful of registers, namely the base pointer
- * (BP), stack pointer (SP), values register (VR), and program counter (PC). The
- * stack is a simple vector of object references that are dynamically
- * partitioned into activation records. Each activation record corresponds to a
- * function call. An activation record is laid out as follows (with addresses
- * increasing upward):
+ * Each task has a stack. The stack is a simple vector of object references that
+ * are dynamically partitioned into activation records. Each activation record
+ * corresponds to a function call. An activation record is laid out as follows
+ * (with addresses increasing upward):
  *
  *   SP -> +--------------------+
  *         |                    |
@@ -318,6 +316,18 @@
  *         |      Saved BP      |
  *   BP -> +--------------------+ <- Previous frame's SP
  *         | ////////////////// |
+ *
+ * The layout of the activation record is described by four registers:
+ *
+ *   - BP: The base pointer, which marks the beginning of the frame
+ *   - SP: The stack pointer, which marks the end of the frame
+ *   - LC: The local binding count
+ *   - SC: The shared binding block count
+ *
+ * The other registers are:
+ *
+ *   - VR: The values register, used for call, return, and exit data
+ *   - PC: The program counter
  *
  * On function entry, the caller's BP and PC are saved and the callee's code
  * pointer is pushed onto the stack. The interpreter populates the closure
@@ -640,24 +650,26 @@
  *   1000  PUSH-EXIT         0001         0  Unconditional           0
  *   1000  PUSH-CATCH        0010         1  Boolean                 1
  *   1000  PUSH-CLEANUP      0011         2  Negated boolean         1
- *                                        3  ...
- *   1000  (unused)          0100
- *   ...   ...               ...
- *   1011  (unused)          1111              OPERAND COUNT (N)
- *
- *   1100  POP-DYNAMIC       DDDD       Count  Interpretation
- *   1101  BIND              NNNN       =====  =======================
- *   1110  CAPTURE           NNNN           0  (no values)
- *   1111  MOVE              CCCC           1  :MULTIPLE-VALUES l
+ *                                        3  EQ                      2
+ *   1000  (unused)          0100         4  Negated EQ              2
+ *   ...   ...               ...          5  TYPEP                   2
+ *   1011  (unused)          1111         6  Negated TYPEP           2
+ *                                        7  ...
+ *   1100  POP-DYNAMIC       DDDD
+ *   1101  BIND              NNNN
+ *   1110  CAPTURE           NNNN              OPERAND COUNT (N)
+ *   1111  MOVE              CCCC
+ *                                      Count  Interpretation
+ *   <-- MSB              LSB -->       =====  =======================
+ *                                          0  (no values)
+ *                                          1  :MULTIPLE-VALUES l
  *                                      2 + N  :VALUES l_0 ... l_(N-1)
- *   <-- MSB              LSB -->
+ *
  *
  * The condition flag is one or four bits, depending on the operation. The
- * condition flag field is interpreted as an unsigned integer. Note that for
- * instructions with a one-bit field, the only available tests are unconditional
- * (i.e. no test) and boolean. The condition flag is not field-encoded. Non-zero
- * values of the condition flag result in additional operands being read for the
- * test.
+ * condition flag field is interpreted as an unsigned integer. The condition
+ * flag is field-encoded. Non-zero values of the condition flag result in
+ * additional operands being read for the test.
  *
  * The depth field is field-encoded and is specific to the POP-DYNAMIC
  * instruction. It indicates the depth to which the interpreter should reset the
@@ -674,8 +686,9 @@
  * --------
  *
  * If the condition flag is present and non-zero, its value will dictate the
- * number of condition operands to load. These operands immediately follows the
- * opcode and any continuation bytes used to encode the operand count.
+ * number of condition operands to load. These operands immediately follow the
+ * opcode and condition flag continuation byte (if present). Continuation
+ * bytes used to encode the operand count follow the condition operands.
  *
  * After this are any fixed-function operands dictated by the operation,
  * followed by the remaining operands. Operands are encoded in three ways,
@@ -854,6 +867,10 @@ enum {
   BORAX_CFLAG_UNCONDITIONAL   = 0,
   BORAX_CFLAG_BOOLEAN         = 1,
   BORAX_CFLAG_NEGATED_BOOLEAN = 2,
+  BORAX_CFLAG_EQ              = 3,
+  BORAX_CFLAG_NEGATED_EQ      = 4,
+  BORAX_CFLAG_TYPEP           = 5,
+  BORAX_CFLAG_NEGATED_TYPEP   = 6,
 };
 
 /*

@@ -1,12 +1,14 @@
 (uiop:define-package :borax-virtual-machine/bytecode
   (:mix :borax-parsing :uiop/common-lisp :borax-virtual-machine/common-lisp)
   (:use :borax-virtual-machine/image)
-  (:export #:bytecode-function
-           #:define-bytecode-function
+  (:export #:bytecode-function #:*bytecode-functions*
+           #:compile-bytecode-function
+           #:define-bytecode-function #:bytecode-disassemble
            #:bytecode #:bytecode-constants #:bytecode-locals #:bytecode-shared
            #:bytecode-closure #:bytecode-name #:bytecode-arglist #:bytecode-entry
            #:local #:shared #:closure
-           #:call #:jump #:bind #:move))
+           #:call #:jump #:bind #:move
+           #:class-typep))
 
 (in-package :borax-virtual-machine/bytecode)
 
@@ -30,6 +32,8 @@
 (defstruct storage-block
   (count 0))
 
+;; TODO: This should be called bytecode-function, and what is currently called
+;; bytecode-function should be called borax-runtime:bytecode-function.
 (defclass bytecode-parser ()
   ((name :initarg :name)
    (lambda-list :initarg :lambda-list)
@@ -42,7 +46,8 @@
    (code :initform (make-array 0 :element-type '(unsigned-byte 8)
                                  :adjustable t :fill-pointer 0))
    (label-table :initform (make-hash-table))
-   (relocations :initform (make-array 0 :adjustable t :fill-pointer 0))))
+   (relocations :initform (make-array 0 :adjustable t :fill-pointer 0))
+   (source :initform (make-array 0 :adjustable t :fill-pointer 0))))
 
 (defvar *parser-state* nil)
 
@@ -142,25 +147,27 @@
     (:values          (+ 2 (length (cdr values))))))
 
 (defun condition-code (condition)
-  (case (car condition)
-    ((nil)    (values 0 nil))
-    (identity (values 1 (cdr condition)))
-    (not      (values 2 (cdr condition)))))
+  (if condition
+      (destructuring-bind (test negatedp . operands) condition
+        (values (ecase test
+                  (identity    (if negatedp 2 1))
+                  (eq          (if negatedp 4 3))
+                  (class-typep (if negatedp 6 5)))
+                operands))
+      (values 0 nil)))
 
 (defun emit-condition (offset bytespec condition)
   (with-slots (code) *parser-state*
     (multiple-value-bind (flag operands)
         (condition-code condition)
-      (when (> (integer-length flag) (byte-size bytespec))
-        (error "Condition ~S cannot be encoded" condition))
-      (setf (ldb bytespec (aref code offset)) flag)
+      (emit-field offset bytespec flag)
       (dolist (operand operands)
         (emit-location operand)))))
 
 (defun emit-c-opcode (code condition values)
   (let ((offset (emit-byte (ash code 4))))
-    (emit-field offset (byte 3 0) (operand-count values))
     (emit-condition offset (byte 1 3) condition)
+    (emit-field offset (byte 3 0) (operand-count values))
     offset))
 
 (defun emit-j-opcode (code condition)
@@ -179,6 +186,10 @@
         for i upfrom 0
         do (setf (aref a i) (storage-block-count sb))
         finally (return a)))
+
+(defun record-instruction (offset instruction)
+  (with-slots (source) *parser-state*
+    (vector-push-extend (cons offset instruction) source)))
 
 (define-nonterminal bytecode-function ()
   (sequence (* (nested declaration))
@@ -200,18 +211,29 @@
 (define-nonterminal labelled-instruction ()
   (let ((labels (* symbol))
         (offset (nested instruction)))
+    (record-instruction offset (car (last (nonterminal-source))))
     (dolist (label labels)
       (declare-label label offset))))
 
 (define-nonterminal condition ()
   (let ((nil :if)
-        (result condition-expr))
+        (result negatable-condition))
     result))
 
+(define-nonterminal negatable-condition ()
+  (nested (let ((nil  'not)
+                (expr condition-expr))
+            (destructuring-bind (test negatedp . locations) expr
+              (list* test (not negatedp) locations))))
+  condition-expr)
+
 (define-nonterminal condition-expr ()
+  (nested (let ((test (or 'eq 'class-typep))
+                (l1   location)
+                (l2   location))
+            (list test nil l1 l2)))
   (let ((location location))
-    (list 'identity location))
-  (nested (sequence 'not location)))
+    (list 'identity nil location)))
 
 (define-nonterminal values ()
   (let ((location location))
@@ -219,23 +241,26 @@
   (let ((locations (nested (* location))))
     (list* :values locations)))
 
+(defun make-constant (value)
+  (with-slots (constant-table constants) *parser-state*
+    (or (gethash value constant-table)
+        (prog1 (setf (gethash value constant-table)
+                     (list 'constant nil (length constants)))
+          (vector-push-extend value constants)))))
+
 ;; TODO: Numeric locations
 (define-nonterminal location ()
+  (let ((value (or boolean keyword)))
+    (make-constant value))
   (let ((var symbol))
     (with-slots (symbol-table) *parser-state*
       (or (gethash var symbol-table)
           (error "Variable ~S not defined" var))))
-  (let ((value constant))
-    (with-slots (constant-table constants) *parser-state*
-      (or (gethash value constant-table)
-          (prog1 (setf (gethash value constant-table)
-                       (list 'constant nil (length constants)))
-            (vector-push-extend value constants))))))
-
-(define-nonterminal constant ()
-  number
-  (let ((quote-form (nested (sequence 'quote symbol))))
-    (cadr quote-form)))
+  (let ((value atom))
+    (make-constant value))
+  (nested (let ((nil 'quote)
+                (symbol symbol))
+            (make-constant symbol))))
 
 (define-nonterminal instruction ()
   call-instruction
@@ -292,22 +317,40 @@
 
 (defvar *bytecode-functions* (make-hash-table))
 
-(defun bytecode-function (name)
-  (assert (symbolp name))
-  (gethash name *bytecode-functions*))
+(defun bytecode-function (designator)
+  (etypecase designator
+    (bytecode-parser designator)
+    (symbol (gethash designator *bytecode-functions*))))
 
 (defun (setf bytecode-function) (value name)
   (assert (symbolp name))
   (assert (typep value 'bytecode-parser))
   (setf (gethash name *bytecode-functions*) value))
 
+(define-condition bytecode-compile-error (error)
+  ((name :initarg :name
+         :reader bytecode-compiler-error-name)
+   (original-error :initarg :original-error
+                   :reader bytecode-compiler-error-original-error))
+  (:report (lambda (c s)
+             (format s "While byte-compiling ~A:~%~%~A"
+                     (bytecode-compiler-error-name c)
+                     (bytecode-compiler-error-original-error c)))))
+
+(defun compile-bytecode-function (name lambda-list body)
+  (let ((*parser-state* (make-instance 'bytecode-parser
+                                       :name name
+                                       :lambda-list lambda-list)))
+    (handler-case
+        (progn
+          (parse-all 'bytecode-function (make-input body))
+          (resolve-relocations))
+       (error (c)
+         (error 'bytecode-compile-error :name name :original-error c)))
+     (setf (bytecode-function name) *parser-state*)))
+
 (defmacro define-bytecode-function (name lambda-list &body body)
-  `(let ((*parser-state* (make-instance 'bytecode-parser
-                                        :name ',name
-                                        :lambda-list ',lambda-list)))
-     (parse-all 'bytecode-function (make-input ',body))
-     (resolve-relocations)
-     (setf (bytecode-function ',name) *parser-state*)))
+  `(compile-bytecode-function ',name ',lambda-list ',body))
 
 (defmethod reify ((object bytecode-parser))
   (with-slots (name lambda-list code constants locals shared)
@@ -321,3 +364,56 @@
                    :shared (flatten-storage-blocks shared)
                    :name name
                    :arglist lambda-list)))
+
+(defun split-lines (s)
+  (loop with length = (length s)
+        for start = 0 then (1+ end)
+        while (< start length)
+        for end = (or (position #\Newline s :start start) length)
+        collecting (subseq s start end)))
+
+(defun bytecode-disassemble (designator &optional (stream *standard-output*))
+  (with-slots (name source code)
+      (bytecode-function designator)
+    (format stream "Disassembly for bytecode function ~S:~%" name)
+    (loop with *package* = (symbol-package name)
+          with length = (length source)
+          for (start . instruction) across source
+          for i from 1 upto length
+          for end = (if (< i length)
+                        (car (aref source i))
+                        (length code))
+          for byte-lines = (loop for m from start below end by 4
+                                 for n = (min (+ m 4) end)
+                                 collecting (format nil "~{~2,'0X~^ ~}"
+                                                    (coerce (subseq code m n) 'list)))
+          ;; First, allocate space based on where we expect the source column to
+          ;; start. Then, slurp the contents of the instruction list into a
+          ;; single logical block. Each element is printed according to the
+          ;; following logic:
+          ;;
+          ;;   1. A :fill conditional newline is inserted before the element,
+          ;;      allowing the pretty-printer to insert a line-break if there
+          ;;      isn't room on the current line
+          ;;
+          ;;   2. The element is printed and the indent is set to 2,
+          ;;      block-relative. This effectively indents every line except for
+          ;;      the first.
+          ;;
+          ;;   3. Each element is followed by a space, but only if there are
+          ;;      more elements following it. The pretty-printer will take care
+          ;;      of extraneous spaces when handling conditional newlines, but
+          ;;      not at the end of the list -- that's what this logic is for.
+          ;;
+          for source-lines = (split-lines
+                              (let ((*print-right-margin*
+                                      (- (or *print-right-margin* 80) 22)))
+                                (format nil "~@<~{~:_~S~2I~^ ~}~:>" instruction)))
+          do (loop for index = start then nil
+                   for byte-rest = byte-lines then (cdr byte-rest)
+                   for bytes = (car byte-rest)
+                   for source-rest = source-lines then (cdr source-rest)
+                   for source = (car source-rest)
+                   while (or index bytes source)
+                   do (format stream "~5<~A~>   ~11@<~A~>   ~A~&"
+                              (or index "") (or bytes "") (or source ""))))))
