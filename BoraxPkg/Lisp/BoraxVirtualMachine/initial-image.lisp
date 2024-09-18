@@ -226,9 +226,6 @@
   (borax-vm/cl:intern (symbol-name object)
                       (reify (symbol-package object))))
 
-(defmethod reify :after ((object borax-vm/cl:standard-class))
-  (ensure-find-class object))
-
 (defmacro borax-vm/cl:setq (&rest items)
   (loop for (symbol value) on items by #'cddr
         collecting `(setf (borax-vm/cl:symbol-value (reify ',symbol)) ,value)
@@ -469,56 +466,11 @@
 
 (defun make-initial-image ()
   (setf (root *image*) (make-instance 'global-environment))
-  ;; TODO: Gather all this up automatically
-  ;; Standard classes
-  (ensure-find-class 'borax-vm/cl:character)
-  (ensure-find-class 'borax-vm/cl:cons)
-  (ensure-find-class 'borax-vm/cl:fixnum)
-  (ensure-find-class 'borax-vm/cl:function)
-  (ensure-find-class 'borax-vm/cl:list)
-  (ensure-find-class 'borax-vm/cl:null)
-  (ensure-find-class 'borax-vm/cl:package)
-  (ensure-find-class 'borax-vm/cl:simple-error)
-  (ensure-find-class 'borax-vm/cl:simple-vector)
-  (ensure-find-class 'borax-vm/cl:standard-class)
-  (ensure-find-class 'borax-vm/cl:t)
-  (ensure-find-class 'borax-vm/cl:type-error)
-  (ensure-find-class 'borax-vm/cl:undefined-function)
-  ;; Built-in classes
-  (ensure-find-class 'built-in-function)
-  (ensure-find-class 'class-not-found-error)
-  (ensure-find-class 'constant)
-  (ensure-find-class 'exit)
-  (ensure-find-class 'heap-exhausted)
-  (ensure-find-class 'interpreter)
-  (ensure-find-class 'location-error)
-  (ensure-find-class 'multiple-values)
-  (ensure-find-class 'pin)
-  (ensure-find-class 'record-object)
-  (ensure-find-class 'simple-program-error)
-  (ensure-find-class 'simple-vector-unsigned-byte-8)
-  (ensure-find-class 'stack-exhausted)
-  (ensure-find-class 'task)
-  (ensure-find-class 'unbound)
-  (ensure-find-class 'weak-pointer)
-  (ensure-find-class 'word-record-object)
-  ;; Standard functions
-  (ensure-bytecode-function 'borax-vm/cl:check-type)
-  (ensure-bytecode-function 'borax-vm/cl:class-name)
-  (ensure-bytecode-function 'borax-vm/cl:find)
-  (ensure-bytecode-function 'borax-vm/cl:typep)
-  (ensure-bytecode-function 'borax-vm/cl:package-name)
-  (ensure-bytecode-function 'borax-vm/cl:symbol-name)
-  (ensure-bytecode-function 'borax-vm/cl:symbol-package)
-  (ensure-bytecode-function 'borax-vm/cl:symbol-value)
-  ;; Built-in functions
-  (ensure-bytecode-function 'print-byte-vector)
-  (ensure-bytecode-function 'print-labelled)
-  (ensure-bytecode-function 'print-list)
-  (ensure-bytecode-function 'print-recursive)
-  (ensure-bytecode-function 'print-sum-list)
-  (ensure-bytecode-function 'print-symbol)
-  (ensure-bytecode-function 'sum-list)
+  ;; TODO: Principled namespace management
+  (loop for class across +classes+
+        do (ensure-find-class class))
+  (loop for name being each hash-key in *bytecode-functions*
+        do (ensure-bytecode-function name))
   ;; Demo content
   (borax-vm/cl:setq
    borax-vm/cl:nil borax-vm/cl:nil

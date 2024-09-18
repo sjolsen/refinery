@@ -1,7 +1,7 @@
 (uiop:define-package :borax-virtual-machine/bytecode
   (:mix :borax-parsing :uiop/common-lisp :borax-virtual-machine/common-lisp)
   (:use :borax-virtual-machine/image)
-  (:export #:bytecode-function
+  (:export #:bytecode-function #:*bytecode-functions*
            #:define-bytecode-function #:bytecode-disassemble
            #:bytecode #:bytecode-constants #:bytecode-locals #:bytecode-shared
            #:bytecode-closure #:bytecode-name #:bytecode-arglist #:bytecode-entry
