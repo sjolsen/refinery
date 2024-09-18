@@ -556,106 +556,6 @@ STATIC CONST FUNCTION_DESCRIPTOR  gPrintByte = {
 };
 
 enum {
-  FSC_CONST_BUFFER,
-  FSC_CONST_CLASS_STANDARD_CLASS,
-  FSC_CONST_SYMBOL_PRINT_RECURSIVE,
-  FSC_CONSTS
-};
-
-enum {
-  FSC_LOCALS
-};
-
-enum {
-  FSC_PC_START,
-  FSC_PC_END,
-};
-
-STATIC BORAX_OBJECT
-EFIAPI
-PrintStandardClass (
-  IN BORAX_TASK  *Task
-  )
-{
-  EFI_STATUS     Status;
-  BUFFER_HANDLE  *BufferHandle = UnsafeConstant (Task, FSC_CONST_BUFFER);
-  BUFFER         *Buffer       = BufferHandle->Buffer;
-
-  switch (Task->Registers.PC) {
-    case FSC_PC_START:
-    {
-      BORAX_OBJECT          ClassStandardClass, SymbolPrintRecursive;
-      BORAX_OBJECT          Object;
-      BORAX_STANDARD_CLASS  *Class;
-
-      if (Task->Registers.VR->Length != 1) {
-        IMAGE_ERROR ("Wrong number of arguments");
-        return SomeErrorTodo (Task->Interp);
-      }
-
-      Object = Task->Registers.VR->Values[0];
-
-      TRY (BoraxTaskReadConstant (Task, FSC_CONST_CLASS_STANDARD_CLASS, &ClassStandardClass));
-      TRY (BoraxTaskReadConstant (Task, FSC_CONST_SYMBOL_PRINT_RECURSIVE, &SymbolPrintRecursive));
-
-      Status = BORAX_GET_OBJECT_RECORD (Object, &Class);
-      if (EFI_ERROR (Status)) {
-        IMAGE_ERROR ("Not a valid class object");
-        return SomeErrorTodo (Task->Interp);
-      }
-
-      if (!BORAX_EQ (Class->Record.Class, ClassStandardClass)) {
-        IMAGE_ERROR ("Not an instance of STANDARD-CLASS");
-        return SomeErrorTodo (Task->Interp);
-      }
-
-      Status = BufferWrite (Buffer, L"<STANDARD-CLASS ");
-      if (EFI_ERROR (Status)) {
-        return SomeErrorTodo (Task->Interp);
-      }
-
-      Task->Registers.VR->Values[0] = Class->Name;
-      return BoraxTaskEnterFunction (Task, SymbolPrintRecursive, FSC_PC_END);
-    }
-    case FSC_PC_END:
-      Status = BufferWriteChar (Buffer, L'>');
-      if (EFI_ERROR (Status)) {
-        return SomeErrorTodo (Task->Interp);
-      }
-
-      return BoraxTaskExitFunction (Task);
-
-    default:
-
-      return SomeErrorTodo (Task->Interp);
-  }
-}
-
-STATIC CONST FUNCTION_DESCRIPTOR  gPrintStandardClass = {
-  .Name         = {
-    .Package = L"BORAX-RUNTIME",
-    .Name    = L"PRINT-STANDARD-CLASS",
-  },
-  .Entry     = FSC_PC_START,
-  .Code      = &PrintStandardClass,
-  .Locals    = FSC_LOCALS,
-  .Constants = {
-    FSC_CONSTS,
-    (CONST CONSTANT_DESCRIPTOR[]) {
-      [FSC_CONST_BUFFER]               = { CONST_BUFFER },
-      [FSC_CONST_CLASS_STANDARD_CLASS] =  {
-        .Tag    = CONST_CLASS,
-        .Symbol = { L"COMMON-LISP",L"STANDARD-CLASS"       },
-      },
-      [FSC_CONST_SYMBOL_PRINT_RECURSIVE] = {
-        .Tag    = CONST_SYMBOL,
-        .Symbol = { L"BORAX-RUNTIME",L"PRINT-RECURSIVE"    },
-      },
-    },
-  },
-};
-
-enum {
   EH_CONST_BUFFER,
   EH_CONST_SYMBOL_PRINT_RECURSIVE,
   EH_CONSTS
@@ -867,7 +767,6 @@ STATIC CONST FUNCTION_DESCRIPTOR  *gFunctions[] = {
   &gPlus,
   &gPrintByte,
   &gPrintFixnum,
-  &gPrintStandardClass,
   &gWriteCharacter,
   &gWriteString,
 };

@@ -417,6 +417,15 @@
     (call 'write-character (#\)))
     (return (object)))
 
+(define-bytecode-function print-standard-class (object)
+  (declare (local object length i))
+    (bind (object))
+    (call 'write-string ("<STANDARD-CLASS "))
+    (call 'borax-vm/cl:class-name (object))
+    (call 'print-symbol)
+    (call 'write-character (#\>))
+    (return (object)))
+
 (define-bytecode-function print-recursive (object)
   (declare (local object rest))
     (bind (object))
