@@ -134,114 +134,6 @@ STATIC CONST FUNCTION_DESCRIPTOR  gEq = {
   .Code      = &Eq,
 };
 
-enum {
-  FIND_CLASS_CONST_OR_CLASS_SYMBOL,
-  FIND_CLASS_CONST_CLASS_CLASS_NOT_FOUND_ERROR,
-  FIND_CLASS_CONSTS
-};
-
-STATIC BORAX_OBJECT
-EFIAPI
-FindClass (
-  IN BORAX_TASK  *Task
-  )
-{
-  BORAX_OBJECT  ClassStandardClass = Task->Interp->Globals[BORAX_GLOBAL_CLASS_STANDARD_CLASS];
-  BORAX_OBJECT  ClassSymbol = Task->Interp->Globals[BORAX_GLOBAL_CLASS_SYMBOL];
-  BORAX_OBJECT  Object, Class;
-  BORAX_RECORD  *Record;
-
-  {
-    BORAX_OBJECT  *Args[] = { &Object };
-    TRY (BoraxTaskBind (Task, ARRAY_SIZE (Args), Args));
-  }
-
-  if (BORAX_DISCRIMINATE (Object) != BORAX_DISCRIM_OBJECT_RECORD) {
-    goto type_error;
-  }
-
-  Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
-
-  if (BORAX_EQ (Record->Class, ClassStandardClass)) {
-    Class = Object;
-  } else if (BORAX_EQ (Record->Class, ClassSymbol)) {
-    EFI_STATUS    Status;
-    BORAX_SYMBOL  *Symbol;
-
-    Status = BORAX_GET_OBJECT_RECORD (Object, &Symbol);
-    if (EFI_ERROR (Status)) {
-      goto type_error;
-    }
-
-    // TODO: Apply boundp where appropriate
-    if (!BORAX_BOUNDP (Symbol->Class)) {
-      BORAX_OBJECT  ClassClassNotFoundError;
-      TRY (BoraxTaskReadConstant (Task, FIND_CLASS_CONST_CLASS_CLASS_NOT_FOUND_ERROR, &ClassClassNotFoundError));
-
-      return BoraxPrimitiveCellError (
-               Task->Interp,
-               ClassClassNotFoundError,
-               BORAX_MAKE_POINTER (Symbol)
-               );
-    }
-
-    Class = Symbol->Class;
-  } else {
-    goto type_error;
-  }
-
-  TRY (BoraxTaskCoBind (Task, 1, &Class));
-  return BoraxTaskExitFunction (Task);
-
-type_error:
-  {
-    BORAX_OBJECT  OrClassSymbol;
-    TRY (BoraxTaskReadConstant (Task, FIND_CLASS_CONST_OR_CLASS_SYMBOL, &OrClassSymbol));
-    return BoraxPrimitiveTypeError (
-             Task->Interp,
-             Object,
-             OrClassSymbol
-             );
-  }
-}
-
-STATIC CONST FUNCTION_DESCRIPTOR  gFindClass = {
-  .Name               = {
-    .Package = L"COMMON-LISP",
-    .Name    = L"FIND-CLASS",
-  },
-  .Code      = &FindClass,
-  .Constants = {
-    FIND_CLASS_CONSTS,
-    (CONST CONSTANT_DESCRIPTOR[]) {
-      [FIND_CLASS_CONST_OR_CLASS_SYMBOL] = {
-        .Tag  = CONST_LIST,
-        .List = {
-          3,
-          (CONST CONSTANT_DESCRIPTOR[]) {
-            {
-              .Tag    = CONST_SYMBOL,
-              .Symbol = { L"COMMON-LISP",L"OR"                                                    },
-            },
-            {
-              .Tag    = CONST_SYMBOL,
-              .Symbol = { L"COMMON-LISP",L"CLASS"                                                 },
-            },
-            {
-              .Tag    = CONST_SYMBOL,
-              .Symbol = { L"COMMON-LISP",L"SYMBOL"                                                },
-            },
-          },
-        },
-      },
-      [FIND_CLASS_CONST_CLASS_CLASS_NOT_FOUND_ERROR] = {
-        .Tag    = CONST_CLASS,
-        .Symbol = { L"BORAX-RUNTIME", L"CLASS-NOT-FOUND-ERROR" },
-      },
-    },
-  },
-};
-
 STATIC BORAX_OBJECT
 EFIAPI
 ClassOf (
@@ -266,52 +158,64 @@ STATIC CONST FUNCTION_DESCRIPTOR  gClassOf = {
   .Code      = &ClassOf,
 };
 
-STATIC BORAX_OBJECT
-EFIAPI
-ClassName (
-  IN BORAX_TASK  *Task
-  )
-{
-  BORAX_OBJECT          Object;
-  BORAX_STANDARD_CLASS  *Class;
-  BORAX_OBJECT          *Args[] = { &Object };
-
-  TRY (BoraxTaskBind (Task, ARRAY_SIZE (Args), Args));
-  TRY (BoraxPrimitiveTheStandardClass (Task->Interp, Object, &Class));
-  TRY (BoraxTaskCoBind (Task, 1, &Class->Name));
-  return BoraxTaskExitFunction (Task);
-}
-
-STATIC CONST FUNCTION_DESCRIPTOR  gClassName = {
-  .Name      = {
-    .Package = L"COMMON-LISP",
-    .Name    = L"CLASS-NAME",
-  },
-  .Code      = &ClassName,
+enum {
+  RS_CONST_SYMBOL_INDEX_ERROR,
+  RS_CONSTS
 };
 
 STATIC BORAX_OBJECT
 EFIAPI
-ClassPrecedenceList (
+RecordSlot (
   IN BORAX_TASK  *Task
   )
 {
-  BORAX_OBJECT          Object;
-  BORAX_STANDARD_CLASS  *Class;
-  BORAX_OBJECT          *Args[] = { &Object };
+  BORAX_OBJECT  Object, IndexObject;
+  BORAX_RECORD  *Record;
+  INTN          Index;
+  BORAX_OBJECT  *Args[] = { &Object, &IndexObject };
 
   TRY (BoraxTaskBind (Task, ARRAY_SIZE (Args), Args));
-  TRY (BoraxPrimitiveTheStandardClass (Task->Interp, Object, &Class));
-  TRY (BoraxTaskCoBind (Task, 1, &Class->PrecedenceList));
+
+  if (BORAX_DISCRIMINATE (Object) != BORAX_DISCRIM_OBJECT_RECORD) {
+    return BoraxPrimitiveTypeError (
+             Task->Interp,
+             Object,
+             Task->Interp->Globals[BORAX_GLOBAL_CLASS_RECORD_OBJECT]
+             );
+  }
+
+  Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
+
+  TRY (BoraxPrimitiveTheFixnum (Task->Interp, IndexObject, &Index));
+
+  if ((Index < 0) || (Index >= Record->Length)) {
+    BORAX_OBJECT  SymbolIndexError;
+    BORAX_OBJECT  Args[] = { IndexObject, BORAX_MAKE_FIXNUM (Record->Length) };
+    TRY (BoraxTaskReadConstant (Task, RS_CONST_SYMBOL_INDEX_ERROR, &SymbolIndexError));
+    TRY (BoraxTaskCoBind (Task, ARRAY_SIZE (Args), Args));
+    // TODO: Implement this error function
+    return BoraxTaskEnterFunction (Task, SymbolIndexError, 0);
+  }
+
+  TRY (BoraxTaskCoBind (Task, 1, &Record->Slots[Index]));
   return BoraxTaskExitFunction (Task);
 }
 
-STATIC CONST FUNCTION_DESCRIPTOR  gClassPrecedenceList = {
-  .Name      = {
+STATIC CONST FUNCTION_DESCRIPTOR  gRecordSlot = {
+  .Name         = {
     .Package = L"BORAX-RUNTIME",
-    .Name    = L"CLASS-PRECEDENCE-LIST",
+    .Name    = L"RECORD-SLOT",
   },
-  .Code      = &ClassPrecedenceList,
+  .Code      = &RecordSlot,
+  .Constants = {
+    RS_CONSTS,
+    (CONST CONSTANT_DESCRIPTOR[]) {
+      [RS_CONST_SYMBOL_INDEX_ERROR] = {
+        .Tag    = CONST_SYMBOL,
+        .Symbol = { L"BORAX-RUNTIME",L"INDEX-ERROR"    },
+      },
+    },
+  },
 };
 
 STATIC BORAX_OBJECT
@@ -349,102 +253,6 @@ STATIC CONST FUNCTION_DESCRIPTOR  gFindPackage = {
     .Name    = L"FIND-PACKAGE",
   },
   .Code      = &FindPackage,
-};
-
-STATIC BORAX_OBJECT
-EFIAPI
-PackageName (
-  IN BORAX_TASK  *Task
-  )
-{
-  BORAX_OBJECT   Object;
-  BORAX_PACKAGE  *Package;
-  BORAX_OBJECT   *Args[] = { &Object };
-
-  TRY (BoraxTaskBind (Task, ARRAY_SIZE (Args), Args));
-  TRY (BoraxPrimitiveThePackage (Task->Interp, Object, &Package));
-  TRY (BoraxTaskCoBind (Task, 1, &Package->Name));
-  return BoraxTaskExitFunction (Task);
-}
-
-STATIC CONST FUNCTION_DESCRIPTOR  gPackageName = {
-  .Name      = {
-    .Package = L"COMMON-LISP",
-    .Name    = L"PACKAGE-NAME",
-  },
-  .Code      = &PackageName,
-};
-
-STATIC BORAX_OBJECT
-EFIAPI
-SymbolPackage (
-  IN BORAX_TASK  *Task
-  )
-{
-  BORAX_OBJECT  Object;
-  BORAX_SYMBOL  *Symbol;
-  BORAX_OBJECT  *Args[] = { &Object };
-
-  TRY (BoraxTaskBind (Task, ARRAY_SIZE (Args), Args));
-  TRY (BoraxPrimitiveTheSymbol (Task->Interp, Object, &Symbol));
-  TRY (BoraxTaskCoBind (Task, 1, &Symbol->Package));
-  return BoraxTaskExitFunction (Task);
-}
-
-STATIC CONST FUNCTION_DESCRIPTOR  gSymbolPackage = {
-  .Name      = {
-    .Package = L"COMMON-LISP",
-    .Name    = L"SYMBOL-PACKAGE",
-  },
-  .Code      = &SymbolPackage,
-};
-
-STATIC BORAX_OBJECT
-EFIAPI
-SymbolName (
-  IN BORAX_TASK  *Task
-  )
-{
-  BORAX_OBJECT  Object;
-  BORAX_SYMBOL  *Symbol;
-  BORAX_OBJECT  *Args[] = { &Object };
-
-  TRY (BoraxTaskBind (Task, ARRAY_SIZE (Args), Args));
-  TRY (BoraxPrimitiveTheSymbol (Task->Interp, Object, &Symbol));
-  TRY (BoraxTaskCoBind (Task, 1, &Symbol->Name));
-  return BoraxTaskExitFunction (Task);
-}
-
-STATIC CONST FUNCTION_DESCRIPTOR  gSymbolName = {
-  .Name      = {
-    .Package = L"COMMON-LISP",
-    .Name    = L"SYMBOL-NAME",
-  },
-  .Code      = &SymbolName,
-};
-
-STATIC BORAX_OBJECT
-EFIAPI
-SymbolValue (
-  IN BORAX_TASK  *Task
-  )
-{
-  BORAX_OBJECT  Object;
-  BORAX_SYMBOL  *Symbol;
-  BORAX_OBJECT  *Args[] = { &Object };
-
-  TRY (BoraxTaskBind (Task, ARRAY_SIZE (Args), Args));
-  TRY (BoraxPrimitiveTheSymbol (Task->Interp, Object, &Symbol));
-  TRY (BoraxTaskCoBind (Task, 1, &Symbol->Value));
-  return BoraxTaskExitFunction (Task);
-}
-
-STATIC CONST FUNCTION_DESCRIPTOR  gSymbolValue = {
-  .Name      = {
-    .Package = L"COMMON-LISP",
-    .Name    = L"SYMBOL-VALUE",
-  },
-  .Code      = &SymbolValue,
 };
 
 // TODO: Generalize
@@ -1299,23 +1107,17 @@ STATIC CONST FUNCTION_DESCRIPTOR  *gFunctions[] = {
   &gByteVectorLength,
   &gByteVectorRef,
   &gCarCdr,
-  &gClassName,
   &gClassOf,
-  &gClassPrecedenceList,
   &gEq,
   &gErrorHandler,
-  &gFindClass,
   &gFindPackage,
-  &gPackageName,
+  &gRecordSlot,
   &gPlus,
   &gPrintByte,
   &gPrintFixnum,
   &gPrintObjectRecord,
   &gPrintSimpleVector,
   &gPrintStandardClass,
-  &gSymbolName,
-  &gSymbolPackage,
-  &gSymbolValue,
   &gWriteCharacter,
   &gWriteString,
 };

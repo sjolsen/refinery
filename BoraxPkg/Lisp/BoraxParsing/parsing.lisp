@@ -333,6 +333,7 @@
 (defun booleanp (object)
   (or (eq object t) (eq object nil)))
 
+(%define-nonterminal 'atom (satisfies #'atom))
 (%define-nonterminal 'boolean (satisfies #'booleanp))
 (%define-nonterminal 'character (satisfies #'characterp))
 (%define-nonterminal 'keyword (satisfies #'keywordp))

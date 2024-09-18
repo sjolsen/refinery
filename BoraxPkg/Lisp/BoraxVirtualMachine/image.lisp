@@ -18,6 +18,7 @@
            #:+classes+ #:default-direct-superclass
            ;; record-object
            #:record-object #:record-class
+           #:record-slot-p #:record-slot-location
            #:record-slots #:do-record-slots
            ;; borax-vm/cl:simple-vector
            #:vector-data #:word-record-object #:word-record-class

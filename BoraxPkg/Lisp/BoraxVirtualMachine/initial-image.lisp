@@ -3,7 +3,7 @@
   (:use :cl-locatives
         :borax-virtual-machine/bytecode
         :borax-virtual-machine/image)
-  (:shadow #:class-precedence-list #:write-character #:write-string)
+  (:shadow #:write-character #:write-string)
   (:export #:make-initial-image))
 
 (in-package :borax-virtual-machine/initial-image)
@@ -266,6 +266,49 @@
     ;; TODO: Type specifiers and subclassing
     (return (nil)))
 
+(define-bytecode-function borax-vm/cl:check-type (object type)
+  (declare (local object type match))
+    (bind (object type))
+    (call 'borax-vm/cl:typep (object type))
+    (bind (match))
+    (return :if match (nil))
+    (call 'borax-vm/cl:error ('borax-vm/cl:type-error
+                              :datum object :expected-type type)))
+
+(defmacro define-bytecode-accessor (name class slot)
+  (let* ((class (find-class class))
+         (slot (find slot (class-slots class) :key #'slot-definition-name))
+         (index (record-slot-location slot))
+         ;; TODO: Figure out how to support GENSYM
+         (var 'object))
+    `(define-bytecode-function ,name (,var)
+       (declare (local ,var))
+       (bind (,var))
+       (call 'borax-vm/cl:check-type (,var ,class))
+       (call :tail 'record-slot (,var ,index)))))
+
+;; TODO: Generate these from the class definition
+(define-bytecode-accessor borax-vm/cl:class-name
+  borax-vm/cl:standard-class borax-virtual-machine/image::name)
+
+(define-bytecode-accessor borax-vm/cl:package-name
+  borax-vm/cl:package name)
+
+(define-bytecode-accessor borax-vm/cl:symbol-package
+  borax-vm/cl:symbol package)
+
+(define-bytecode-accessor borax-vm/cl:symbol-name
+  borax-vm/cl:symbol name)
+
+(define-bytecode-accessor borax-vm/cl:symbol-value
+  borax-vm/cl:symbol value)
+
+(define-bytecode-accessor borax-vm/cl:symbol-function
+  borax-vm/cl:symbol function)
+
+(define-bytecode-accessor borax-vm/cl:find-class
+  borax-vm/cl:symbol class)
+
 (define-bytecode-function print-list (object)
   (declare (local object item rest))
     (bind (object))
@@ -460,8 +503,14 @@
   (ensure-find-class 'weak-pointer)
   (ensure-find-class 'word-record-object)
   ;; Standard functions
+  (ensure-bytecode-function 'borax-vm/cl:check-type)
+  (ensure-bytecode-function 'borax-vm/cl:class-name)
   (ensure-bytecode-function 'borax-vm/cl:find)
   (ensure-bytecode-function 'borax-vm/cl:typep)
+  (ensure-bytecode-function 'borax-vm/cl:package-name)
+  (ensure-bytecode-function 'borax-vm/cl:symbol-name)
+  (ensure-bytecode-function 'borax-vm/cl:symbol-package)
+  (ensure-bytecode-function 'borax-vm/cl:symbol-value)
   ;; Built-in functions
   (ensure-bytecode-function 'print-byte-vector)
   (ensure-bytecode-function 'print-labelled)

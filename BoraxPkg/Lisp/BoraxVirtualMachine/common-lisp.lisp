@@ -5,7 +5,7 @@
            #:cons #:car #:cdr #:push
            #:t #:null #:nil #:list #:find
            #:class #:standard-class #:class-name #:find-class
-           #:class-of #:typep
+           #:class-of #:typep #:check-type
            #:package #:package-name #:find-package
            #:symbol #:symbol-package #:symbol-name #:symbol-value
            #:symbol-function #:find-symbol #:intern
@@ -20,7 +20,7 @@
            #:cons #:car #:cdr #:push
            #:t #:null #:nil #:list #:find
            #:class #:standard-class #:class-name #:find-class
-           #:class-of #:typep
+           #:class-of #:typep #:check-type
            #:package #:package-name #:find-package
            #:symbol #:symbol-package #:symbol-name #:symbol-value
            #:symbol-function #:find-symbol #:intern

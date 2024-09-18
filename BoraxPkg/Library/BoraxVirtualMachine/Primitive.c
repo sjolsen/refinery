@@ -327,6 +327,11 @@ STATIC CONST GLOBAL_DESC  gGlobalDesc[BORAX_GLOBAL_COUNT] = {
     .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
     .Name    = L"PIN",
   },
+  [BORAX_GLOBAL_CLASS_RECORD_OBJECT] =                 {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
+    .Name    = L"RECORD-OBJECT",
+  },
   [BORAX_GLOBAL_CLASS_SIMPLE_VECTOR_UNSIGNED_BYTE_8] = {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
@@ -346,6 +351,11 @@ STATIC CONST GLOBAL_DESC  gGlobalDesc[BORAX_GLOBAL_COUNT] = {
     .Tag     = GLOBAL_DESC_CLASS,
     .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
     .Name    = L"WEAK-POINTER",
+  },
+  [BORAX_GLOBAL_CLASS_WORD_RECORD_OBJECT] =            {
+    .Tag     = GLOBAL_DESC_CLASS,
+    .Package = BORAX_GLOBAL_PACKAGE_BORAX_RUNTIME,
+    .Name    = L"WORD-RECORD-OBJECT",
   },
 };
 
@@ -1111,11 +1121,29 @@ BoraxPrimitiveClassOf (
       return BORAX_NIL;
 
     case BORAX_DISCRIM_WORD_RECORD:
+    {
+      BORAX_RECORD  *Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
+
+      if (BORAX_BOUNDP (Record->VectorClass)) {
+        *Class = Record->VectorClass;
+        return BORAX_NIL;
+      } else {
+        *Class = Interp->Globals[BORAX_GLOBAL_CLASS_WORD_RECORD_OBJECT];
+        return BORAX_NIL;
+      }
+    }
+
     case BORAX_DISCRIM_OBJECT_RECORD:
     {
       BORAX_RECORD  *Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
-      *Class = Record->Class;
-      return BORAX_NIL;
+
+      if (BORAX_BOUNDP (Record->Class)) {
+        *Class = Record->Class;
+        return BORAX_NIL;
+      } else {
+        *Class = Interp->Globals[BORAX_GLOBAL_CLASS_RECORD_OBJECT];
+        return BORAX_NIL;
+      }
     }
 
     case BORAX_DISCRIM_BUILT_IN_FUNCTION:

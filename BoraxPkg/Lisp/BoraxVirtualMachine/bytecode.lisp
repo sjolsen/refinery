@@ -240,29 +240,26 @@
   (let ((locations (nested (* location))))
     (list* :values locations)))
 
+(defun make-constant (value)
+  (with-slots (constant-table constants) *parser-state*
+    (or (gethash value constant-table)
+        (prog1 (setf (gethash value constant-table)
+                     (list 'constant nil (length constants)))
+          (vector-push-extend value constants)))))
+
 ;; TODO: Numeric locations
 (define-nonterminal location ()
-  ;; The CONSTANT production takes precedence so we can correctly categorize
-  ;; booleans and keywords
-  (let ((value constant))
-    (with-slots (constant-table constants) *parser-state*
-      (or (gethash value constant-table)
-          (prog1 (setf (gethash value constant-table)
-                       (list 'constant nil (length constants)))
-            (vector-push-extend value constants)))))
+  (let ((value (or boolean keyword)))
+    (make-constant value))
   (let ((var symbol))
     (with-slots (symbol-table) *parser-state*
       (or (gethash var symbol-table)
-          (error "Variable ~S not defined" var)))))
-
-(define-nonterminal constant ()
-  boolean
-  character
-  keyword
-  number
-  string
-  (let ((quote-form (nested (sequence 'quote symbol))))
-    (cadr quote-form)))
+          (error "Variable ~S not defined" var))))
+  (let ((value atom))
+    (make-constant value))
+  (nested (let ((nil 'quote)
+                (symbol symbol))
+            (make-constant symbol))))
 
 (define-nonterminal instruction ()
   call-instruction
