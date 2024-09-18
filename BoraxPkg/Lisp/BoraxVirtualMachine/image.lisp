@@ -179,7 +179,16 @@
           when (typep object 'object)
             count (= i (index object)) into dead
             and do (setf (aref objects i) 0)
-          finally (format t "INFO: collected ~A dead object~:P~%" dead))))
+          finally (format t "INFO: collected ~A dead object~:P~%" dead))
+    (format t "INFO: ~A object~:P remain:~%" (length objects))
+    (loop with table = (make-hash-table)
+          for object across objects
+          do (incf (gethash (class-of object) table 0))
+          finally (loop for class across +classes+
+                        for count = (gethash class table 0)
+                        when (> count 0)
+                          do (format t "  ~3:<~A~> ~7@<object~:P~> of type ~A~%"
+                                     count (class-name class))))))
 
 (defclass borax-vm/cl:class (standard-class)
   ((classes :type (vector *)
