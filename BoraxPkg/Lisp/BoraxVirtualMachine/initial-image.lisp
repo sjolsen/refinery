@@ -396,6 +396,27 @@
     (call 'write-character (#\>))
     (return (object)))
 
+(define-bytecode-function print-simple-vector (object)
+  (declare (local object length i))
+    (bind (object))
+    (call 'write-string ("#("))
+    (call 'record-length (object))
+    (bind (length))
+    (move i 0)
+    (jump :if (not (eq i length)) loop-entry)
+    (jump loop-end)
+  loop
+    (call 'write-character (#\Space))
+  loop-entry
+    (call 'record-slot (object i))
+    (call 'print-recursive)
+    (call '+ (i 1))
+    (bind (i))
+    (jump :if (not (eq i length)) loop)
+  loop-end
+    (call 'write-character (#\)))
+    (return (object)))
+
 (define-bytecode-function print-recursive (object)
   (declare (local object rest))
     (bind (object))

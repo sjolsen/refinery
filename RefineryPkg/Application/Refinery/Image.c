@@ -556,126 +556,6 @@ STATIC CONST FUNCTION_DESCRIPTOR  gPrintByte = {
 };
 
 enum {
-  FSV_CONST_BUFFER,
-  FSV_CONST_SYMBOL_PRINT_RECURSIVE,
-  FSV_CONSTS
-};
-
-enum {
-  FSV_LOCAL_OBJECT,
-  FSV_LOCAL_INDEX,
-  FSV_LOCALS
-};
-
-enum {
-  FSV_PC_START,
-  FSV_PC_SLOTS,
-};
-
-STATIC BORAX_OBJECT
-EFIAPI
-PrintSimpleVector (
-  IN BORAX_TASK  *Task
-  )
-{
-  EFI_STATUS     Status;
-  BUFFER_HANDLE  *BufferHandle = UnsafeConstant (Task, FSV_CONST_BUFFER);
-  BUFFER         *Buffer       = BufferHandle->Buffer;
-  BORAX_OBJECT   *Object       = UnsafeLocal (Task, FSV_LOCAL_OBJECT);
-  BORAX_OBJECT   *Index        = UnsafeLocal (Task, FSV_LOCAL_INDEX);
-
-  switch (Task->Registers.PC) {
-    case FSV_PC_START:
-    {
-      BORAX_RECORD  *Record;
-
-      if (Task->Registers.VR->Length != 1) {
-        IMAGE_ERROR ("Wrong number of arguments");
-        return SomeErrorTodo (Task->Interp);
-      }
-
-      *Object = Task->Registers.VR->Values[0];
-
-      Status = BORAX_GET_OBJECT_RECORD (*Object, &Record);
-      if (EFI_ERROR (Status)) {
-        IMAGE_ERROR ("Not a valid simple-vector object");
-        return SomeErrorTodo (Task->Interp);
-      }
-
-      Status = BufferWrite (Buffer, L"#(");
-      if (EFI_ERROR (Status)) {
-        return SomeErrorTodo (Task->Interp);
-      }
-
-      // Bounce through to the loop
-      *Index             = BORAX_MAKE_FIXNUM (0);
-      Task->Registers.PC = FSV_PC_SLOTS;
-      return BORAX_NIL;
-    }
-
-    case FSV_PC_SLOTS:
-    {
-      BORAX_RECORD  *Record = (BORAX_RECORD *)BORAX_GET_POINTER (*Object);
-      BORAX_OBJECT  SymbolPrintRecursive;
-      UINTN         I = BORAX_GET_FIXNUM (*Index);
-
-      TRY (BoraxTaskReadConstant (Task, FSV_CONST_SYMBOL_PRINT_RECURSIVE, &SymbolPrintRecursive));
-
-      Status = BoraxResizeMultipleValues (Task->Interp, 1, &Task->Registers.VR);
-      if (EFI_ERROR (Status)) {
-        return SomeErrorTodo (Task->Interp);
-      }
-
-      if (I < Record->Length) {
-        BORAX_OBJECT  Value = Record->Slots[I];
-
-        if (I != 0) {
-          Status = BufferWriteChar (Buffer, L' ');
-          if (EFI_ERROR (Status)) {
-            return SomeErrorTodo (Task->Interp);
-          }
-        }
-
-        *Index                        = BORAX_MAKE_FIXNUM (I + 1);
-        Task->Registers.VR->Values[0] = Value;
-        return BoraxTaskEnterFunction (Task, SymbolPrintRecursive, FSV_PC_SLOTS);
-      } else {
-        Status = BufferWriteChar (Buffer, L')');
-        if (EFI_ERROR (Status)) {
-          return SomeErrorTodo (Task->Interp);
-        }
-
-        Task->Registers.VR->Values[0] = *Object;
-        return BoraxTaskExitFunction (Task);
-      }
-    }
-
-    default:
-      return SomeErrorTodo (Task->Interp);
-  }
-}
-
-STATIC CONST FUNCTION_DESCRIPTOR  gPrintSimpleVector = {
-  .Name         = {
-    .Package = L"BORAX-RUNTIME",
-    .Name    = L"PRINT-SIMPLE-VECTOR",
-  },
-  .Entry     = FSV_PC_START,
-  .Code      = &PrintSimpleVector,
-  .Constants = {
-    FSV_CONSTS,
-    (CONST CONSTANT_DESCRIPTOR[]) {
-      [FSV_CONST_BUFFER]                 = { CONST_BUFFER },
-      [FSV_CONST_SYMBOL_PRINT_RECURSIVE] = {
-        .Tag    = CONST_SYMBOL,
-        .Symbol = { L"BORAX-RUNTIME",L"PRINT-RECURSIVE"    },
-      },
-    },
-  },
-  .Locals       = FSV_LOCALS,
-};
-
-enum {
   FSC_CONST_BUFFER,
   FSC_CONST_CLASS_STANDARD_CLASS,
   FSC_CONST_SYMBOL_PRINT_RECURSIVE,
@@ -987,7 +867,6 @@ STATIC CONST FUNCTION_DESCRIPTOR  *gFunctions[] = {
   &gPlus,
   &gPrintByte,
   &gPrintFixnum,
-  &gPrintSimpleVector,
   &gPrintStandardClass,
   &gWriteCharacter,
   &gWriteString,
