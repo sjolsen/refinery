@@ -7,6 +7,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+extern "C" {
+  #include <Library/UefiBootServicesTableLib.h>
+}
+
 MockFile::MockFile(
                    UINT64  Revision
                    )
@@ -25,7 +29,7 @@ MockFile::MockFile(
   Protocol->SetInfo     = Unsupported;
   Protocol->Flush       = Unsupported;
   Protocol->OpenEx      = Unsupported;
-  Protocol->ReadEx      = Unsupported;
+  Protocol->ReadEx      = WRAP_FN (ReadEx);
   Protocol->WriteEx     = Unsupported;
   Protocol->FlushEx     = Unsupported;
 }
@@ -58,11 +62,27 @@ MockFile::SetPosition (
   return EFI_UNSUPPORTED;
 }
 
+EFI_STATUS
+MockFile::ReadEx (
+  IN OUT EFI_FILE_IO_TOKEN  *Token
+  )
+{
+  // The signalled callback may (and in our case, does) free the token, so we
+  // cannot read the status back; we have to save it locally
+  EFI_STATUS  Status = Read (&Token->BufferSize, Token->Buffer);
+
+  Token->Status = Status;
+  if (Token->Event != nullptr) {
+    gBS->SignalEvent (Token->Event);
+  }
+
+  return Status;
+}
+
 BufferFile::BufferFile(
                        std::vector<unsigned char>  Data
                        )
-  : MockFile (EFI_FILE_PROTOCOL_REVISION), // no ex methods
-  FileData (std::move (Data)),
+  : FileData (std::move (Data)),
   FilePosition (0)
 {
 }
@@ -142,8 +162,7 @@ struct PosixFileError : std::exception {
 PosixFile::PosixFile(
                      std::filesystem::path  Path
                      )
-  : MockFile (EFI_FILE_PROTOCOL_REVISION), // no ex methods
-  Path (std::move (Path))
+  : Path (std::move (Path))
 {
   fd = open (this->Path.c_str (), O_RDONLY);
   if (fd < 0) {

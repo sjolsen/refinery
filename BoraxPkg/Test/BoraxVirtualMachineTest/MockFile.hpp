@@ -35,6 +35,12 @@ public:
   SetPosition (
     IN UINT64  Position
     );
+
+  virtual
+  EFI_STATUS
+  ReadEx (
+    IN OUT EFI_FILE_IO_TOKEN  *Token
+    );
 };
 
 class BufferFile : public MockFile {
