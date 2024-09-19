@@ -2,7 +2,7 @@
 
 #include <gtest/gtest.h>
 
-std::filesystem::path  TestFilePath = { };
+std::filesystem::path  TestBase = { };
 
 int
 main (
@@ -12,7 +12,7 @@ main (
 {
   testing::InitGoogleTest (&argc, argv);
   if (argc >= 2) {
-    TestFilePath = argv[1];
+    TestBase = argv[1];
   }
 
   return RUN_ALL_TESTS ();

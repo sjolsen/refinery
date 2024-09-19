@@ -403,9 +403,7 @@ ObjectFileTests::CheckGeneratedFileContents (
 TEST_F (ObjectFileTests, GeneratedTestFile) {
   EFI_STATUS  Status;
   AutoPin     Pin;
-
-  ASSERT_FALSE (TestFilePath.empty ());
-  PosixFile  File { TestFilePath };
+  PosixFile   File { TestBase / "TestFile.bxo" };
 
   Status = LoadObjectFile (File, &Pin);
   ASSERT_EQ (EFI_SUCCESS, Status);

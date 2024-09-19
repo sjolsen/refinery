@@ -16,6 +16,6 @@ operator== (
   return BORAX_EQ (a, b);
 }
 
-extern std::filesystem::path  TestFilePath;
+extern std::filesystem::path  TestBase;
 
 #endif // BORAX_VIRTUAL_MACHINE_TEST_HPP
