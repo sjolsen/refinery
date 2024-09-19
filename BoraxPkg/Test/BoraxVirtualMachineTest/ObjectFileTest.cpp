@@ -1,7 +1,5 @@
 #include "MemoryTest.hpp"
 
-#include <fstream>
-
 extern "C" {
   #include <Library/BoraxObjectFile.h>
 }
@@ -315,35 +313,6 @@ TEST_F (ObjectFileTests, HeaderOnlyNonNative) {
   ASSERT_NE (EFI_SUCCESS, Status);
 }
 
-static
-std::optional<std::vector<unsigned char> >
-LoadFile (
-  std::filesystem::path  Path
-  )
-{
-  std::ifstream  Stream (Path, std::ios::binary);
-
-  if (Stream.fail ()) {
-    std::cerr << "Failed to construct stream for " << Path << std::endl;
-    return std::nullopt;
-  }
-
-  std::vector<unsigned char>  Result;
-
-  Stream.unsetf (std::ios::skipws);
-  std::copy (
-         std::istream_iterator<unsigned char>(Stream),
-         std::istream_iterator<unsigned char>(),
-         std::back_inserter (Result)
-         );
-  if (!Stream.eof ()) {
-    std::cerr << "Failed to read " << Path << std::endl;
-    return std::nullopt;
-  }
-
-  return std::move (Result);
-}
-
 VOID
 ObjectFileTests::CheckGeneratedFileContents (
   AutoPin  &Pin
@@ -436,10 +405,7 @@ TEST_F (ObjectFileTests, GeneratedTestFile) {
   AutoPin     Pin;
 
   ASSERT_FALSE (TestFilePath.empty ());
-  auto  Data = LoadFile (TestFilePath);
-
-  ASSERT_TRUE (Data.has_value ());
-  BufferFile  File { std::move (*Data) };
+  PosixFile  File { TestFilePath };
 
   Status = LoadObjectFile (File, &Pin);
   ASSERT_EQ (EFI_SUCCESS, Status);

@@ -1,6 +1,11 @@
 #include "MockFile.hpp"
 
 #include <cstring>
+#include <sstream>
+
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 MockFile::MockFile(
                    UINT64  Revision
@@ -101,6 +106,116 @@ BufferFile::SetPosition (
     return EFI_SUCCESS;
   } else {
     FilePosition = Position;
+    return EFI_SUCCESS;
+  }
+}
+
+struct PosixFileError : std::exception {
+  const char               *Operation;
+  std::filesystem::path    Path;
+  int                      Errno;
+  std::string              WhatStr;
+
+  PosixFileError (
+                  const char             *Operation,
+                  std::filesystem::path  Path,
+                  int                    Errno
+                  )
+    : Operation (Operation),
+    Path (std::move (Path)),
+    Errno (Errno)
+  {
+    std::stringstream  ss;
+
+    ss << Operation << "(" << this->Path << ") failed:  " << strerror (Errno);
+    WhatStr = std::move (ss).str ();
+  }
+
+  const char *
+  what (
+    ) const noexcept override
+  {
+    return WhatStr.c_str ();
+  }
+};
+
+PosixFile::PosixFile(
+                     std::filesystem::path  Path
+                     )
+  : MockFile (EFI_FILE_PROTOCOL_REVISION), // no ex methods
+  Path (std::move (Path))
+{
+  fd = open (this->Path.c_str (), O_RDONLY);
+  if (fd < 0) {
+    throw PosixFileError { "open", this->Path, errno };
+  }
+}
+
+PosixFile::~PosixFile(
+                      )
+{
+  close (fd);
+}
+
+EFI_STATUS
+PosixFile::Read (
+  IN OUT UINTN  *BufferSize,
+  OUT VOID      *Buffer
+  )
+{
+  ssize_t  rv = read (fd, Buffer, *BufferSize);
+
+  if (rv < 0) {
+    std::cerr << "read(" << Path << ", " << *BufferSize << ") failed: "
+    << strerror (errno) << std::endl;
+    return EFI_DEVICE_ERROR;
+  }
+
+  *BufferSize = static_cast<UINTN>(rv);
+  return EFI_SUCCESS;
+}
+
+EFI_STATUS
+PosixFile::GetPosition (
+  OUT UINT64  *Position
+  )
+{
+  off_t  rv = lseek (fd, 0, SEEK_CUR);
+
+  if (rv < 0) {
+    std::cerr << "lseek(" << Path << ", 0, SEEK_CUR) failed: "
+    << strerror (errno) << std::endl;
+    return EFI_DEVICE_ERROR;
+  }
+
+  *Position = static_cast<UINT64>(rv);
+  return EFI_SUCCESS;
+}
+
+EFI_STATUS
+PosixFile::SetPosition (
+  IN UINT64  Position
+  )
+{
+  if (Position == MAX_UINT64) {
+    off_t  rv = lseek (fd, 0, SEEK_END);
+    if (rv < 0) {
+      std::cerr << "lseek(" << Path << ", 0, SEEK_END) failed: "
+      << strerror (errno) << std::endl;
+      return EFI_DEVICE_ERROR;
+    }
+
+    return EFI_SUCCESS;
+  } else {
+    off_t  rv = lseek (fd, Position, SEEK_SET);
+
+    if (rv < 0) {
+      std::cerr << "lseek(" << Path << ", " << Position
+      << ", SEEK_SET) failed: "
+      << strerror (errno) << std::endl;
+      return EFI_DEVICE_ERROR;
+    }
+
     return EFI_SUCCESS;
   }
 }

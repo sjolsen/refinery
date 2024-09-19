@@ -1,6 +1,7 @@
 #ifndef BORAX_MOCK_FILE_HPP
 #define BORAX_MOCK_FILE_HPP
 
+#include <filesystem>
 #include <vector>
 
 extern "C" {
@@ -42,8 +43,39 @@ private:
   std::size_t FilePosition;
 
 public:
+  explicit
   BufferFile(
              std::vector<unsigned char>  Data
+             );
+
+  EFI_STATUS
+  Read (
+    IN OUT UINTN  *BufferSize,
+    OUT VOID      *Buffer
+    ) override;
+
+  EFI_STATUS
+  GetPosition (
+    OUT UINT64  *Position
+    ) override;
+
+  EFI_STATUS
+  SetPosition (
+    IN UINT64  Position
+    ) override;
+};
+
+class PosixFile : public MockFile {
+private:
+  std::filesystem::path Path;
+  int fd;
+
+public:
+  PosixFile(
+            std::filesystem::path  Path
+            );
+
+  ~PosixFile(
              );
 
   EFI_STATUS
