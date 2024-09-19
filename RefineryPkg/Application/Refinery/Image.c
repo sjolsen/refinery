@@ -235,7 +235,7 @@ RecordSlot (
   }
 
   // TODO: Handle unbound slots
-  TRY (BoraxTaskCoBind (Task, 1, &Record->Slots[Index]));
+  TRY (BoraxTaskCoBind (Task, 1, &BoraxRecordSlots (Record)[Index]));
   return BoraxTaskExitFunction (Task);
 }
 

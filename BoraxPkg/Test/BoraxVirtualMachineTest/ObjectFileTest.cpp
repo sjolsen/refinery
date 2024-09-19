@@ -333,13 +333,13 @@ ObjectFileTests::CheckGeneratedFileContents (
   BORAX_RECORD  *RootSelf;
 
   ASSERT_EQ (6U, Root->Length);
-  ASSERT_NO_THROW (RootSelf = TheObjectRecord (Root->Slots[0]));
+  ASSERT_NO_THROW (RootSelf = TheObjectRecord (BoraxRecordSlots (Root)[0]));
   ASSERT_EQ (Root, RootSelf);
 
   // root[1] is an improper list (4 3 2 1 . 0)
   BORAX_CONS  *Cons[8];
 
-  ASSERT_NO_THROW (Cons[0] = TheCons (Root->Slots[1]));
+  ASSERT_NO_THROW (Cons[0] = TheCons (BoraxRecordSlots (Root)[1]));
   ASSERT_EQ (BORAX_MAKE_FIXNUM (4), Cons[0]->Car);
   ASSERT_NO_THROW (Cons[1] = TheCons (Cons[0]->Cdr));
   ASSERT_EQ (BORAX_MAKE_FIXNUM (3), Cons[1]->Car);
@@ -350,7 +350,7 @@ ObjectFileTests::CheckGeneratedFileContents (
   ASSERT_EQ (BORAX_MAKE_FIXNUM (0), Cons[3]->Cdr);
 
   // root[2] is a circular list #1=(8 7 6 5 . #1#)
-  ASSERT_NO_THROW (Cons[4] = TheCons (Root->Slots[2]));
+  ASSERT_NO_THROW (Cons[4] = TheCons (BoraxRecordSlots (Root)[2]));
   ASSERT_EQ (BORAX_MAKE_FIXNUM (8), Cons[4]->Car);
   ASSERT_NO_THROW (Cons[5] = TheCons (Cons[4]->Cdr));
   ASSERT_EQ (BORAX_MAKE_FIXNUM (7), Cons[5]->Car);
@@ -364,37 +364,37 @@ ObjectFileTests::CheckGeneratedFileContents (
   BORAX_RECORD  *ObjectVector;
   BORAX_RECORD  *ObjectVectorClass;
 
-  ASSERT_NO_THROW (ObjectVector      = TheObjectRecord (Root->Slots[3]));
+  ASSERT_NO_THROW (ObjectVector      = TheObjectRecord (BoraxRecordSlots (Root)[3]));
   ASSERT_NO_THROW (ObjectVectorClass = TheObjectRecord (ObjectVector->Class));
   ASSERT_EQ (RootClass, ObjectVectorClass);
   ASSERT_EQ (3U, ObjectVector->Length);
-  ASSERT_EQ (BORAX_MAKE_FIXNUM (343), ObjectVector->Slots[0]);
-  ASSERT_EQ (BORAX_MAKE_FIXNUM (8675309), ObjectVector->Slots[1]);
-  ASSERT_EQ (BORAX_MAKE_FIXNUM (-9000), ObjectVector->Slots[2]);
+  ASSERT_EQ (BORAX_MAKE_FIXNUM (343), BoraxRecordSlots (ObjectVector)[0]);
+  ASSERT_EQ (BORAX_MAKE_FIXNUM (8675309), BoraxRecordSlots (ObjectVector)[1]);
+  ASSERT_EQ (BORAX_MAKE_FIXNUM (-9000), BoraxRecordSlots (ObjectVector)[2]);
 
   // root[4] is a word vector
   BORAX_RECORD  *WordVector;
   BORAX_RECORD  *WordVectorClass;
 
-  ASSERT_NO_THROW (WordVector      = TheWordRecord (Root->Slots[4]));
-  ASSERT_NO_THROW (WordVectorClass = TheObjectRecord (WordVector->VectorClass));
+  ASSERT_NO_THROW (WordVector      = TheWordRecord (BoraxRecordSlots (Root)[4]));
+  ASSERT_NO_THROW (WordVectorClass = TheObjectRecord (WordVector->Class));
   ASSERT_EQ (RootClass, WordVectorClass);
   ASSERT_EQ (3U, WordVector->Length);
-  ASSERT_EQ (343U, WordVector->Data[0]);
-  ASSERT_EQ (8675309U, WordVector->Data[1]);
-  ASSERT_EQ (static_cast<UINTN>(-9000), WordVector->Data[2]);
+  ASSERT_EQ (343U, BoraxRecordData (WordVector)[0]);
+  ASSERT_EQ (8675309U, BoraxRecordData (WordVector)[1]);
+  ASSERT_EQ (static_cast<UINTN>(-9000), BoraxRecordData (WordVector)[2]);
 
   // root[5] is a byte vector #(0 1 2)
   BORAX_RECORD  *ByteVector;
   BORAX_RECORD  *ByteVectorClass;
   UINT8         *ByteVectorData;
 
-  ASSERT_NO_THROW (ByteVector      = TheWordRecord (Root->Slots[5]));
+  ASSERT_NO_THROW (ByteVector      = TheWordRecord (BoraxRecordSlots (Root)[5]));
   ASSERT_NO_THROW (ByteVectorClass = TheObjectRecord (ByteVector->Class));
   ASSERT_EQ (RootClass, ByteVectorClass);
   ASSERT_EQ (sizeof (UINTN), 3U + ByteVector->LengthAux);
   ASSERT_EQ (1U, ByteVector->Length);
-  ByteVectorData = reinterpret_cast<UINT8 *>(ByteVector->Data);
+  ByteVectorData = reinterpret_cast<UINT8 *>(BoraxRecordData (ByteVector));
   ASSERT_EQ (0U, ByteVectorData[0]);
   ASSERT_EQ (1U, ByteVectorData[1]);
   ASSERT_EQ (2U, ByteVectorData[2]);

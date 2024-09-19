@@ -205,8 +205,8 @@ TEST_F (MemoryTests, RootedWordRecord) {
   ASSERT_EQ (BORAX_WIDETAG_WORD_RECORD, Header->WideTag);
 
   Record = reinterpret_cast<BORAX_RECORD *>(Header);
-  EXPECT_EQ (BORAX_LOWTAG_POINTER, Record->Data[0]);
-  EXPECT_EQ (BORAX_LOWTAG_POINTER, Record->Data[19]);
+  EXPECT_EQ (BORAX_LOWTAG_POINTER, BoraxRecordData (Record)[0]);
+  EXPECT_EQ (BORAX_LOWTAG_POINTER, BoraxRecordData (Record)[19]);
 }
 
 TEST_F (MemoryTests, RootedObjectRecord) {
@@ -223,8 +223,8 @@ TEST_F (MemoryTests, RootedObjectRecord) {
   ASSERT_EQ (BORAX_WIDETAG_OBJECT_RECORD, Header->WideTag);
   Record = reinterpret_cast<BORAX_RECORD *>(Header);
   EXPECT_EQ (gSomeVal, Record->Class);
-  EXPECT_EQ (BORAX_IMMEDIATE_UNBOUND, Record->Data[0]);
-  EXPECT_EQ (BORAX_IMMEDIATE_UNBOUND, Record->Data[9]);
+  EXPECT_EQ (BORAX_IMMEDIATE_UNBOUND, BoraxRecordData (Record)[0]);
+  EXPECT_EQ (BORAX_IMMEDIATE_UNBOUND, BoraxRecordData (Record)[9]);
 }
 
 TEST_F (MemoryTests, CircularPin) {

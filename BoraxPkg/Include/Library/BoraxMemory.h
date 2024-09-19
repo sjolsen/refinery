@@ -617,18 +617,7 @@ typedef union {
     BORAX_HALFWORD    HalfWord0;
     BORAX_HALFWORD    LengthAux; // Extra length bits for sub-word granularity
     UINTN             Length;    // Count of words
-    union {
-      struct {
-        // Needed for C rules on flexible members
-        BORAX_OBJECT    VectorClass;
-        UINTN           Data[];
-      };
-
-      struct {
-        BORAX_OBJECT    Class;
-        BORAX_OBJECT    Slots[];
-      };
-    };
+    BORAX_OBJECT      Class;
   };
 } BORAX_RECORD;
 
@@ -646,6 +635,24 @@ BoraxGetRecord (
 // TODO: How can we make these macros type-safe?
 #define BORAX_RECORD_LENGTH(_type) \
 ((sizeof (_type) - sizeof (BORAX_RECORD)) / sizeof (BORAX_OBJECT))
+
+STATIC inline UINTN *
+EFIAPI
+BoraxRecordData (
+  IN BORAX_RECORD  *Record
+  )
+{
+  return (UINTN *)(Record + 1);
+}
+
+STATIC inline BORAX_OBJECT *
+EFIAPI
+BoraxRecordSlots (
+  IN BORAX_RECORD  *Record
+  )
+{
+  return (BORAX_OBJECT *)(Record + 1);
+}
 
 #define BORAX_GET_OBJECT_RECORD(_obj, _ptr) \
 (BoraxGetRecord (                           \

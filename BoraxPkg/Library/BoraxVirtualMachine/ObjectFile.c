@@ -680,7 +680,7 @@ TranslateObjectSection (
         if (Header->WideTag == BORAX_WIDETAG_OBJECT_RECORD) {
           UINTN  I;
           for (I = 0; I < Record->Length; ++I) {
-            Status = TranslateObject (Staged, &Record->Slots[I]);
+            Status = TranslateObject (Staged, &BoraxRecordSlots (Record)[I]);
             if (EFI_ERROR (Status)) {
               return Status;
             }

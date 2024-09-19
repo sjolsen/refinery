@@ -1044,7 +1044,7 @@ BoraxAllocateRecord (
     return Status;
   }
 
-  SetMemN ((*Record)->Data, sizeof (UINTN) * Length, InitialElement);
+  SetMemN (BoraxRecordData (*Record), sizeof (UINTN) * Length, InitialElement);
   return EFI_SUCCESS;
 }
 
@@ -1136,7 +1136,7 @@ ObjectRecordSubObjects (
   }
 
   for (I = 0; I < Record->Length; ++I) {
-    Status = Callback (Ctx, &Record->Slots[I]);
+    Status = Callback (Ctx, &BoraxRecordSlots (Record)[I]);
     if (EFI_ERROR (Status)) {
       return Status;
     }

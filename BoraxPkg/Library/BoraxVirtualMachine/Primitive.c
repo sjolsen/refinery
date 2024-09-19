@@ -69,7 +69,7 @@ EarlyStringEqual (
     return EFI_SUCCESS;
   }
 
-  Name1p = (CONST CHAR16 *)Record->Data;
+  Name1p = (CONST CHAR16 *)BoraxRecordData (Record);
   for (I = 0; I < Chars1; ++I) {
     if (Name1p[I] != Name2[I]) {
       *Match = FALSE;
@@ -1109,8 +1109,8 @@ BoraxPrimitiveClassOf (
     {
       BORAX_RECORD  *Record = (BORAX_RECORD *)BORAX_GET_POINTER (Object);
 
-      if (BORAX_BOUNDP (Record->VectorClass)) {
-        *Class = Record->VectorClass;
+      if (BORAX_BOUNDP (Record->Class)) {
+        *Class = Record->Class;
         return BORAX_NIL;
       } else {
         *Class = Interp->Globals[BORAX_GLOBAL_CLASS_WORD_RECORD_OBJECT];
@@ -1359,7 +1359,7 @@ BoraxPrimitiveSimpleVectorData (
     return BoraxPrimitiveTypeError (Interp, Vector, ClassSimpleVector);
   }
 
-  *Data   = Record->Slots;
+  *Data   = BoraxRecordSlots (Record);
   *Length = Record->Length;
   return BORAX_NIL;
 }
@@ -1412,7 +1412,7 @@ SimpleVectorSubtypeData (
 
   Record = (BORAX_RECORD *)BORAX_GET_POINTER (Vector);
 
-  if (!BORAX_EQ (Record->VectorClass, Class)) {
+  if (!BORAX_EQ (Record->Class, Class)) {
     return BoraxPrimitiveTypeError (Interp, Vector, Class);
   }
 
@@ -1421,7 +1421,7 @@ SimpleVectorSubtypeData (
     return Condition;
   }
 
-  *Data   = Record->Data;
+  *Data   = BoraxRecordData (Record);
   *Length = TheLength;
   return BORAX_NIL;
 }
@@ -1474,7 +1474,7 @@ BoraxPrimitiveMakeString (
     return BoraxPrimitiveHeapExhausted (Interp);
   }
 
-  CopyMem (Record->Data, CString.Data, CharLength * sizeof (CHAR16));
+  CopyMem (BoraxRecordData (Record), CString.Data, CharLength * sizeof (CHAR16));
   *String = BORAX_MAKE_POINTER (Record);
   return BORAX_NIL;
 }
