@@ -813,7 +813,7 @@ struct _BORAX_ALLOCATOR {
   UINTN                              ToSpaceParity;
   BORAX_PIN_RECORD                   *Pins;
   BORAX_SYSTEM_ALLOCATOR_PROTOCOL    *SysAlloc;
-  UINTN                              UsedPages;
+  UINTN                              GCPageCount;
 };
 
 VOID
@@ -835,19 +835,41 @@ BoraxAllocatorCollect (
   IN BORAX_ALLOCATOR  *Alloc
   );
 
+typedef enum {
+  BORAX_MEMORY_INIT_NONE,
+  BORAX_MEMORY_INIT_0,
+  BORAX_MEMORY_INIT_1,
+} BORAX_MEMORY_INIT;
+
 VOID *
 EFIAPI
-BoraxAllocateExternalPages (
-  IN BORAX_ALLOCATOR  *Alloc,
-  IN UINTN            Pages
+BoraxAllocatePages (
+  IN BORAX_ALLOCATOR    *Alloc,
+  IN UINTN              Pages,
+  IN BORAX_MEMORY_INIT  Init
   );
 
 VOID
 EFIAPI
-BoraxFreeExternalPages (
+BoraxFreePages (
   IN BORAX_ALLOCATOR  *Alloc,
   IN VOID             *Buffer,
   IN UINTN            Pages
+  );
+
+VOID *
+EFIAPI
+BoraxAllocatePool (
+  IN BORAX_ALLOCATOR    *Alloc,
+  IN UINTN              AllocationSize,
+  IN BORAX_MEMORY_INIT  Init
+  );
+
+VOID
+EFIAPI
+BoraxFreePool (
+  IN BORAX_ALLOCATOR  *Alloc,
+  IN VOID             *Buffer
   );
 
 VOID

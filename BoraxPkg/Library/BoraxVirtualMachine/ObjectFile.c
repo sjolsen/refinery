@@ -59,13 +59,13 @@ BoraxStageObjectFileCleanup (
 
   if (Impl != NULL) {
     if (Impl->ObjectBitmap != NULL) {
-      FreePool (Impl->ObjectBitmap);
+      BoraxFreePool (Impl->Alloc, Impl->ObjectBitmap);
     }
 
     if (Impl->Object != NULL) {
       // The page-count calculation must not have overflowed for us to make it
       // here
-      BoraxFreeExternalPages (
+      BoraxFreePages (
         Impl->Alloc,
         Impl->Object,
         UNSAFE_PAGE_COUNT_ROUNDING_UP (Impl->Header.Object.Size)
@@ -75,7 +75,7 @@ BoraxStageObjectFileCleanup (
     if (Impl->Cons != NULL) {
       // The page-count calculation must not have overflowed for us to make it
       // here
-      BoraxFreeExternalPages (
+      BoraxFreePages (
         Impl->Alloc,
         Impl->Cons,
         UNSAFE_PAGE_COUNT_ROUNDING_UP (Impl->Header.Cons.Size)
@@ -86,7 +86,7 @@ BoraxStageObjectFileCleanup (
       gBS->CloseEvent (Impl->IO.Event);
     }
 
-    FreePool (Impl);
+    BoraxFreePool (Impl->Alloc, Impl);
   }
 }
 
@@ -129,7 +129,11 @@ BoraxStageObjectFileAllocateChunk (
     return Status;
   }
 
-  *Chunk = BoraxAllocateExternalPages (Staged->Impl->Alloc, PageCount);
+  *Chunk = BoraxAllocatePages (
+             Staged->Impl->Alloc,
+             PageCount,
+             BORAX_MEMORY_INIT_1
+             );
   if (*Chunk == NULL) {
     BXO_DEBUG_ERROR ("allocation failed");
     return EFI_OUT_OF_RESOURCES;
@@ -245,7 +249,11 @@ BoraxStageObjectFile (
   // Initialize private state. The Impl struct contains all state that must be
   // carried across I/O callbacks and is set up so that resources are released
   // when their pointers are non-NULL. This simplifies the shared cleanup code.
-  Impl = AllocateZeroPool (sizeof (BORAX_STAGED_OBJECT_FILE_IMPL));
+  Impl = BoraxAllocatePool (
+           Alloc,
+           sizeof (BORAX_STAGED_OBJECT_FILE_IMPL),
+           BORAX_MEMORY_INIT_0
+           );
   if (Impl == NULL) {
     BXO_DEBUG_ERROR ("allocation failure");
     BoraxStageObjectFileFailure (Staged, EFI_OUT_OF_RESOURCES);
@@ -400,10 +408,12 @@ BoraxStageObjectFile2 (
     }
 
     // Allocate the object bitmap
-    Impl->ObjectBitmap = AllocateZeroPool (
+    Impl->ObjectBitmap = BoraxAllocatePool (
+                           Impl->Alloc,
                            sizeof (UINTN) *
                            OBJECT_BITMAP_WORDS_PER_PAGE *
-                           UNSAFE_PAGE_COUNT_ROUNDING_UP (Impl->Header.Object.Size)
+                           UNSAFE_PAGE_COUNT_ROUNDING_UP (Impl->Header.Object.Size),
+                           BORAX_MEMORY_INIT_0
                            );
     if (Impl->ObjectBitmap == NULL) {
       BXO_DEBUG_ERROR ("allocation failure");

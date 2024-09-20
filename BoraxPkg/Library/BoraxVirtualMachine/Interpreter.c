@@ -61,6 +61,7 @@ UnsafeStackWrite (
 STATIC EFI_STATUS
 EFIAPI
 TaskStackInit (
+  IN BORAX_INTERPRETER  *Interp,
   OUT BORAX_TASK_STACK  *Stack
   )
 {
@@ -68,14 +69,18 @@ TaskStackInit (
   BORAX_OBJECT  **Pages = NULL;
   UINTN         I;
 
-  Pages = AllocateZeroPool (STACK_PAGE_MIN * sizeof (BORAX_OBJECT *));
+  Pages = BoraxAllocatePool (
+            Interp->Alloc,
+            STACK_PAGE_MIN * sizeof (BORAX_OBJECT *),
+            BORAX_MEMORY_INIT_0
+            );
   if (Pages == NULL) {
     Status = EFI_OUT_OF_RESOURCES;
     goto cleanup;
   }
 
   for (I = 0; I < STACK_PAGE_MIN; ++I) {
-    Pages[I] = AllocatePages (1);
+    Pages[I] = BoraxAllocatePages (Interp->Alloc, 1, BORAX_MEMORY_INIT_NONE);
     if (Pages[I] == NULL) {
       Status = EFI_OUT_OF_RESOURCES;
       goto cleanup;
@@ -93,11 +98,11 @@ cleanup:
   if (Pages != NULL) {
     for (I = 0; I < STACK_PAGE_MIN; ++I) {
       if (Pages[I] != NULL) {
-        FreePages (Pages[I], 1);
+        BoraxFreePages (Interp->Alloc, Pages[I], 1);
       }
     }
 
-    FreePool (Pages);
+    BoraxFreePool (Interp->Alloc, Pages);
   }
 
   return Status;
@@ -106,18 +111,19 @@ cleanup:
 STATIC VOID
 EFIAPI
 TaskStackCleanup (
-  IN BORAX_TASK_STACK  *Stack
+  IN BORAX_INTERPRETER  *Interp,
+  IN BORAX_TASK_STACK   *Stack
   )
 {
   UINTN  I;
 
   for (I = 0; I < Stack->PagesCapacity; ++I) {
     if (Stack->Pages[I] != NULL) {
-      FreePages (Stack->Pages[I], 1);
+      BoraxFreePages (Interp->Alloc, Stack->Pages[I], 1);
     }
   }
 
-  FreePool (Stack->Pages);
+  BoraxFreePool (Interp->Alloc, Stack->Pages);
 }
 
 STATIC BORAX_OBJECT
@@ -160,7 +166,11 @@ TaskStackEnsureCapacity (
 
   // Allocate pages
   for ( ; NewPagesLength < Pages; ++NewPagesLength) {
-    Stack->Pages[NewPagesLength] = AllocatePages (1);
+    Stack->Pages[NewPagesLength] = BoraxAllocatePages (
+                                     Interp->Alloc,
+                                     1,
+                                     BORAX_MEMORY_INIT_NONE
+                                     );
     if (Stack->Pages[NewPagesLength] == NULL) {
       Condition = BoraxPrimitiveHeapExhausted (Interp);
       goto cleanup;
@@ -176,7 +186,7 @@ cleanup:
   // capacity increase as well, but this is less important (and not required for
   // correctness).
   for (I = Stack->PagesLength; I < NewPagesLength; ++I) {
-    FreePages (Stack->Pages[I], 1);
+    BoraxFreePages (Interp->Alloc, Stack->Pages[I], 1);
     Stack->Pages[I] = NULL;
   }
 
@@ -237,7 +247,7 @@ TaskEnd (
     gBS->SignalEvent (Task->Completion);
   }
 
-  TaskStackCleanup (&Task->Stack);
+  TaskStackCleanup (Task->Interp, &Task->Stack);
   RemoveEntryList (&Task->TaskList);
   BoraxReleasePinRecord (&Task->Record);
 }
@@ -274,7 +284,7 @@ BoraxInterpreterInit (
   NewInterp->Alloc           = Alloc;
   NewInterp->GcPageThreshold = MAX (
                                  GC_PAGE_THRESHOLD_MIN,
-                                 GC_PAGE_THRESHOLD_FACTOR * Alloc->UsedPages
+                                 GC_PAGE_THRESHOLD_FACTOR * Alloc->GCPageCount
                                  );
   InitializeListHead (&NewInterp->TaskList);
 
@@ -373,7 +383,7 @@ BoraxInterpreterSpawn (
     goto cleanup;
   }
 
-  Status = TaskStackInit (&NewTask->Stack);
+  Status = TaskStackInit (Interp, &NewTask->Stack);
   if (EFI_ERROR (Status)) {
     goto cleanup;
   }
@@ -405,7 +415,7 @@ BoraxInterpreterSpawn (
 
 cleanup:
   if (Stack != NULL) {
-    TaskStackCleanup (Stack);
+    TaskStackCleanup (Interp, Stack);
   }
 
   if (NewTask != NULL) {

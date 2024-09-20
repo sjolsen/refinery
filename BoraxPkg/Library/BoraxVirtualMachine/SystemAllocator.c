@@ -4,7 +4,7 @@
 
 STATIC VOID *
 EFIAPI
-BoraxAllocatePages (
+SysAllocAllocatePages (
   IN BORAX_SYSTEM_ALLOCATOR_PROTOCOL  *This,
   IN UINTN                            Pages
   )
@@ -15,7 +15,7 @@ BoraxAllocatePages (
 
 STATIC VOID
 EFIAPI
-BoraxFreePages (
+SysAllocFreePages (
   IN BORAX_SYSTEM_ALLOCATOR_PROTOCOL  *This,
   IN VOID                             *Buffer,
   IN UINTN                            Pages
@@ -27,7 +27,7 @@ BoraxFreePages (
 
 STATIC VOID *
 EFIAPI
-BoraxAllocatePool (
+SysAllocAllocatePool (
   IN BORAX_SYSTEM_ALLOCATOR_PROTOCOL  *This,
   IN UINTN                            AllocationSize
   )
@@ -38,7 +38,7 @@ BoraxAllocatePool (
 
 STATIC VOID
 EFIAPI
-BoraxFreePool (
+SysAllocFreePool (
   IN BORAX_SYSTEM_ALLOCATOR_PROTOCOL  *This,
   IN VOID                             *Buffer
   )
@@ -48,8 +48,8 @@ BoraxFreePool (
 }
 
 BORAX_SYSTEM_ALLOCATOR_PROTOCOL  gSystemAllocator = {
-  .AllocatePages = &BoraxAllocatePages,
-  .FreePages     = &BoraxFreePages,
-  .AllocatePool  = &BoraxAllocatePool,
-  .FreePool      = &BoraxFreePool,
+  .AllocatePages = &SysAllocAllocatePages,
+  .FreePages     = &SysAllocFreePages,
+  .AllocatePool  = &SysAllocAllocatePool,
+  .FreePool      = &SysAllocFreePool,
 };
