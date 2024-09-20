@@ -17,6 +17,7 @@
 
 [Sources]
   BoraxVirtualMachineTest.cpp
+  InterpreterTest.cpp
   MemoryTest.cpp
   MemoryTest.hpp
   MockError.hpp
