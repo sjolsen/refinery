@@ -258,3 +258,22 @@ TEST_F (InterpreterWithCoreTests, CallTest) {
   ASSERT_EQ (1u, Result.size ());
   ASSERT_EQ (BORAX_MAKE_FIXNUM (4), Result[0]);
 }
+
+TEST_F (InterpreterWithCoreTests, UndefinedFunctionTest) {
+  BORAX_OBJECT  Dne = BORAX_MAKE_POINTER (
+                        Intern (L"BORAX-RUNTIME", L"DOES-NOT-EXIST")
+                        );
+
+  ASSERT_THROW (CallLisp (Dne, { }), TaskAbortedError);
+}
+
+TEST_F (InterpreterWithCoreTests, SumListTest) {
+  BORAX_SYMBOL  *Numbers = Intern (L"BORAX-RUNTIME", L"NUMBERS");
+  BORAX_SYMBOL  *SumList = Intern (L"BORAX-RUNTIME", L"SUM-LIST");
+
+  std::vector <BORAX_OBJECT>  Result =
+    CallLisp (BORAX_MAKE_POINTER (SumList), { Numbers->Value });
+
+  ASSERT_EQ (1u, Result.size ());
+  ASSERT_EQ (BORAX_MAKE_FIXNUM (8675607), Result[0]);
+}
