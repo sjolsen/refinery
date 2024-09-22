@@ -8,7 +8,6 @@
 
 [LibraryClasses]
   BoraxVirtualMachine
-  UefiLib
 
 [Packages]
   BoraxPkg/BoraxPkg.dec

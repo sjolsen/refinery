@@ -3,6 +3,8 @@
 extern "C" {
   #include <Library/BoraxInterpreter.h>
   #include <Library/BoraxObjectFile.h>
+  #include <Library/BoraxPlugin.h>
+  #include <Library/BoraxRuntime.h>
 }
 
 #include "BoraxVirtualMachineTest.hpp"
@@ -77,4 +79,12 @@ public:
 
 TEST_F (InterpreterTests, NullTest) {
   // Just make sure setup works
+}
+
+TEST_F (InterpreterTests, AddCoreTest) {
+  BORAX_OBJECT  Condition;
+
+  Condition = BoraxAddPlugin (Interp.get (), &gPluginCore, nullptr);
+  // TODO: Maybe add a predicate for null conditions
+  ASSERT_FALSE (BORAX_BOOL (Condition));
 }
