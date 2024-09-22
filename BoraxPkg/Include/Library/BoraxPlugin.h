@@ -49,8 +49,8 @@ typedef struct {
 } BORAX_DESCRIPTOR_PLUGIN;
 
 typedef struct {
-  UINTN           Length;
-  BORAX_OBJECT    *Values;
+  UINTN                 Length;
+  CONST BORAX_OBJECT    *Values;
 } BORAX_PLUGIN_DATA;
 
 // TODO: Provide object resolved from descriptors via an out parameter of

@@ -1096,8 +1096,8 @@ BoraxTaskError (
     // TODO: Guard against infinite recursion
     return BoraxTaskEnterFunction (Task, Task->ErrorHandler, Task->Registers.PC);
   } else {
-    // Allow the task to double-fault
-    return Condition;
+    BoraxTaskAbort (Task, Condition);
+    return BORAX_NIL;
   }
 }
 

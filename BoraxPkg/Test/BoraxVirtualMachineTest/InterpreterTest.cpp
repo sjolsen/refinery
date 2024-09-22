@@ -1,5 +1,7 @@
 #include "MemoryTest.hpp"
 
+#include <vector>
+
 extern "C" {
   #include <Library/BoraxInterpreter.h>
   #include <Library/BoraxObjectFile.h>
@@ -8,8 +10,11 @@ extern "C" {
 }
 
 #include "BoraxVirtualMachineTest.hpp"
+#include "Error.hpp"
 #include "MockEvent.hpp"
 #include "MockFile.hpp"
+
+using namespace borax::testing;
 
 struct InterpreterDeleter {
   void
@@ -23,7 +28,47 @@ struct InterpreterDeleter {
 
 using AutoInterpreter = std::unique_ptr<BORAX_INTERPRETER, InterpreterDeleter>;
 
-class InterpreterInitError : public std::exception {
+struct TaskDeleter {
+  void
+  operator() (
+    BORAX_TASK  *Task
+    )
+  {
+    BoraxReleasePinRecord (&Task->Record);
+  }
+};
+
+using AutoTask = std::unique_ptr<BORAX_TASK, TaskDeleter>;
+
+class TaskAbortedError : public ConditionError {
+public:
+  TaskAbortedError (
+                    IN BORAX_ALLOCATOR  *Alloc,
+                    IN BORAX_OBJECT     Condition
+                    ) : ConditionError (Alloc, Condition)
+  {
+  }
+};
+
+class TaskDoubleFaultedError : public ConditionError {
+protected:
+  AutoPin Condition2_;
+public:
+  TaskDoubleFaultedError (
+                          IN BORAX_ALLOCATOR  *Alloc,
+                          IN BORAX_OBJECT     Condition1,
+                          IN BORAX_OBJECT     Condition2
+                          ) : ConditionError (Alloc, Condition1),
+    Condition2_ (PinCondition (Alloc, Condition2))
+  {
+  }
+
+  BORAX_OBJECT
+  Condition2 (
+    ) const noexcept
+  {
+    return Condition2_->Object;
+  }
 };
 
 class InterpreterTests : public MemoryTests {
@@ -41,7 +86,7 @@ public:
 
     Status = BoraxLoadObjectFile (&Alloc, File.GetProtocol (), &Pin);
     if (EFI_ERROR (Status)) {
-      throw InterpreterInitError { };
+      throw EFIError { Status };
     }
 
     return AutoPin { Pin };
@@ -61,7 +106,7 @@ public:
 
     Status = BoraxInterpreterInit (&Alloc, Pin->Object, &Interp);
     if (EFI_ERROR (Status)) {
-      throw InterpreterInitError { };
+      throw EFIError { Status };
     }
 
     this->Interp = AutoInterpreter { Interp };
@@ -75,16 +120,141 @@ public:
 
     MemoryTests::TearDown ();
   }
+
+  void
+  AddPlugin (
+    IN CONST BORAX_DESCRIPTOR_PLUGIN  *Plugin,
+    IN std::vector<BORAX_OBJECT>      Data = { }
+
+    )
+  {
+    BORAX_OBJECT       Condition;
+    BORAX_PLUGIN_DATA  DataList = {
+      .Length = Data.size (),
+      .Values = Data.data (),
+    };
+
+    Condition = BoraxAddPlugin (Interp.get (), Plugin, &DataList);
+    if (BORAX_BOOL (Condition)) {
+      throw ConditionError { Interp->Alloc, Condition };
+    }
+  }
+
+  BORAX_SYMBOL *
+  Intern (
+    IN const wchar_t  *Package,
+    IN const wchar_t  *Name
+    )
+  {
+    BORAX_OBJECT  Condition;
+    BORAX_SYMBOL  *Symbol;
+
+    BORAX_DESCRIPTOR_SYMBOL  Desc = {
+      .Package = reinterpret_cast<CONST CHAR16 *>(Package),
+      .Name    = reinterpret_cast<CONST CHAR16 *>(Name),
+    };
+
+    Condition = BoraxIntern (Interp.get (), &Desc, &Symbol);
+    if (BORAX_BOOL (Condition)) {
+      throw ConditionError { Interp->Alloc, Condition };
+    }
+
+    return Symbol;
+  }
+
+  std::vector<BORAX_OBJECT>
+  CallLisp (
+    IN BORAX_OBJECT               Function,
+    IN std::vector<BORAX_OBJECT>  Args
+    )
+  {
+    EFI_STATUS             Status;
+    BORAX_OBJECT           Condition;
+    BORAX_MULTIPLE_VALUES  *VR;
+    BORAX_TASK             *RawTask;
+    AutoTask               Task;
+    BORAX_PIN              *IORequests;
+
+    Status = BoraxMakeMultipleValues (Interp.get (), Args.size (), &VR);
+    if (EFI_ERROR (Status)) {
+      throw ConditionError {
+              Interp->Alloc,
+              BoraxPrimitiveHeapExhausted (Interp.get ())
+      };
+    }
+
+    for (UINTN I = 0; I < Args.size (); ++I) {
+      VR->Values[I] = Args.begin ()[I];
+    }
+
+    Status = BoraxInterpreterSpawn (
+               Interp.get (),
+               NULL,      // Completion
+               BORAX_NIL, // ErrorHandler
+               Function,
+               BORAX_MAKE_POINTER (VR),
+               &RawTask
+               );
+    if (EFI_ERROR (Status)) {
+      Condition = BoraxPrimitiveSimpleCondition (
+                    Interp.get (),
+                    Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
+                    BoraxCString ((CONST CHAR16 *)L"Failed to spawn task"),
+                    0,
+                    NULL
+                    );
+      throw ConditionError { Interp->Alloc, Condition };
+    }
+
+    Task = AutoTask { RawTask, TaskDeleter () };
+    BoraxInterpreterRun (Interp.get (), &IORequests);
+
+    switch (Task->State) {
+      case BORAX_TASK_RETURNED:
+        VR = Task->Registers.VR;
+        return { VR->Values, VR->Values + VR->Length };
+
+      case BORAX_TASK_ABORTED:
+        throw TaskAbortedError { Interp->Alloc, Task->AbortCondition };
+
+      case BORAX_TASK_DOUBLE_FAULTED:
+        throw TaskDoubleFaultedError {
+                Interp->Alloc,
+                Task->DoubleFault.Condition1,
+                Task->DoubleFault.Condition2
+        };
+
+      default:
+        throw std::logic_error { "unexpected task state" };
+    }
+  }
 };
 
 TEST_F (InterpreterTests, NullTest) {
   // Just make sure setup works
 }
 
-TEST_F (InterpreterTests, AddCoreTest) {
-  BORAX_OBJECT  Condition;
+class InterpreterWithCoreTests : public InterpreterTests {
+public:
 
-  Condition = BoraxAddPlugin (Interp.get (), &gPluginCore, nullptr);
-  // TODO: Maybe add a predicate for null conditions
-  ASSERT_FALSE (BORAX_BOOL (Condition));
+  void
+  SetUp (
+    ) override
+  {
+    InterpreterTests::SetUp ();
+    AddPlugin (&gPluginCore);
+  }
+};
+
+TEST_F (InterpreterWithCoreTests, NullTest) {
+  // Just make sure setup works
+}
+
+TEST_F (InterpreterWithCoreTests, CallTest) {
+  BORAX_SYMBOL                *Plus  = Intern (L"COMMON-LISP", L"+");
+  std::vector <BORAX_OBJECT>  Args   = { BORAX_MAKE_FIXNUM (2), BORAX_MAKE_FIXNUM (2) };
+  std::vector <BORAX_OBJECT>  Result = CallLisp (Plus->Function, Args);
+
+  ASSERT_EQ (1u, Result.size ());
+  ASSERT_EQ (BORAX_MAKE_FIXNUM (4), Result[0]);
 }

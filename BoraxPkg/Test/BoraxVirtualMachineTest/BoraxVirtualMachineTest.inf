@@ -18,6 +18,8 @@
 
 [Sources]
   BoraxVirtualMachineTest.cpp
+  Error.cpp
+  Error.hpp
   InterpreterTest.cpp
   MemoryTest.cpp
   MemoryTest.hpp
