@@ -3,6 +3,7 @@
 #include <Library/BoraxInterpreter.h>
 #include <Library/BoraxMemory.h>
 #include <Library/BoraxObjectFile.h>
+#include <Library/BoraxPlugin.h>
 #include <Library/BoraxPrimitive.h>
 #include <Library/BoraxSystemAllocator.h>
 #include <Library/BundledResource.h>
@@ -18,40 +19,6 @@ typedef struct {
   BUFFER            *Buffer;
 } BUFFER_HANDLE;
 
-typedef struct {
-  CONST CHAR16    *Package;
-  CONST CHAR16    *Name;
-} SYMBOL_DESCRIPTOR;
-
-typedef struct _CONSTANT_DESCRIPTOR CONSTANT_DESCRIPTOR;
-
-typedef struct {
-  UINTN                        Length;
-  CONST CONSTANT_DESCRIPTOR    *Values;
-} LIST_DESCRIPTOR;
-
-struct _CONSTANT_DESCRIPTOR {
-  enum {
-    CONST_BUFFER,
-    CONST_SYMBOL,
-    CONST_KEYWORD,
-    CONST_CLASS,
-    CONST_LIST,
-  } Tag;
-  union {
-    SYMBOL_DESCRIPTOR    Symbol; // Symbol, Keyword, Class
-    LIST_DESCRIPTOR      List;   // List
-  };
-};
-
-typedef struct {
-  SYMBOL_DESCRIPTOR      Name;
-  UINTN                  Entry;
-  BORAX_BUILT_IN_CODE    Code;
-  UINTN                  Locals;
-  LIST_DESCRIPTOR        Constants;
-} FUNCTION_DESCRIPTOR;
-
 #define IMAGE_ERROR(_fmt, ...) \
 DEBUG ((DEBUG_ERROR, "%a:%d: " _fmt "\n", __func__, __LINE__, ##__VA_ARGS__))
 
@@ -61,6 +28,10 @@ DEBUG ((DEBUG_ERROR, "%a:%d: " _fmt "\n", __func__, __LINE__, ##__VA_ARGS__))
     return _TryCondition;               \
   }                                     \
 } while (0)
+
+enum {
+  DATA_BUFFER,
+};
 
 BORAX_OBJECT
 EFIAPI
@@ -126,7 +97,7 @@ Eq (
   return BoraxTaskExitFunction (Task);
 }
 
-STATIC CONST FUNCTION_DESCRIPTOR  gEq = {
+STATIC CONST BORAX_DESCRIPTOR_FUNCTION  gEq = {
   .Name      = {
     .Package = L"COMMON-LISP",
     .Name    = L"EQ",
@@ -150,7 +121,7 @@ ClassOf (
   return BoraxTaskExitFunction (Task);
 }
 
-STATIC CONST FUNCTION_DESCRIPTOR  gClassOf = {
+STATIC CONST BORAX_DESCRIPTOR_FUNCTION  gClassOf = {
   .Name      = {
     .Package = L"COMMON-LISP",
     .Name    = L"CLASS-OF",
@@ -187,7 +158,7 @@ RecordLength (
   }
 }
 
-STATIC CONST FUNCTION_DESCRIPTOR  gRecordLength = {
+STATIC CONST BORAX_DESCRIPTOR_FUNCTION  gRecordLength = {
   .Name      = {
     .Package = L"BORAX-RUNTIME",
     .Name    = L"RECORD-LENGTH",
@@ -239,7 +210,7 @@ RecordSlot (
   return BoraxTaskExitFunction (Task);
 }
 
-STATIC CONST FUNCTION_DESCRIPTOR  gRecordSlot = {
+STATIC CONST BORAX_DESCRIPTOR_FUNCTION  gRecordSlot = {
   .Name         = {
     .Package = L"BORAX-RUNTIME",
     .Name    = L"RECORD-SLOT",
@@ -247,10 +218,10 @@ STATIC CONST FUNCTION_DESCRIPTOR  gRecordSlot = {
   .Code      = &RecordSlot,
   .Constants = {
     RS_CONSTS,
-    (CONST CONSTANT_DESCRIPTOR[]) {
+    (CONST BORAX_DESCRIPTOR_CONSTANT[]) {
       [RS_CONST_SYMBOL_INDEX_ERROR] = {
-        .Tag    = CONST_SYMBOL,
-        .Symbol = { L"BORAX-RUNTIME",L"INDEX-ERROR"    },
+        .Tag    = BORAX_CONST_SYMBOL,
+        .Symbol = { L"BORAX-RUNTIME",L"INDEX-ERROR"  },
       },
     },
   },
@@ -291,7 +262,7 @@ FindPackage (
   return BoraxTaskExitFunction (Task);
 }
 
-STATIC CONST FUNCTION_DESCRIPTOR  gFindPackage = {
+STATIC CONST BORAX_DESCRIPTOR_FUNCTION  gFindPackage = {
   .Name      = {
     .Package = L"COMMON-LISP",
     .Name    = L"FIND-PACKAGE",
@@ -321,7 +292,7 @@ ByteVectorLength (
   }
 }
 
-STATIC CONST FUNCTION_DESCRIPTOR  gByteVectorLength = {
+STATIC CONST BORAX_DESCRIPTOR_FUNCTION  gByteVectorLength = {
   .Name      = {
     .Package = L"BORAX-RUNTIME",
     .Name    = L"BYTE-VECTOR-LENGTH",
@@ -367,7 +338,7 @@ ByteVectorRef (
   }
 }
 
-STATIC CONST FUNCTION_DESCRIPTOR  gByteVectorRef = {
+STATIC CONST BORAX_DESCRIPTOR_FUNCTION  gByteVectorRef = {
   .Name         = {
     .Package = L"BORAX-RUNTIME",
     .Name    = L"BYTE-VECTOR-REF",
@@ -375,10 +346,10 @@ STATIC CONST FUNCTION_DESCRIPTOR  gByteVectorRef = {
   .Code      = &ByteVectorRef,
   .Constants = {
     BVR_CONSTS,
-    (CONST CONSTANT_DESCRIPTOR[]) {
+    (CONST BORAX_DESCRIPTOR_CONSTANT[]) {
       [BVR_CONST_SYMBOL_INDEX_ERROR] = {
-        .Tag    = CONST_SYMBOL,
-        .Symbol = { L"BORAX-RUNTIME",L"INDEX-ERROR"    },
+        .Tag    = BORAX_CONST_SYMBOL,
+        .Symbol = { L"BORAX-RUNTIME",L"INDEX-ERROR"  },
       },
     },
   },
@@ -414,16 +385,19 @@ WriteString (
   return BoraxTaskExitFunction (Task);
 }
 
-STATIC CONST FUNCTION_DESCRIPTOR  gWriteString = {
-  .Name      = {
+STATIC CONST BORAX_DESCRIPTOR_FUNCTION  gWriteString = {
+  .Name        = {
     .Package = L"BORAX-RUNTIME",
     .Name    = L"WRITE-STRING",
   },
   .Code      = &WriteString,
   .Constants = {
     WS_CONSTS,
-    (CONST CONSTANT_DESCRIPTOR[]) {
-      [WS_CONST_BUFFER] = { CONST_BUFFER },
+    (CONST BORAX_DESCRIPTOR_CONSTANT[]) {
+      [WS_CONST_BUFFER] = {
+        .Tag   = BORAX_CONST_DATA,
+        .Index = DATA_BUFFER,
+      },
     },
   },
 };
@@ -458,16 +432,19 @@ WriteCharacter (
   return BoraxTaskExitFunction (Task);
 }
 
-STATIC CONST FUNCTION_DESCRIPTOR  gWriteCharacter = {
-  .Name      = {
+STATIC CONST BORAX_DESCRIPTOR_FUNCTION  gWriteCharacter = {
+  .Name        = {
     .Package = L"BORAX-RUNTIME",
     .Name    = L"WRITE-CHARACTER",
   },
   .Code      = &WriteCharacter,
   .Constants = {
     WS_CONSTS,
-    (CONST CONSTANT_DESCRIPTOR[]) {
-      [WS_CONST_BUFFER] = { CONST_BUFFER },
+    (CONST BORAX_DESCRIPTOR_CONSTANT[]) {
+      [WS_CONST_BUFFER] = {
+        .Tag   = BORAX_CONST_DATA,
+        .Index = DATA_BUFFER,
+      },
     },
   },
 };
@@ -502,16 +479,19 @@ PrintFixnum (
   return BoraxTaskExitFunction (Task);
 }
 
-STATIC CONST FUNCTION_DESCRIPTOR  gPrintFixnum = {
-  .Name      = {
+STATIC CONST BORAX_DESCRIPTOR_FUNCTION  gPrintFixnum = {
+  .Name        = {
     .Package = L"BORAX-RUNTIME",
     .Name    = L"PRINT-FIXNUM",
   },
   .Code      = &PrintFixnum,
   .Constants = {
     PF_CONSTS,
-    (CONST CONSTANT_DESCRIPTOR[]) {
-      [PF_CONST_BUFFER] = { CONST_BUFFER },
+    (CONST BORAX_DESCRIPTOR_CONSTANT[]) {
+      [PF_CONST_BUFFER] = {
+        .Tag   = BORAX_CONST_DATA,
+        .Index = DATA_BUFFER,
+      },
     },
   },
 };
@@ -546,16 +526,19 @@ PrintByte (
   return BoraxTaskExitFunction (Task);
 }
 
-STATIC CONST FUNCTION_DESCRIPTOR  gPrintByte = {
-  .Name      = {
+STATIC CONST BORAX_DESCRIPTOR_FUNCTION  gPrintByte = {
+  .Name        = {
     .Package = L"BORAX-RUNTIME",
     .Name    = L"PRINT-BYTE",
   },
   .Code      = &PrintByte,
   .Constants = {
     PF_CONSTS,
-    (CONST CONSTANT_DESCRIPTOR[]) {
-      [PB_CONST_BUFFER] = { CONST_BUFFER },
+    (CONST BORAX_DESCRIPTOR_CONSTANT[]) {
+      [PB_CONST_BUFFER] = {
+        .Tag   = BORAX_CONST_DATA,
+        .Index = DATA_BUFFER,
+      },
     },
   },
 };
@@ -635,7 +618,7 @@ ErrorHandler (
   }
 }
 
-STATIC CONST FUNCTION_DESCRIPTOR  gErrorHandler = {
+STATIC CONST BORAX_DESCRIPTOR_FUNCTION  gErrorHandler = {
   .Name         = {
     .Package = L"BORAX-RUNTIME",
     .Name    = L"ERROR-HANDLER",
@@ -645,11 +628,14 @@ STATIC CONST FUNCTION_DESCRIPTOR  gErrorHandler = {
   .Locals    = EH_LOCALS,
   .Constants = {
     EH_CONSTS,
-    (CONST CONSTANT_DESCRIPTOR[]) {
-      [EH_CONST_BUFFER]                 = { CONST_BUFFER },
+    (CONST BORAX_DESCRIPTOR_CONSTANT[]) {
+      [EH_CONST_BUFFER] = {
+        .Tag   = BORAX_CONST_DATA,
+        .Index = DATA_BUFFER,
+      },
       [EH_CONST_SYMBOL_PRINT_RECURSIVE] = {
-        .Tag    = CONST_SYMBOL,
-        .Symbol = { L"BORAX-RUNTIME",L"PRINT-RECURSIVE"    },
+        .Tag    = BORAX_CONST_SYMBOL,
+        .Symbol = { L"BORAX-RUNTIME",L"PRINT-RECURSIVE"  },
       },
     },
   },
@@ -694,7 +680,7 @@ CarCdr (
   return BoraxTaskExitFunction (Task);
 }
 
-STATIC CONST FUNCTION_DESCRIPTOR  gCarCdr = {
+STATIC CONST BORAX_DESCRIPTOR_FUNCTION  gCarCdr = {
   .Name      = {
     .Package = L"BORAX-RUNTIME",
     .Name    = L"CAR-CDR",
@@ -751,7 +737,7 @@ Plus (
   return BoraxTaskExitFunction (Task);
 }
 
-STATIC CONST FUNCTION_DESCRIPTOR  gPlus = {
+STATIC CONST BORAX_DESCRIPTOR_FUNCTION  gPlus = {
   .Name      = {
     .Package = L"COMMON-LISP",
     .Name    = L"+",
@@ -759,7 +745,7 @@ STATIC CONST FUNCTION_DESCRIPTOR  gPlus = {
   .Code      = &Plus,
 };
 
-STATIC CONST FUNCTION_DESCRIPTOR  *gFunctions[] = {
+STATIC CONST BORAX_DESCRIPTOR_FUNCTION  *CONST  gFunctions[] = {
   &gByteVectorLength,
   &gByteVectorRef,
   &gCarCdr,
@@ -776,227 +762,12 @@ STATIC CONST FUNCTION_DESCRIPTOR  *gFunctions[] = {
   &gWriteString,
 };
 
-STATIC BORAX_OBJECT
-EFIAPI
-RequirePackage (
-  IN BORAX_INTERPRETER   *Interp,
-  IN BORAX_CONST_STRING  Name,
-  OUT   BORAX_PACKAGE    **Package
-  )
-{
-  BOOLEAN       Found;
-  BORAX_OBJECT  PackageName;
-
-  TRY (BoraxPrimitiveFindPackage (Interp, Name, &Found, Package));
-  if (!Found) {
-    TRY (BoraxPrimitiveMakeString (Interp, Name, &PackageName));
-    return BoraxPrimitiveSimpleCondition (
-             Interp,
-             Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
-             BoraxCString (L"Package not found: ~S"),
-             1,
-             &PackageName
-             );
-  }
-
-  return BORAX_NIL;
-}
-
-STATIC BORAX_OBJECT
-EFIAPI
-Symbolize (
-  IN BORAX_INTERPRETER          *Interp,
-  IN CONST FUNCTION_DESCRIPTOR  *Desc,
-  OUT   BORAX_SYMBOL            **Symbol
-  )
-{
-  BORAX_PACKAGE  *Package;
-
-  TRY (RequirePackage (Interp, BoraxCString (Desc->Name.Package), &Package));
-
-  return BoraxPrimitiveIntern (
-           Interp,
-           Package,
-           BoraxCString (Desc->Name.Name),
-           Symbol
-           );
-}
-
-STATIC BORAX_OBJECT
-EFIAPI
-DefineConstant (
-  IN BORAX_INTERPRETER          *Interp,
-  IN BORAX_OBJECT               TopLevel,
-  IN CONST CONSTANT_DESCRIPTOR  *Const,
-  IN BUFFER_HANDLE              *Buffer,
-  OUT BORAX_OBJECT              *Object
-  )
-{
-  switch (Const->Tag) {
-    case CONST_BUFFER:
-      *Object = BORAX_MAKE_POINTER (Buffer);
-      return BORAX_NIL;
-
-    case CONST_SYMBOL:
-    {
-      BORAX_PACKAGE  *Package;
-      BORAX_SYMBOL   *Symbol;
-
-      TRY (
-        RequirePackage (
-          Interp,
-          BoraxCString (Const->Symbol.Package),
-          &Package
-          )
-        );
-      TRY (
-        BoraxPrimitiveIntern (
-          Interp,
-          Package,
-          BoraxCString (Const->Symbol.Name),
-          &Symbol
-          )
-        );
-      *Object = BORAX_MAKE_POINTER (Symbol);
-      return BORAX_NIL;
-    }
-
-    case CONST_KEYWORD:
-    {
-      BORAX_PACKAGE  *Package;
-      BORAX_SYMBOL   *Symbol;
-
-      TRY (RequirePackage (Interp, BoraxCString (L"KEYWORD"), &Package));
-      TRY (
-        BoraxPrimitiveIntern (
-          Interp,
-          Package,
-          BoraxCString (Const->Symbol.Name),
-          &Symbol
-          )
-        );
-      *Object = BORAX_MAKE_POINTER (Symbol);
-      return BORAX_NIL;
-    }
-
-    case CONST_CLASS:
-    {
-      BORAX_PACKAGE  *Package;
-      BORAX_SYMBOL   *Symbol;
-
-      TRY (
-        RequirePackage (
-          Interp,
-          BoraxCString (Const->Symbol.Package),
-          &Package
-          )
-        );
-      TRY (
-        BoraxPrimitiveIntern (
-          Interp,
-          Package,
-          BoraxCString (Const->Symbol.Name),
-          &Symbol
-          )
-        );
-      *Object = Symbol->Class;
-      return BORAX_NIL;
-    }
-
-    case CONST_LIST:
-    {
-      EFI_STATUS    Status;
-      BORAX_OBJECT  List = BORAX_NIL;
-      UINTN         I;
-
-      for (I = 0; I < Const->List.Length; ++I) {
-        BORAX_CONS  *Cons;
-
-        Status = BoraxAllocateCons (
-                   Interp->Alloc,
-                   BORAX_UNBOUND,
-                   List,
-                   &Cons
-                   );
-        if (EFI_ERROR (Status)) {
-          return BoraxPrimitiveHeapExhausted (Interp);
-        }
-
-        // Recursion is fine here; we're only handling static data
-        TRY (
-          DefineConstant (
-            Interp,
-            TopLevel,
-            &Const->List.Values[I],
-            Buffer,
-            &Cons->Car
-            )
-          );
-
-        List = BORAX_MAKE_POINTER (Cons);
-      }
-
-      *Object = List;
-      return BORAX_NIL;
-    }
-
-    default:
-      return BoraxPrimitiveSimpleCondition (
-               Interp,
-               Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
-               BoraxCString (L"Invalid descriptor for ~S"),
-               1,
-               &TopLevel
-               );
-  }
-}
-
-STATIC BORAX_OBJECT
-EFIAPI
-DefineFunction (
-  IN BORAX_INTERPRETER          *Interp,
-  IN CONST FUNCTION_DESCRIPTOR  *Desc,
-  IN BUFFER_HANDLE              *Buffer
-  )
-{
-  EFI_STATUS               Status;
-  BORAX_SYMBOL             *Symbol;
-  BORAX_BUILT_IN_FUNCTION  *F;
-  UINTN                    I;
-
-  TRY (Symbolize (Interp, Desc, &Symbol));
-
-  Status = BoraxMakeBuiltInFunction (
-             Interp->Alloc,
-             BORAX_MAKE_POINTER (Symbol),
-             BORAX_UNBOUND, // Arglist
-             Desc->Entry,
-             Desc->Code,
-             Desc->Locals,
-             0,    // SharedLength
-             NULL, // Shared
-             Desc->Constants.Length,
-             &F
-             );
-  if (EFI_ERROR (Status)) {
-    return BoraxPrimitiveHeapExhausted (Interp);
-  }
-
-  for (I = 0; I < Desc->Constants.Length; ++I) {
-    TRY (
-      DefineConstant (
-        Interp,
-        BORAX_MAKE_POINTER (Symbol),
-        &Desc->Constants.Values[I],
-        Buffer,
-        &F->Constants[I]
-        )
-      );
-  }
-
-  Symbol->Function = BORAX_MAKE_POINTER (F);
-  return BORAX_NIL;
-}
+STATIC CONST BORAX_DESCRIPTOR_PLUGIN  gPlugin = {
+  .Functions = {
+    .Length = ARRAY_SIZE (gFunctions),
+    .Values = gFunctions,
+  },
+};
 
 STATIC BORAX_OBJECT
 EFIAPI
@@ -1007,7 +778,6 @@ InitializeEnvironment (
 {
   EFI_STATUS     Status;
   BUFFER_HANDLE  *Buffer;
-  UINTN          I;
 
   Status = BoraxMakeConstant (
              &gAlloc,
@@ -1020,11 +790,17 @@ InitializeEnvironment (
 
   Buffer->Buffer = Content;
 
-  for (I = 0; I < ARRAY_SIZE (gFunctions); ++I) {
-    TRY (DefineFunction (Interp, gFunctions[I], Buffer));
-  }
+  {
+    BORAX_OBJECT       DataArray[] = {
+      [DATA_BUFFER] = BORAX_MAKE_POINTER (Buffer),
+    };
+    BORAX_PLUGIN_DATA  Data = {
+      .Length = ARRAY_SIZE (DataArray),
+      .Values = DataArray,
+    };
 
-  return BORAX_NIL;
+    return BoraxAddPlugin (Interp, &gPlugin, &Data);
+  }
 }
 
 STATIC BORAX_OBJECT
@@ -1042,7 +818,7 @@ CallLisp (
   UINTN                  I;
   BORAX_PIN              *IORequests;
 
-  TRY (Symbolize (Interp, &gErrorHandler, &ErrorHandler));
+  TRY (BoraxIntern (Interp, &gErrorHandler.Name, &ErrorHandler));
 
   Status = BoraxMakeMultipleValues (Interp, ArgsLength, &VR);
   if (EFI_ERROR (Status)) {
@@ -1088,7 +864,13 @@ ImageDemo (
   BORAX_SYMBOL   *Demo;
 
   TRY (InitializeEnvironment (Interp, Content));
-  TRY (RequirePackage (Interp, BoraxCString (L"BORAX-RUNTIME"), &BoraxRuntime));
+  TRY (
+    BoraxPrimitiveRequirePackage (
+      Interp,
+      BoraxCString (L"BORAX-RUNTIME"),
+      &BoraxRuntime
+      )
+    );
   TRY (
     BoraxPrimitiveIntern (
       Interp,

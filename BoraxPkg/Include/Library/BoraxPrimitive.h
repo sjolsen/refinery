@@ -198,6 +198,14 @@ BoraxPrimitiveFindPackage (
   OUT BORAX_PACKAGE      **Package
   );
 
+BORAX_OBJECT
+EFIAPI
+BoraxPrimitiveRequirePackage (
+  IN BORAX_INTERPRETER   *Interp,
+  IN BORAX_CONST_STRING  Name,
+  OUT BORAX_PACKAGE      **Package
+  );
+
 typedef struct {
   BORAX_RECORD    Record;
   BORAX_OBJECT    Package;

@@ -868,6 +868,42 @@ BoraxPrimitiveFindPackage (
 
 BORAX_OBJECT
 EFIAPI
+BoraxPrimitiveRequirePackage (
+  IN BORAX_INTERPRETER   *Interp,
+  IN BORAX_CONST_STRING  Name,
+  OUT BORAX_PACKAGE      **Package
+  )
+{
+  BORAX_OBJECT  Condition;
+  BOOLEAN       Found;
+
+  Condition = BoraxPrimitiveFindPackage (Interp, Name, &Found, Package);
+  if (BORAX_BOOL (Condition)) {
+    return Condition;
+  }
+
+  if (!Found) {
+    BORAX_OBJECT  PackageName;
+
+    Condition = BoraxPrimitiveMakeString (Interp, Name, &PackageName);
+    if (BORAX_BOOL (Condition)) {
+      return Condition;
+    }
+
+    return BoraxPrimitiveSimpleCondition (
+             Interp,
+             Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_ERROR],
+             BoraxCString (L"Package not found: ~S"),
+             1,
+             &PackageName
+             );
+  }
+
+  return BORAX_NIL;
+}
+
+BORAX_OBJECT
+EFIAPI
 BoraxPrimitiveTheSymbol (
   IN BORAX_INTERPRETER  *Interp,
   IN BORAX_OBJECT       Object,
