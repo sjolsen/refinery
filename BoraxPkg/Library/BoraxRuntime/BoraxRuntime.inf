@@ -1,0 +1,18 @@
+[Defines]
+  INF_VERSION    = 1.27
+  BASE_NAME      = BoraxRuntime
+  FILE_GUID      = ffee594f-2264-4467-b42d-cfa580f3884c
+  MODULE_TYPE    = UEFI_APPLICATION
+  VERSION_STRING = 0.00
+  LIBRARY_CLASS  = BoraxRuntime
+
+[LibraryClasses]
+  BoraxVirtualMachine
+  UefiLib
+
+[Packages]
+  BoraxPkg/BoraxPkg.dec
+  MdePkg/MdePkg.dec
+
+[Sources]
+  Core.c

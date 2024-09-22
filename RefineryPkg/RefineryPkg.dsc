@@ -18,6 +18,7 @@
 [LibraryClasses]
   BundledResource|RefineryPkg/Library/BundledResource/BundledResource.inf
 
+  BoraxRuntime|BoraxPkg/Library/BoraxRuntime/BoraxRuntime.inf
   BoraxVirtualMachine|BoraxPkg/Library/BoraxVirtualMachine/BoraxVirtualMachine.inf
 
 !ifdef $(DEBUG_ON_OVMF_IO_PORT)

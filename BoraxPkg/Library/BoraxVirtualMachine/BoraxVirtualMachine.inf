@@ -12,8 +12,8 @@
   SafeIntLib
 
 [Packages]
-  MdePkg/MdePkg.dec
   BoraxPkg/BoraxPkg.dec
+  MdePkg/MdePkg.dec
 
 [Sources]
   Bytecode.c
