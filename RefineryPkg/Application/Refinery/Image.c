@@ -853,35 +853,7 @@ CallLisp (
   return BORAX_NIL;
 }
 
-STATIC BORAX_OBJECT
-EFIAPI
-ImageDemo (
-  IN BORAX_INTERPRETER  *Interp,
-  IN BUFFER             *Content
-  )
-{
-  BORAX_PACKAGE  *BoraxRuntime;
-  BORAX_SYMBOL   *Demo;
-
-  TRY (InitializeEnvironment (Interp, Content));
-  TRY (
-    BoraxPrimitiveRequirePackage (
-      Interp,
-      BoraxCString (L"BORAX-RUNTIME"),
-      &BoraxRuntime
-      )
-    );
-  TRY (
-    BoraxPrimitiveIntern (
-      Interp,
-      BoraxRuntime,
-      BoraxCString (L"DEMO"),
-      &Demo
-      )
-    );
-
-  return CallLisp (Interp, BORAX_MAKE_POINTER (Demo), 0, NULL);
-}
+STATIC CONST BORAX_DESCRIPTOR_SYMBOL  gDemo = { L"BORAX-RUNTIME", L"DEMO" };
 
 EFI_STATUS
 EFIAPI
@@ -897,6 +869,7 @@ ImageLoadContent (
   EFI_FILE_PROTOCOL         *InitialImage     = NULL;
   BORAX_PIN                 *GlobalEnvironment;
   BORAX_INTERPRETER         *Interp = NULL;
+  BORAX_SYMBOL              *Demo;
 
   BoraxAllocatorInit (&gAlloc, &gSystemAllocator);
 
@@ -948,11 +921,24 @@ ImageLoadContent (
     goto cleanup;
   }
 
-  Condition = ImageDemo (Interp, Content);
+  Condition = InitializeEnvironment (Interp, Content);
   if (BORAX_BOOL (Condition)) {
     // TODO: Figure out _some_ kind of way of printing conditions without the
     // basic Lisp system running
-    (VOID)BufferWrite (Content, L"ImageDemo failed\n");
+    (VOID)BufferWrite (Content, L"InitializeEnvironment failed\n");
+    goto cleanup;
+  }
+
+  Condition = BoraxIntern (Interp, &gDemo, &Demo);
+  if (BORAX_BOOL (Condition)) {
+    (VOID)BufferWrite (Content, L"Intern(Demo) failed\n");
+    goto cleanup;
+  }
+
+  Condition = CallLisp (Interp, BORAX_MAKE_POINTER (Demo), 0, NULL);
+  if (BORAX_BOOL (Condition)) {
+    (VOID)BufferWrite (Content, L"CallLisp(Demo) failed\n");
+    goto cleanup;
   }
 
 cleanup:
