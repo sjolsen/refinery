@@ -519,6 +519,17 @@
   (call 'print-sum-list ('numbers))
   (return))
 
+;; TODO: Separate environments for demo, test, etc.
+(define-bytecode-function recursion-test (depth tailp)
+  (declare (local depth tailp))
+  (bind (depth tailp))
+  (return :if (eq depth 0) (0))
+  (call '- (depth 1))
+  (bind (depth))
+  (call :tail :if tailp 'recursion-test (depth tailp))
+  (call 'recursion-test (depth tailp))
+  (return))
+
 (defun ensure-bytecode-function (name)
   (setf (borax-vm/cl:symbol-function (reify name))
         (bytecode-function name)))

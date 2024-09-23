@@ -331,6 +331,63 @@ STATIC CONST BORAX_DESCRIPTOR_FUNCTION  gCarCdr = {
 
 STATIC BORAX_OBJECT
 EFIAPI
+Minus (
+  IN BORAX_TASK  *Task
+  )
+{
+  BORAX_OBJECT  Condition;
+  BORAX_OBJECT  A, B;
+
+  {
+    BORAX_OBJECT  *Args[] = { &A, &B };
+    Condition = BoraxTaskBind (Task, ARRAY_SIZE (Args), Args);
+    if (BORAX_BOOL (Condition)) {
+      return Condition;
+    }
+  }
+
+  if (!BORAX_IS_FIXNUM (A)) {
+    return BoraxPrimitiveTypeError (
+             Task->Interp,
+             A,
+             Task->Interp->Globals[BORAX_GLOBAL_CLASS_FIXNUM]
+             );
+  }
+
+  if (!BORAX_IS_FIXNUM (B)) {
+    return BoraxPrimitiveTypeError (
+             Task->Interp,
+             B,
+             Task->Interp->Globals[BORAX_GLOBAL_CLASS_FIXNUM]
+             );
+  }
+
+  {
+    // TODO: arbitrary-precision integers
+    BORAX_OBJECT  Args[] = {
+      BORAX_MAKE_FIXNUM (
+        BORAX_GET_FIXNUM (A) - BORAX_GET_FIXNUM (B)
+        )
+    };
+    Condition = BoraxTaskCoBind (Task, ARRAY_SIZE (Args), Args);
+    if (BORAX_BOOL (Condition)) {
+      return Condition;
+    }
+  }
+
+  return BoraxTaskExitFunction (Task);
+}
+
+STATIC CONST BORAX_DESCRIPTOR_FUNCTION  gMinus = {
+  .Name      = {
+    .Package = L"COMMON-LISP",
+    .Name    = L"-",
+  },
+  .Code      = &Minus,
+};
+
+STATIC BORAX_OBJECT
+EFIAPI
 Plus (
   IN BORAX_TASK  *Task
   )
@@ -393,6 +450,7 @@ STATIC CONST BORAX_DESCRIPTOR_FUNCTION  *CONST  gFunctions[] = {
   &gClassOf,
   &gEq,
   &gFindPackage,
+  &gMinus,
   &gPlus,
   &gRecordLength,
   &gRecordSlot,

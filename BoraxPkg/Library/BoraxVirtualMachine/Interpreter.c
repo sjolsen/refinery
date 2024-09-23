@@ -91,6 +91,10 @@ TaskStackInit (
   Stack->PagesLength   = STACK_PAGE_MIN;
   Stack->PagesCapacity = STACK_PAGE_MIN;
 
+  // TODO: Tune this
+  Stack->HardLimit = STACK_PAGE_MAX * BORAX_WORDS_PER_PAGE;
+  Stack->SoftLimit = Stack->HardLimit - (BORAX_WORDS_PER_PAGE / 2);
+
   Pages  = NULL;
   Status = EFI_SUCCESS;
 
@@ -139,7 +143,9 @@ TaskStackEnsureCapacity (
   UINTN         NewPagesLength = Stack->PagesLength;
   UINTN         I;
 
-  if (Pages > STACK_PAGE_MAX) {
+  if (Words > MIN (Stack->SoftLimit, Stack->HardLimit)) {
+    // TODO: Restore the soft limit upon successfully handling STACK-EXHAUSTED
+    Stack->SoftLimit = Stack->HardLimit;
     return BoraxPrimitiveStackExhausted (Interp);
   }
 

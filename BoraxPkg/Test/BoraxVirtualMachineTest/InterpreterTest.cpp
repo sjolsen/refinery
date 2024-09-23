@@ -1,5 +1,6 @@
 #include "MemoryTest.hpp"
 
+#include <optional>
 #include <vector>
 
 extern "C" {
@@ -165,7 +166,8 @@ public:
   std::vector<BORAX_OBJECT>
   CallLisp (
     IN BORAX_OBJECT               Function,
-    IN std::vector<BORAX_OBJECT>  Args
+    IN std::vector<BORAX_OBJECT>  Args,
+    IN std::optional<UINTN>       SoftLimit = std::nullopt
     )
   {
     EFI_STATUS             Status;
@@ -207,6 +209,11 @@ public:
     }
 
     Task = AutoTask { RawTask, TaskDeleter () };
+
+    if (SoftLimit) {
+      Task->Stack.SoftLimit = *SoftLimit;
+    }
+
     BoraxInterpreterRun (Interp.get (), &IORequests);
 
     switch (Task->State) {
@@ -264,6 +271,7 @@ TEST_F (InterpreterWithCoreTests, UndefinedFunctionTest) {
                         Intern (L"BORAX-RUNTIME", L"DOES-NOT-EXIST")
                         );
 
+  // TODO: Check the condition data
   ASSERT_THROW (CallLisp (Dne, { }), TaskAbortedError);
 }
 
@@ -276,4 +284,49 @@ TEST_F (InterpreterWithCoreTests, SumListTest) {
 
   ASSERT_EQ (1u, Result.size ());
   ASSERT_EQ (BORAX_MAKE_FIXNUM (8675607), Result[0]);
+}
+
+TEST_F (InterpreterWithCoreTests, RecursionTest) {
+  BORAX_SYMBOL  *RecTest = Intern (L"BORAX-RUNTIME", L"RECURSION-TEST");
+
+  std::vector <BORAX_OBJECT>  Args = {
+    BORAX_MAKE_FIXNUM (10),
+    BORAX_NIL,
+  };
+
+  std::vector <BORAX_OBJECT>  Result = CallLisp (RecTest->Function, Args);
+
+  ASSERT_EQ (1u, Result.size ());
+  ASSERT_EQ (BORAX_MAKE_FIXNUM (0), Result[0]);
+}
+
+TEST_F (InterpreterWithCoreTests, StackOverflowTest) {
+  BORAX_SYMBOL  *RecTest = Intern (L"BORAX-RUNTIME", L"RECURSION-TEST");
+
+  std::vector <BORAX_OBJECT>  Args = {
+    BORAX_MAKE_FIXNUM (10),
+    BORAX_NIL,
+  };
+
+  // TODO: Check the condition data
+  ASSERT_THROW (
+    CallLisp (RecTest->Function, Args, 50),
+    TaskAbortedError
+    );
+}
+
+TEST_F (InterpreterWithCoreTests, TailCallTest) {
+  // TODO: Real T
+  BORAX_SYMBOL  *RecTest = Intern (L"BORAX-RUNTIME", L"RECURSION-TEST");
+  BORAX_SYMBOL  *T       = Intern (L"COMMON-LISP", L"T");
+
+  std::vector <BORAX_OBJECT>  Args = {
+    BORAX_MAKE_FIXNUM (10),
+    BORAX_MAKE_POINTER (T),
+  };
+
+  std::vector <BORAX_OBJECT>  Result = CallLisp (RecTest->Function, Args, 50);
+
+  ASSERT_EQ (1u, Result.size ());
+  ASSERT_EQ (BORAX_MAKE_FIXNUM (0), Result[0]);
 }

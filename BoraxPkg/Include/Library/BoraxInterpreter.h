@@ -347,6 +347,8 @@ typedef struct {
   BORAX_OBJECT    **Pages;
   UINTN           PagesLength;
   UINTN           PagesCapacity;
+  UINTN           SoftLimit;
+  UINTN           HardLimit;
 } BORAX_TASK_STACK;
 
 typedef struct {
