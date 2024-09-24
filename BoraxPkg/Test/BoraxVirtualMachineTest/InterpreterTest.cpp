@@ -192,6 +192,22 @@ public:
     return Symbol;
   }
 
+  BORAX_OBJECT
+  ClassOf (
+    IN BORAX_OBJECT  Object
+    )
+  {
+    BORAX_OBJECT  Condition;
+    BORAX_OBJECT  Class;
+
+    Condition = BoraxPrimitiveClassOf (Interp.get (), Object, &Class);
+    if (BORAX_BOOL (Condition)) {
+      throw ConditionError { Interp->Alloc, Condition };
+    }
+
+    return Class;
+  }
+
   std::vector<BORAX_OBJECT>
   CallLisp (
     IN BORAX_OBJECT               Function,
@@ -300,8 +316,16 @@ TEST_F (InterpreterWithCoreTests, UndefinedFunctionTest) {
                         Intern (L"BORAX-RUNTIME", L"DOES-NOT-EXIST")
                         );
 
-  // TODO: Check the condition data
-  ASSERT_THROW (CallLisp (Dne, { }), TaskAbortedError);
+  try {
+    (void)CallLisp (Dne, { });
+    FAIL ();
+  }
+  catch (const TaskAbortedError &e) {
+    ASSERT_EQ (
+      Interp->Globals[BORAX_GLOBAL_CLASS_UNDEFINED_FUNCTION],
+      ClassOf (e.Condition ())
+      );
+  }
 }
 
 TEST_F (InterpreterWithCoreTests, SumListTest) {
@@ -337,11 +361,16 @@ TEST_F (InterpreterWithCoreTests, StackOverflowTest) {
     BORAX_NIL,
   };
 
-  // TODO: Check the condition data
-  ASSERT_THROW (
-    CallLisp (RecTest->Function, Args, 50),
-    TaskAbortedError
-    );
+  try {
+    CallLisp (RecTest->Function, Args, 50);
+    FAIL ();
+  }
+  catch (const TaskAbortedError &e) {
+    ASSERT_EQ (
+      Interp->Globals[BORAX_GLOBAL_CLASS_STACK_EXHAUSTED],
+      ClassOf (e.Condition ())
+      );
+  }
 }
 
 TEST_F (InterpreterWithCoreTests, TailCallTest) {
@@ -441,6 +470,15 @@ INSTANTIATE_TEST_SUITE_P (
 TEST_F (InterpreterWithCoreTests, ExpiredExitTest) {
   BORAX_SYMBOL  *Test = Intern (L"BORAX-RUNTIME", L"EXPIRED-EXIT-TEST-CALLER");
 
-  // TODO: Check the condition data
-  ASSERT_THROW (CallLisp (Test->Function, { }), TaskAbortedError);
+  // TODO: Maybe check (TYPEP CONDITION PROGRAM-ERROR)
+  try {
+    CallLisp (Test->Function, { });
+    FAIL ();
+  }
+  catch (const TaskAbortedError &e) {
+    ASSERT_EQ (
+      Interp->Globals[BORAX_GLOBAL_CLASS_SIMPLE_PROGRAM_ERROR],
+      ClassOf (e.Condition ())
+      );
+  }
 }
