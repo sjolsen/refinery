@@ -1077,6 +1077,7 @@ BoraxPrimitiveKeyword (
     (BORAX_PACKAGE *)
     BORAX_GET_POINTER (Interp->Globals[BORAX_GLOBAL_PACKAGE_KEYWORD]);
 
+  // TODO: Ensure keywords are self-evaluating
   return BoraxPrimitiveIntern (Interp, Package, Name, Symbol);
 }
 

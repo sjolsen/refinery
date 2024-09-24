@@ -7,7 +7,7 @@
            #:bytecode #:bytecode-constants #:bytecode-locals #:bytecode-shared
            #:bytecode-closure #:bytecode-name #:bytecode-arglist #:bytecode-entry
            #:local #:shared #:closure
-           #:call #:jump #:bind #:move
+           #:call #:jump #:exit #:push-exit #:bind #:move
            #:class-typep))
 
 (in-package :borax-virtual-machine/bytecode)
@@ -266,6 +266,8 @@
   call-instruction
   jump-instruction
   return-instruction
+  exit-instruction
+  push-exit-instruction
   bind-instruction
   move-instruction)
 
@@ -299,6 +301,23 @@
         (values    (optional values)))
     (prog1 (emit-c-opcode 5 condition values)
       (emit-values values))))
+
+(define-nonterminal exit-instruction ()
+  (let ((nil       'exit)
+        (condition (optional condition))
+        (location  location)
+        (values    (optional values)))
+    (prog1 (emit-c-opcode 6 condition values)
+      (emit-location location)
+      (emit-values values))))
+
+(define-nonterminal push-exit-instruction ()
+  (let ((nil       'push-exit)
+        (location  location)
+        (target    symbol))
+    (prog1 (emit-byte #x81)
+      (emit-location location)
+      (emit-jump-target target))))
 
 (define-nonterminal bind-instruction ()
   (let ((nil    'bind)

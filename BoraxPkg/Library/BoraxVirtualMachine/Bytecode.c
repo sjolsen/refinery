@@ -561,7 +561,7 @@ BytecodeFunctionRun (
   BORAX_OBJECT             Condition;
   BORAX_BYTECODE_FUNCTION  *F;
   PARSER_STATE             State;
-  UINT8                    Opcode;
+  UINT8                    Opcode, Discrim;
   BOOLEAN                  Fast, Tail;
   UINTN                    I;
 
@@ -590,14 +590,20 @@ BytecodeFunctionRun (
   }
 
   // Handle fast/tail flags
-  if ((Opcode & 0xC0) == BORAX_OPCODE_CALL) {
-    Fast    = Opcode & BORAX_CALL_FLAG_FAST;
-    Tail    = Opcode & BORAX_CALL_FLAG_TAIL;
-    Opcode &= 0xCF;
+  Discrim = Opcode;
+  if ((Discrim & 0xC0) == BORAX_OPCODE_CALL) {
+    Fast     = Opcode & BORAX_CALL_FLAG_FAST;
+    Tail     = Opcode & BORAX_CALL_FLAG_TAIL;
+    Discrim &= 0xCF;
   }
 
-  // Dispatch on high nibble
-  switch (Opcode & 0xF0) {
+  // Handle push instructions
+  if ((Discrim & 0xF0) != 0x80) {
+    Discrim &= 0xF0;
+  }
+
+  // Dispatch on a variable-length subset of opcode bits
+  switch (Discrim) {
     case BORAX_OPCODE_CALL:
     {
       UINT8         CFlag   = (Opcode >> 3) & 0x01;
@@ -713,6 +719,82 @@ BytecodeFunctionRun (
       }
     }
 
+    case BORAX_OPCODE_EXIT:
+    {
+      UINT8         CFlag   = (Opcode >> 3) & 0x01;
+      UINT8         Opcount = (Opcode >> 0) & 0x07;
+      BOOLEAN       DoIt;
+      LOCATION      Location;
+      BORAX_OBJECT  Exit;
+
+      Condition = DecodeField (&State, &CFlag, 1);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = ProcessCondition (&State, CFlag, &DoIt);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = DecodeField (&State, &Opcount, 3);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = ReadLocation (&State, &Location);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = ConditionalCoBind (&State, DoIt, Opcount);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      if (DoIt) {
+        Condition = LoadLocation (&State, &Location, &Exit);
+        if (BORAX_BOOL (Condition)) {
+          return Condition;
+        }
+
+        return BoraxTaskTakeExit (Task, Exit);
+      } else {
+        Task->Registers.PC = State.Pos;
+        return BORAX_NIL;
+      }
+    }
+
+    case BORAX_OPCODE_PUSH_EXIT:
+    {
+      LOCATION    Location;
+      UINT16      JumpTarget;
+      BORAX_EXIT  *Exit;
+
+      Condition = ReadLocation (&State, &Location);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = ReadJumpTarget (&State, &JumpTarget);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = BoraxTaskPushExit (Task, JumpTarget, &Exit);
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Condition = StoreLocation (&State, &Location, BORAX_MAKE_POINTER (Exit));
+      if (BORAX_BOOL (Condition)) {
+        return Condition;
+      }
+
+      Task->Registers.PC = State.Pos;
+      return BORAX_NIL;
+    }
+
     case BORAX_OPCODE_BIND:
     {
       UINTN  Length  = Task->Registers.VR->Length;
@@ -799,18 +881,6 @@ BytecodeFunctionRun (
       Task->Registers.PC = State.Pos;
       return BORAX_NIL;
     }
-
-    /* // TODO: Consider more carefully the consequence of encountering an error */
-    /* // after invalidating the VR */
-    /* // TODO: Also maybe make BoraxResizeMultipleValues return a condition */
-    /* Status = BoraxResizeMultipleValues ( */
-    /*   Task->Interp, */
-    /*   &Task->Registers.VR, */
-    /*   Opcount */
-    /*   ); */
-    /* if (EFI_ERROR (Status)) { */
-    /*   return BoraxPrimitiveHeapExhausted (Task->Interp); */
-    /* } */
 
     case BORAX_OPCODE_MOVE:
     {

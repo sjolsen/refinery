@@ -163,6 +163,35 @@ public:
     return Symbol;
   }
 
+  BORAX_CONST_STRING
+  String (
+    IN const wchar_t  *Str
+    )
+  {
+    BORAX_CONST_STRING  Desc;
+
+    Desc.Data   = reinterpret_cast<CONST CHAR16 *>(Str);
+    Desc.Length = StrLen (Desc.Data);
+    return Desc;
+  }
+
+  BORAX_SYMBOL *
+  Keyword (
+    IN const wchar_t  *Name
+    )
+  {
+    BORAX_OBJECT        Condition;
+    BORAX_CONST_STRING  Desc = String (Name);
+    BORAX_SYMBOL        *Symbol;
+
+    Condition = BoraxPrimitiveKeyword (Interp.get (), Desc, &Symbol);
+    if (BORAX_BOOL (Condition)) {
+      throw ConditionError { Interp->Alloc, Condition };
+    }
+
+    return Symbol;
+  }
+
   std::vector<BORAX_OBJECT>
   CallLisp (
     IN BORAX_OBJECT               Function,
@@ -329,4 +358,89 @@ TEST_F (InterpreterWithCoreTests, TailCallTest) {
 
   ASSERT_EQ (1u, Result.size ());
   ASSERT_EQ (BORAX_MAKE_FIXNUM (0), Result[0]);
+}
+
+struct ExitTestCase {
+  unsigned int     Index;
+  const wchar_t    *Tag;
+  const wchar_t    *Value;
+};
+
+struct WStringWrapper {
+  // It would be nice to use wstring_view but the way edk2 is overriding wchar_t
+  // with -fshort-wchar while linking to the system libstdc++ means that
+  // everything to do with wchar_t is horribly, horribly broken
+  const wchar_t    *WStr;
+
+  explicit WStringWrapper (
+                           const wchar_t  *WStr
+                           ) : WStr (WStr)
+  {
+  }
+};
+
+std::ostream &
+operator<< (
+  std::ostream          &os,
+  const WStringWrapper  &Wrapper
+  )
+{
+  os << "L\"";
+
+  for (const wchar_t *p = Wrapper.WStr; *p != L'\0'; ++p ) {
+    os << static_cast<char> (*p);
+  }
+
+  return os << "\"";
+}
+
+std::ostream &
+operator<< (
+  std::ostream        &os,
+  const ExitTestCase  &TestCase
+  )
+{
+  return os << "ExitTestCase { " << TestCase.Index << ", "
+         << WStringWrapper (TestCase.Tag) << ", "
+         << WStringWrapper (TestCase.Value) << " }";
+}
+
+class InterpreterExitTests : public InterpreterWithCoreTests,
+  public testing::WithParamInterface<ExitTestCase>
+{
+};
+
+TEST_P (InterpreterExitTests, ExitValues) {
+  ExitTestCase  Case = GetParam ();
+  BORAX_SYMBOL  *F   = Intern (L"BORAX-RUNTIME", L"EXIT-TEST-CALLER");
+
+  std::vector <BORAX_OBJECT>  Args   = { BORAX_MAKE_FIXNUM (Case.Index) };
+  std::vector <BORAX_OBJECT>  Result = CallLisp (F->Function, Args);
+
+  BORAX_OBJECT  Tag   = BORAX_MAKE_POINTER (Keyword (Case.Tag));
+  BORAX_OBJECT  Value = BORAX_MAKE_POINTER (Keyword (Case.Value));
+
+  ASSERT_EQ (2u, Result.size ());
+  ASSERT_EQ (Tag, Result[0]);
+  ASSERT_EQ (Value, Result[1]);
+}
+
+static const ExitTestCase  ExitTestCases[] = {
+  { 0, L"APPLE",  L"AARDVARK"   },
+  { 1, L"BANANA", L"BILLY-GOAT" },
+  { 2, L"CHERRY", L"CARIBOU"    },
+  { 3, L"OOPS",   L"OCELOT"     },
+};
+
+INSTANTIATE_TEST_SUITE_P (
+  ExitTests,
+  InterpreterExitTests,
+  testing::ValuesIn (ExitTestCases)
+  );
+
+TEST_F (InterpreterWithCoreTests, ExpiredExitTest) {
+  BORAX_SYMBOL  *Test = Intern (L"BORAX-RUNTIME", L"EXPIRED-EXIT-TEST-CALLER");
+
+  // TODO: Check the condition data
+  ASSERT_THROW (CallLisp (Test->Function, { }), TaskAbortedError);
 }

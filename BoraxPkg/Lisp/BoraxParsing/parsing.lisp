@@ -149,6 +149,8 @@
 
 (defun parse-all (parser input)
   (prog1 (parse parser input)
+    ;; TODO: Improve error reporting when the interior parser succeeds without
+    ;; consuming all of the input
     (parse *end-of-input* input)))
 
 (defclass satisfies-parser (parser)

@@ -913,6 +913,8 @@ BoraxTaskPushExit (
     return BoraxPrimitiveHeapExhausted (Task->Interp);
   }
 
+  NewExit->Header.WideTag = BORAX_WIDETAG_EXIT;
+
   NewExit->Valid = TRUE;
   NewExit->Task  = BORAX_MAKE_POINTER (Task);
   NewExit->BP    = Task->Registers.BP;

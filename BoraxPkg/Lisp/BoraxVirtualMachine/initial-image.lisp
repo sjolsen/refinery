@@ -530,6 +530,47 @@
   (call 'recursion-test (depth tailp))
   (return))
 
+(define-bytecode-function exit-test-caller (index)
+  (declare (local index e1 e2 e3 result))
+    (bind (index))
+    (push-exit e1 apple)
+    (push-exit e2 banana)
+    (push-exit e3 cherry)
+    (call 'exit-test-callee (index e1 e2 e3))
+    (bind (result))
+    (return (:oops result))
+  apple
+    (bind (result))
+    (return (:apple result))
+  banana
+    (bind (result))
+    (return (:banana result))
+  cherry
+    (bind (result))
+    (return (:cherry result)))
+
+(define-bytecode-function exit-test-callee (index e1 e2 e3)
+  (declare (local index e1 e2 e3))
+  (bind (index e1 e2 e3))
+  (exit :if (eq index 0) e1 (:aardvark))
+  (exit :if (eq index 1) e2 (:billy-goat))
+  (exit :if (eq index 2) e3 (:caribou))
+  (return (:ocelot)))
+
+(define-bytecode-function expired-exit-test-caller ()
+  (declare (local exit))
+  (call 'expired-exit-test-callee)
+  (bind (exit))
+  (exit exit (:oops))
+  (return))
+
+(define-bytecode-function expired-exit-test-callee ()
+  (declare (local exit))
+    (push-exit exit oops)
+    (return (exit))
+  oops
+    (return))
+
 (defun ensure-bytecode-function (name)
   (setf (borax-vm/cl:symbol-function (reify name))
         (bytecode-function name)))
